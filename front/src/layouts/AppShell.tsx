@@ -5,21 +5,28 @@ import type { MenuProps } from "antd";
 import {
   CloudUploadOutlined,
   DashboardOutlined,
+  DollarCircleOutlined,
   FileTextOutlined,
+  FundProjectionScreenOutlined,
   LineChartOutlined,
   LogoutOutlined,
   ShoppingOutlined,
   SwapOutlined,
   TeamOutlined,
   TruckOutlined,
+  BankOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
 import { useAuth } from "../contexts/AuthContext";
+import { usePermission } from "../hooks/usePermission";
 
 const { Header, Sider, Content } = Layout;
 
 const pathToKey = (pathname: string): string => {
+  if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
+  if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
+  if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/pedidos")) return "/app/pedidos";
   if (pathname.startsWith("/app/logistica")) return "/app/logistica";
   if (pathname.startsWith("/app/importar")) return "/app/importar";
@@ -44,6 +51,10 @@ export function AppShell() {
   const canAdmin = user?.role === "ADMIN";
   const canImport = user?.role === "ADMIN" || user?.role === "OPERADOR";
 
+  const canCampanas = usePermission("moduleCampanasMeta");
+  const canCuentas = usePermission("moduleCuentasPublicitarias");
+  const canGastoOp = usePermission("moduleGastoOperacional");
+
   const menuItems: MenuProps["items"] = useMemo(
     () => [
       { key: "/app/dashboard", icon: <DashboardOutlined />, label: <Link to="/app/dashboard">Dashboard</Link> },
@@ -63,13 +74,40 @@ export function AppShell() {
             },
             { key: "/app/mapeo", icon: <SwapOutlined />, label: <Link to="/app/mapeo">Mapeo estados</Link> },
             { key: "/app/cpa", icon: <FileTextOutlined />, label: <Link to="/app/cpa">CPA</Link> },
+            ...(canCampanas
+              ? [
+                  {
+                    key: "/app/campanas-meta",
+                    icon: <FundProjectionScreenOutlined />,
+                    label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
+                  },
+                ]
+              : []),
+            ...(canCuentas
+              ? [
+                  {
+                    key: "/app/cuentas-publicitarias",
+                    icon: <BankOutlined />,
+                    label: <Link to="/app/cuentas-publicitarias">Cuentas publicitarias</Link>,
+                  },
+                ]
+              : []),
+            ...(canGastoOp
+              ? [
+                  {
+                    key: "/app/gasto-operacional",
+                    icon: <DollarCircleOutlined />,
+                    label: <Link to="/app/gasto-operacional">Gasto operacional</Link>,
+                  },
+                ]
+              : []),
           ]
         : []),
       ...(canAdmin
         ? [{ key: "/app/empresas", icon: <TeamOutlined />, label: <Link to="/app/empresas">Empresas</Link> }]
         : []),
     ],
-    [canAdmin, canImport],
+    [canAdmin, canImport, canCampanas, canCuentas, canGastoOp],
   );
 
   return (

@@ -11,6 +11,9 @@ import { MapeoPage } from "./pages/MapeoPage";
 import { CpaPage } from "./pages/CpaPage";
 import { CompaniesPage } from "./pages/CompaniesPage";
 import { LogisticsPage } from "./pages/LogisticsPage";
+import { CampaignsPage } from "./pages/CampaignsPage";
+import { AdvertisingAccountsPage } from "./pages/AdvertisingAccountsPage";
+import { OperationalExpensesPage } from "./pages/OperationalExpensesPage";
 
 function RootRedirect() {
   const token = localStorage.getItem("fersua_token");
@@ -65,6 +68,9 @@ export function AppRoutes() {
             </RequireRoles>
           }
         />
+        <Route path="campanas-meta" element={<CampaignsPage />} />
+        <Route path="cuentas-publicitarias" element={<AdvertisingAccountsPage />} />
+        <Route path="gasto-operacional" element={<OperationalExpensesPage />} />
         <Route
           path="empresas"
           element={

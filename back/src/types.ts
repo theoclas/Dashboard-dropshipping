@@ -1,4 +1,5 @@
 import type { Role } from "@prisma/client";
+import type { OperatorPermissionKey } from "./operatorPermissions";
 
 export type AuthUser = {
   id: string;
@@ -14,4 +15,6 @@ export type JwtPayload = {
   email: string;
   companyId: string;
   role: Role;
+  /** Mapa efectivo de permisos (no enviado para ADMIN). */
+  operatorPerms?: Record<OperatorPermissionKey, boolean>;
 };

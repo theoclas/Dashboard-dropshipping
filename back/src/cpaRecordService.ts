@@ -144,12 +144,8 @@ export async function createCpaRecord(prisma: PrismaClient, companyId: string, b
   }
   const row = buildCpaRowLikeFromCreateBody(parsed.data);
   const data = rowLikeToPrismaCreateManyInput(companyId, row);
-  const { companyId: _cid, ...fields } = data;
   return prisma.cpaRecord.create({
-    data: {
-      company: { connect: { id: companyId } },
-      ...fields,
-    },
+    data: data as Prisma.CpaRecordUncheckedCreateInput,
   });
 }
 

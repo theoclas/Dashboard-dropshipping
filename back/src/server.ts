@@ -13,6 +13,8 @@ import { Prisma, Role, type Order } from "@prisma/client";
 import { prisma } from "./prisma";
 import { authRequired, companyRequired, requireRoles } from "./middleware";
 import type { JwtPayload } from "./types";
+import { mergeOperatorPermissions } from "./operatorPermissions";
+import { registerBusinessModules } from "./registerBusinessModules";
 import { importProductosExcel } from "./importProductosExcel";
 import { importPedidosExcel } from "./importPedidosExcel";
 import { importCarteraExcel } from "./importCarteraExcel";
@@ -158,6 +160,12 @@ app.post("/api/auth/login", async (req, res) => {
     companyId: selectedMembership.companyId,
     role: selectedMembership.role,
   };
+  if (selectedMembership.role !== Role.ADMIN) {
+    payload.operatorPerms = mergeOperatorPermissions(
+      selectedMembership.role,
+      selectedMembership.operatorPermissions,
+    );
+  }
 
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
   return res.json({
@@ -185,6 +193,15 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     include: { memberships: { include: { company: true } } },
   });
   if (!user) return res.status(404).json({ message: "Usuario no encontrado." });
+  const membership = user.memberships.find((m) => m.companyId === userPayload?.companyId);
+  const operatorPerms =
+    membership && membership.role !== Role.ADMIN
+      ? mergeOperatorPermissions(membership.role, membership.operatorPermissions)
+      : null;
+  const companySettings = await prisma.company.findUnique({
+    where: { id: userPayload!.companyId },
+    select: { name: true, slug: true, operationalExpenseEnabled: true },
+  });
   return res.json({
     id: user.id,
     username: user.username ?? "",
@@ -192,6 +209,8 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     fullName: user.fullName,
     activeCompany: userPayload?.companyId,
     role: userPayload?.role,
+    operatorPerms,
+    companySettings,
     companies: user.memberships.map((m) => ({
       companyId: m.companyId,
       name: m.company.name,
@@ -232,6 +251,9 @@ app.post("/api/auth/switch-company", authRequired, async (req, res) => {
     companyId: membership.companyId,
     role: membership.role,
   };
+  if (membership.role !== Role.ADMIN) {
+    payload.operatorPerms = mergeOperatorPermissions(membership.role, membership.operatorPermissions);
+  }
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
   return res.json({ accessToken, companyId: membership.companyId, role: membership.role });
 });
@@ -906,6 +928,8 @@ app.get("/api/reportes-logistica/comparativa-geografica", authRequired, companyR
     return res.status(500).json({ message: msg });
   }
 });
+
+registerBusinessModules(app);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
