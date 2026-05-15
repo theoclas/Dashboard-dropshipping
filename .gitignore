@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+**/dist/
+
+# Env (keep examples)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Prisma (optional local)
+prisma/*.db
+prisma/*.db-journal
+
+# Vite
+front/.vite/
+
+# Local data / exports (no versionar)
+Documentos/
+*.xlsx
+back/zout.txt

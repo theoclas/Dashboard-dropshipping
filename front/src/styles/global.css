@@ -1,0 +1,131 @@
+:root {
+  --fs-layout-bg: #0f172a;
+  --fs-surface: #1e293b;
+  --fs-accent: #22d3ee;
+  --fs-danger-zone-border: rgba(248, 113, 113, 0.5);
+  --fs-danger-zone-bg: rgba(127, 29, 29, 0.2);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--fs-layout-bg);
+}
+
+/* Zona peligrosa (import / wipe) */
+.import-wipe-zone {
+  border: 1px solid var(--fs-danger-zone-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--fs-danger-zone-bg);
+}
+
+/* Menú activo: acento lateral */
+.fs-app-sider .ant-menu-dark.ant-menu-inline .ant-menu-item-selected {
+  box-shadow: inset 3px 0 0 var(--fs-accent);
+}
+
+.fs-app-sider .ant-menu-dark.ant-menu-inline .ant-menu-item {
+  margin-inline: 8px;
+  width: calc(100% - 16px);
+}
+
+/* Login: ocupa siempre el alto del viewport (evita franja del body debajo) */
+.fs-login-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+html:has(.fs-login-page) body {
+  background-color: #020617;
+}
+
+/* Login: tarjeta con relieve y marca móvil */
+.fs-login-page .fs-login-brand-col::after {
+  content: "";
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  right: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(148, 163, 184, 0.22), transparent);
+  pointer-events: none;
+}
+
+@media (max-width: 767.98px) {
+  .fs-login-page .fs-login-brand-col::after {
+    display: none;
+  }
+}
+
+.fs-login-mobile-mark {
+  display: none;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 767.98px) {
+  .fs-login-mobile-mark {
+    display: flex !important;
+  }
+}
+
+.fs-login-card.ant-card {
+  background: rgba(30, 41, 59, 0.88) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 28px 56px -16px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 80px -28px rgba(34, 211, 238, 0.12) !important;
+}
+
+.fs-login-card .ant-card-head {
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  padding-block: 4px 0 !important;
+}
+
+.fs-login-card .ant-card-head-title {
+  font-weight: 600;
+  font-size: 1.125rem;
+  letter-spacing: -0.02em;
+  padding-bottom: 4px !important;
+}
+
+.fs-login-card .ant-card-body {
+  padding-top: 20px !important;
+}
+
+.fs-login-company-foot {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.fs-login-company-foot .ant-typography:last-child {
+  margin-bottom: 0;
+}
+
+.fs-table-row-alt td {
+  background: rgba(148, 163, 184, 0.04) !important;
+}
+
+.row-entregado {
+  background: rgba(82, 196, 26, 0.06);
+}
+
+.row-devolucion {
+  background: rgba(255, 77, 79, 0.06);
+}

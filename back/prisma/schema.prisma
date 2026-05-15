@@ -1,0 +1,371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                         String               @id @default(cuid())
+  username                   String?              @unique @map("username") @db.VarChar(64)
+  email                      String               @unique
+  passwordHash               String
+  fullName                   String
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+  memberships                UserCompany[]
+  activeCompany              String?
+  /// Visibilidad de tarjetas del dashboard (JSON: { "volume_totalOrders": true, ... }).
+  dashboardConfig            Json?                @map("dashboard_config")
+  operationalExpensesCreated OperationalExpense[] @relation("OperationalExpenseCreatedBy")
+}
+
+model Company {
+  id                         String                      @id @default(cuid())
+  name                       String
+  slug                       String                      @unique
+  isActive                   Boolean                     @default(true)
+  /// Módulo opcional: registro de gastos operacionales (IA, celular, etc.).
+  operationalExpenseEnabled  Boolean                     @default(false) @map("operational_expense_enabled")
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  memberships                UserCompany[]
+  orders                     Order[]
+  orderItems                 OrderItem[]
+  productDetails             ProductDetail[]
+  walletMoves                WalletMovement[]
+  mapeoEstados               MapeoEstado[]
+  notes                      Note[]
+  cpaRecords                 CpaRecord[]
+  operationalExpenses        OperationalExpense[]
+  catalogProducts            CatalogProduct[]
+  advertisingCampaigns       AdvertisingCampaign[]
+  catalogProductDropiLinks   CatalogProductDropiLink[]
+  advertisingCampaignMetrics AdvertisingCampaignMetric[]
+  advertisingAccounts        AdvertisingAccount[]
+}
+
+/// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
+model AdvertisingAccount {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  /// ID de cuenta en Meta (ej. 1471976967613858).
+  metaAccountId String   @map("meta_account_id") @db.VarChar(32)
+  businessName  String?  @map("business_name") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  operationalExpenses  OperationalExpense[]
+  advertisingCampaigns AdvertisingCampaign[]
+
+  @@unique([companyId, metaAccountId])
+  @@index([companyId])
+  @@map("cuentas_publicitarias")
+}
+
+model UserCompany {
+  id                  String   @id @default(cuid())
+  userId              String
+  companyId           String
+  role                Role
+  /// Permisos efectivos para OPERADOR (JSON parcial; null = todo permitido). Mantener claves alineadas con `operatorPermissions.ts`.
+  operatorPermissions Json?    @map("operator_permissions")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId, role])
+}
+
+/// Pedidos Dropi: columnas alineadas a la tabla `pedidos` + `companyId` (multiempresa).
+model Order {
+  id        String @id @default(cuid())
+  companyId String
+
+  externalOrderId String @map("id_dropi") @db.VarChar(50)
+
+  fecha                   DateTime? @map("fecha")
+  cliente                 String?   @map("cliente") @db.VarChar(255)
+  transportadora          String?   @map("transportadora") @db.VarChar(100)
+  estadoOperativo         String?   @map("estado_operativo") @db.VarChar(100)
+  guia                    String?   @map("guia") @db.VarChar(100)
+  departamento            String?   @map("departamento") @db.VarChar(100)
+  ciudad                  String?   @map("ciudad") @db.VarChar(100)
+  direccion               String?   @map("direccion") @db.Text
+  telefono                String?   @map("telefono") @db.VarChar(50)
+  notas                   String?   @map("notas") @db.Text
+  notasManuales           String?   @map("notas_manuales") @db.Text
+  venta                   Decimal?  @map("venta") @db.Decimal(12, 2)
+  gananciaCalc            Decimal?  @map("ganancia_calc") @db.Decimal(12, 2)
+  flete                   Decimal?  @map("flete") @db.Decimal(12, 2)
+  costoDevolucionEstimado Decimal?  @map("costo_devolucion_estimado") @db.Decimal(12, 2)
+  costoProveedor          Decimal?  @map("costo_proveedor") @db.Decimal(12, 2)
+  estatusOriginal         String?   @map("estatus_original") @db.VarChar(255)
+  ultimoMov               String?   @map("ultimo_mov") @db.VarChar(255)
+  fechaUltMov             DateTime? @map("fecha_ult_mov")
+  horaUltMov              Decimal?  @map("hora_ult_mov") @db.Decimal(10, 10)
+  diasDesdeUltMov         Int?      @map("dias_desde_ult_mov")
+  estadoUnificado         String?   @map("estado_unificado") @db.VarChar(100)
+  cartera                 Decimal?  @map("cartera") @db.Decimal(12, 2)
+  carteraAplicada         Decimal?  @map("cartera_aplicada") @db.Decimal(12, 2)
+  estadoCartera           String?   @map("estado_cartera") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, externalOrderId])
+  @@index([companyId, estadoUnificado])
+  @@index([companyId, guia])
+  @@map("pedidos")
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  companyId       String
+  externalOrderId String
+  sku             String?
+  productName     String
+  quantity        Int      @default(1)
+  unitPrice       Decimal? @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, externalOrderId])
+}
+
+/// Líneas de producto por pedido (`productos_detalle` Dropi) + `companyId` para multiempresa.
+model ProductDetail {
+  id                       Int      @id @default(autoincrement())
+  companyId                String
+  pedidoIdDropi            String   @map("pedido_id_dropi") @db.VarChar(50)
+  productoId               String?  @map("producto_id") @db.VarChar(50)
+  sku                      String?  @db.VarChar(100)
+  variacionId              String?  @map("variacion_id") @db.VarChar(50)
+  productoNombre           String?  @map("producto_nombre") @db.VarChar(255)
+  variacion                String?  @db.VarChar(255)
+  cantidad                 Int?
+  precioProveedor          Decimal? @map("precio_proveedor") @db.Decimal(12, 2)
+  precioProveedorXCantidad Decimal? @map("precio_proveedor_x_cantidad") @db.Decimal(12, 2)
+  createdAt                DateTime @default(now())
+  company                  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, pedidoIdDropi])
+  @@map("productos_detalle")
+}
+
+/// Cartera Dropi (`cartera_movimientos`) + `companyId`.
+model WalletMovement {
+  companyId      String
+  legacyId       BigInt    @map("id")
+  fecha          DateTime? @map("fecha")
+  tipo           String?   @map("tipo") @db.VarChar(20)
+  monto          Decimal?  @map("monto") @db.Decimal(12, 2)
+  montoPrevio    Decimal?  @map("monto_previo") @db.Decimal(12, 2)
+  ordenId        String?   @map("orden_id") @db.VarChar(50)
+  numeroGuia     String?   @map("numero_guia") @db.VarChar(100)
+  descripcion    String?   @map("descripcion") @db.Text
+  conceptoRetiro String?   @map("concepto_retiro") @db.VarChar(255)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, legacyId])
+  @@index([companyId, ordenId])
+  @@map("cartera_movimientos")
+}
+
+/// Mapeo de estados (`mapeo_estados`) + `companyId`.
+model MapeoEstado {
+  id               String   @id @default(cuid())
+  companyId        String
+  transportadora   String   @default("") @map("transportadora") @db.VarChar(100)
+  estatusOriginal  String   @map("estatus_original") @db.VarChar(100)
+  ultimoMovimiento String   @default("") @map("ultimo_movimiento") @db.VarChar(255)
+  estadoUnificado  String   @map("estado_unificado") @db.VarChar(100)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, transportadora, estatusOriginal, ultimoMovimiento])
+  @@map("mapeo_estados")
+}
+
+model Note {
+  id              String   @id @default(cuid())
+  companyId       String
+  externalOrderId String
+  content         String
+  createdBy       String
+  createdAt       DateTime @default(now())
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, externalOrderId])
+}
+
+/// Catálogo administrativo de productos por empresa (distinto de líneas `ProductDetail` Dropi).
+model CatalogProduct {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String   @db.VarChar(255)
+  sku       String?  @db.VarChar(100)
+  isActive  Boolean  @default(true) @map("is_active")
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company    Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  campaigns  AdvertisingCampaign[]
+  cpaRecords CpaRecord[]
+  dropiLinks CatalogProductDropiLink[]
+
+  @@index([companyId, name])
+  @@index([companyId, sku])
+  @@map("catalog_products")
+}
+
+/// Asocia una variante importada (Dropi / `productos_detalle`) a un producto del catálogo administrativo.
+model CatalogProductDropiLink {
+  id               String @id @default(cuid())
+  companyId        String @map("company_id")
+  catalogProductId String @map("catalog_product_id")
+  variantKey       String @map("variant_key") @db.VarChar(64)
+
+  productoId     String? @map("producto_id") @db.VarChar(50)
+  sku            String? @db.VarChar(100)
+  variacionId    String? @map("variacion_id") @db.VarChar(50)
+  productoNombre String? @map("producto_nombre") @db.VarChar(255)
+  variacion      String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  catalogProduct CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, variantKey])
+  @@index([companyId, catalogProductId])
+  @@map("catalog_product_dropi_links")
+}
+
+/// Campaña publicitaria; una campaña pertenece a un solo producto del catálogo.
+model AdvertisingCampaign {
+  id                   String   @id @default(cuid())
+  companyId            String   @map("company_id")
+  productId            String   @map("product_id")
+  externalCampaignId   String   @map("external_campaign_id") @db.VarChar(128)
+  displayName          String?  @map("display_name") @db.VarChar(255)
+  advertisingAccountId String?  @map("advertising_account_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  company            Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product            CatalogProduct              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount?         @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  metrics            AdvertisingCampaignMetric[]
+
+  @@unique([companyId, externalCampaignId])
+  @@index([companyId, productId])
+  @@index([advertisingAccountId])
+  @@map("advertising_campaigns")
+}
+
+/// Métricas de una campaña por día (import Meta / Shopify); una campaña tiene un registro por fecha.
+model AdvertisingCampaignMetric {
+  id                       String   @id @default(cuid())
+  companyId                String   @map("company_id")
+  campaignId               String   @map("campaign_id")
+  recordDate               DateTime @map("record_date") @db.Date
+  metaLinkClicks           Int?     @map("meta_link_clicks")
+  metaConversationsStarted Int?     @map("meta_conversations_started")
+  shopifySessions          Int?     @map("shopify_sessions")
+  /// Copia serializable de todas las columnas de la fila Excel de Meta al importar (cabecera original → valor).
+  metaExcelSnapshot        Json?    @map("meta_excel_snapshot")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  company  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  campaign AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, recordDate])
+  @@index([companyId, recordDate])
+  @@map("advertising_campaign_metrics")
+}
+
+/// CPA publicitario (`cpas`) + `companyId`.
+model CpaRecord {
+  id                     String          @id @default(cuid())
+  companyId              String
+  productId              String?         @map("catalog_product_id")
+  semana                 String?         @db.VarChar(50)
+  fecha                  DateTime?
+  producto               String?         @db.VarChar(255)
+  cuentaPublicitaria     String?         @map("cuenta_publicitaria") @db.VarChar(255)
+  gastoPublicidad        Decimal?        @map("gasto_publicidad") @db.Decimal(12, 2)
+  conversaciones         Int?
+  totalFacturado         Decimal?        @map("total_facturado") @db.Decimal(12, 2)
+  gananciaPromedio       Decimal?        @map("ganancia_promedio") @db.Decimal(12, 2)
+  ventas                 Int?
+  ticketPromedioProducto Decimal?        @map("ticket_promedio_producto") @db.Decimal(12, 2)
+  cpa                    Decimal?        @db.Decimal(12, 2)
+  conversionRate         Decimal?        @map("conversion_rate") @db.Decimal(12, 4)
+  costoPublicitario      Decimal?        @map("costo_publicitario") @db.Decimal(12, 2)
+  rentabilidad           Decimal?        @db.Decimal(12, 4)
+  utilidadAproximada     Decimal?        @map("utilidad_aproximada") @db.Decimal(12, 2)
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  company                Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  catalogProduct         CatalogProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, fecha])
+  @@index([companyId, productId])
+  @@map("cpas")
+}
+
+enum OperationalExpenseCategory {
+  SOFTWARE
+  COMUNICACIONES
+  OTRO
+}
+
+/// Gastos operacionales por empresa (no CPA).
+model OperationalExpense {
+  id                   String                      @id @default(cuid())
+  companyId            String                      @map("company_id")
+  fecha                DateTime
+  monto                Decimal                     @db.Decimal(12, 2)
+  concepto             String                      @db.VarChar(255)
+  categoria            OperationalExpenseCategory?
+  banco                String?                     @db.VarChar(120)
+  medio                String?                     @db.VarChar(120)
+  /// Cuenta publicitaria Meta (p. ej. al importar facturación); editable en formulario manual.
+  cuentaPublicitaria   String?                     @map("cuenta_publicitaria") @db.VarChar(255)
+  advertisingAccountId String?                     @map("advertising_account_id")
+  notas                String?                     @db.Text
+  /// Si true, el monto cuenta como «pagado» en el dashboard y no en el total pendiente.
+  pagado               Boolean                     @default(false) @map("pagado")
+  createdByUserId      String?                     @map("created_by_user_id")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount? @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("OperationalExpenseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, fecha])
+  @@index([advertisingAccountId])
+  @@map("gastos_operacionales")
+}
+
+enum Role {
+  ADMIN
+  OPERADOR
+  LECTOR
+}
