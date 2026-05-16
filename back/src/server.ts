@@ -571,6 +571,7 @@ app.get("/api/users/:userId/memberships", authRequired, requireRoles([Role.ADMIN
       companySlug: m.company.slug,
       companyActive: m.company.isActive,
       role: m.role,
+      operatorPermissions: m.operatorPermissions,
       canManage: adminSet.has(m.companyId),
     })),
   );

@@ -95,6 +95,7 @@ export type UserMembershipRow = {
   companySlug: string;
   companyActive: boolean;
   role: Role;
+  operatorPermissions: unknown;
   canManage: boolean;
 };
 

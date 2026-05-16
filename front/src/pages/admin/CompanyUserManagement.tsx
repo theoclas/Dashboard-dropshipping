@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Alert,
   Button,
   Card,
   Divider,
@@ -46,6 +47,16 @@ const roleOptions: { value: Role; label: string }[] = [
   { value: "LECTOR", label: "LECTOR" },
 ];
 
+function membershipPermissionsTag(m: UserMembershipRow) {
+  if (m.role === "ADMIN") {
+    return <Tag color="purple">ADMIN · acceso total</Tag>;
+  }
+  if (m.operatorPermissions == null) {
+    return <Tag>Por defecto (todo)</Tag>;
+  }
+  return <Tag color="processing">Personalizados</Tag>;
+}
+
 type Props = {
   companyId: string;
   /** Título opcional encima del contenido (p. ej. en drawer desde Empresas). */
@@ -85,6 +96,8 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
   const [addCompanyId, setAddCompanyId] = useState<string>("");
   const [addCompanyRole, setAddCompanyRole] = useState<Role>("OPERADOR");
   const [addingCompany, setAddingCompany] = useState(false);
+  /** Empresa cuya membresía se edita en Rol y permisos (puede diferir de la vista de la página). */
+  const [permissionsCompanyId, setPermissionsCompanyId] = useState<string | null>(null);
 
   const adminCompaniesForAssign = useMemo(
     () => authUser?.companies.filter((c) => c.role === "ADMIN") ?? [],
@@ -95,6 +108,22 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
     const inUser = new Set(userMemberships.map((m) => m.companyId));
     return adminCompaniesForAssign.filter((c) => !inUser.has(c.companyId));
   }, [adminCompaniesForAssign, userMemberships]);
+
+  const manageableMemberships = useMemo(
+    () => userMemberships.filter((m) => m.canManage),
+    [userMemberships],
+  );
+
+  const activePermissionsMembership = useMemo(
+    () => userMemberships.find((m) => m.companyId === permissionsCompanyId),
+    [userMemberships, permissionsCompanyId],
+  );
+
+  const applyPermissionsFromMembership = useCallback((m: UserMembershipRow) => {
+    setPermissionsCompanyId(m.companyId);
+    setDrawerRole(m.role);
+    setPermState(mergeOperatorPermissions(m.role, m.operatorPermissions));
+  }, []);
 
   const loadMembers = useCallback(async () => {
     if (!companyId) return;
@@ -165,6 +194,7 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
   const openPermissionsDrawer = useCallback(
     (row: CompanyMemberRow) => {
       setEditingMember(row);
+      setPermissionsCompanyId(companyId);
       setDrawerRole(row.role);
       setPermState(mergeOperatorPermissions(row.role, row.operatorPermissions));
       setAddCompanyId("");
@@ -172,7 +202,7 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
       setDrawerOpen(true);
       void loadUserMemberships(row.userId);
     },
-    [loadUserMemberships],
+    [companyId, loadUserMemberships],
   );
 
   const memberColumns: ColumnsType<CompanyMemberRow> = useMemo(
@@ -384,29 +414,35 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
           setDrawerOpen(false);
           setEditingMember(null);
           setUserMemberships([]);
+          setPermissionsCompanyId(null);
         }}
         extra={
           <Space>
             <Button
               onClick={async () => {
-                if (!editingMember) return;
+                if (!editingMember || !activePermissionsMembership) return;
                 try {
-                  await patchCompanyMember(companyId, editingMember.id, { operatorPermissions: null });
-                  message.success("Permisos por defecto (null = todo permitido para operador).");
+                  await patchCompanyMember(activePermissionsMembership.companyId, activePermissionsMembership.membershipId, {
+                    operatorPermissions: null,
+                  });
+                  message.success(
+                    `Permisos por defecto en ${activePermissionsMembership.companyName} (operador = todo permitido).`,
+                  );
                   setPermState(mergeOperatorPermissions(drawerRole, null));
-                  void loadMembers();
+                  void loadUserMemberships(editingMember.userId);
+                  if (activePermissionsMembership.companyId === companyId) void loadMembers();
                 } catch {
                   message.error("No se pudo restablecer.");
                 }
               }}
-              disabled={drawerRole === "ADMIN"}
+              disabled={drawerRole === "ADMIN" || !activePermissionsMembership}
             >
               Predeterminado operador
             </Button>
             <Button
               type="primary"
               onClick={async () => {
-                if (!editingMember) return;
+                if (!editingMember || !activePermissionsMembership) return;
                 try {
                   const body: { role: Role; operatorPermissions?: Record<OperatorPermissionKey, boolean> | null } = {
                     role: drawerRole,
@@ -416,21 +452,32 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
                   } else {
                     body.operatorPermissions = permState;
                   }
-                  await patchCompanyMember(companyId, editingMember.id, body);
-                  if (editingMember.userId === authUser?.id) {
+                  await patchCompanyMember(
+                    activePermissionsMembership.companyId,
+                    activePermissionsMembership.membershipId,
+                    body,
+                  );
+                  const savedCompany = activePermissionsMembership.companyName;
+                  if (
+                    editingMember.userId === authUser?.id &&
+                    activePermissionsMembership.companyId === authUser.activeCompany
+                  ) {
                     await refreshAuth();
-                    message.success("Permisos actualizados. Recarga la página (F5) si el menú no cambia.");
+                    message.success(
+                      `Permisos guardados para ${savedCompany}. Recarga (F5) si el menú no cambia.`,
+                    );
                   } else {
                     message.success(
-                      "Permisos guardados. El usuario verá los cambios al recargar la página o cambiar de empresa.",
+                      `Permisos guardados para ${savedCompany}. El usuario los verá al recargar o al cambiar a esa empresa.`,
                     );
                   }
-                  setDrawerOpen(false);
-                  void loadMembers();
+                  void loadUserMemberships(editingMember.userId);
+                  if (activePermissionsMembership.companyId === companyId) void loadMembers();
                 } catch {
                   message.error("No se pudo guardar.");
                 }
               }}
+              disabled={!activePermissionsMembership}
             >
               Guardar
             </Button>
@@ -462,6 +509,7 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
                         </Text>
                         {!m.companyActive ? <Tag color="default">inactiva</Tag> : null}
                         {m.companyId === companyId ? <Tag color="blue">esta vista</Tag> : null}
+                        {membershipPermissionsTag(m)}
                       </Space>
                       <Space size="small" wrap>
                         {m.canManage ? (
@@ -472,9 +520,14 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
                             options={roleOptions}
                             onChange={async (role) => {
                               try {
-                                await addUserMembership(editingMember.userId, { companyId: m.companyId, role });
+                                await patchCompanyMember(m.companyId, m.membershipId, { role });
                                 message.success("Rol actualizado en esa empresa.");
-                                void loadUserMemberships(editingMember.userId);
+                                const list = await fetchUserMemberships(editingMember.userId);
+                                setUserMemberships(list);
+                                const updated = list.find((x) => x.companyId === m.companyId);
+                                if (updated && updated.companyId === permissionsCompanyId) {
+                                  applyPermissionsFromMembership(updated);
+                                }
                                 if (m.companyId === companyId) void loadMembers();
                                 if (editingMember.userId === authUser?.id) void refreshAuth();
                               } catch {
@@ -582,29 +635,64 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
 
             <Divider style={{ margin: "4px 0" }} />
 
-            <div>
-              <Text strong>Rol en esta empresa</Text>
-              <Text type="secondary" style={{ display: "block", marginTop: 4, marginBottom: 0 }}>
-                Empresa de la vista actual (selector arriba).
-              </Text>
-              <Select
-                style={{ width: "100%", marginTop: 8 }}
-                value={drawerRole}
-                options={roleOptions}
-                onChange={(r) => {
-                  setDrawerRole(r);
-                  setPermState(
-                    mergeOperatorPermissions(r, r === "ADMIN" ? null : editingMember.operatorPermissions),
-                  );
-                }}
-              />
-            </div>
-            <OperatorPermissionsEditor
-              key={`${editingMember.id}-${drawerRole}`}
-              role={drawerRole}
-              permState={permState}
-              onChange={setPermState}
+            <Alert
+              type="info"
+              showIcon
+              message="Permisos por empresa"
+              description="Los permisos se guardan solo en la empresa seleccionada abajo. El mismo usuario puede ser operador en dos tiendas con accesos distintos (por ejemplo Dashboard en una y no en la otra)."
             />
+
+            {manageableMemberships.length === 0 ? (
+              <Text type="secondary">No administras ninguna empresa de este usuario; no puedes editar permisos.</Text>
+            ) : (
+              <>
+                <div>
+                  <Text strong>Configurar permisos para</Text>
+                  <Select
+                    style={{ width: "100%", marginTop: 8 }}
+                    value={permissionsCompanyId ?? undefined}
+                    options={manageableMemberships.map((m) => ({
+                      value: m.companyId,
+                      label: m.companyName,
+                    }))}
+                    onChange={(id) => {
+                      const m = userMemberships.find((x) => x.companyId === id);
+                      if (m) applyPermissionsFromMembership(m);
+                    }}
+                  />
+                  {activePermissionsMembership ? (
+                    <Text type="secondary" style={{ display: "block", marginTop: 6 }}>
+                      Rol y permisos de <strong>{activePermissionsMembership.companyName}</strong>
+                      {activePermissionsMembership.companyId === companyId ? " (coincide con esta vista)" : null}.
+                    </Text>
+                  ) : null}
+                </div>
+
+                <div>
+                  <Text strong>Rol en esta empresa</Text>
+                  <Select
+                    style={{ width: "100%", marginTop: 8 }}
+                    value={drawerRole}
+                    options={roleOptions}
+                    onChange={(r) => {
+                      setDrawerRole(r);
+                      setPermState(
+                        mergeOperatorPermissions(
+                          r,
+                          r === "ADMIN" ? null : activePermissionsMembership?.operatorPermissions,
+                        ),
+                      );
+                    }}
+                  />
+                </div>
+                <OperatorPermissionsEditor
+                  key={`${activePermissionsMembership?.membershipId ?? "none"}-${drawerRole}`}
+                  role={drawerRole}
+                  permState={permState}
+                  onChange={setPermState}
+                />
+              </>
+            )}
           </Space>
         ) : null}
       </Drawer>
