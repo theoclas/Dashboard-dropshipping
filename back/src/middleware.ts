@@ -1,12 +1,20 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import type { PrismaClient } from "@prisma/client";
 import { Role } from "@prisma/client";
+import { mergeOperatorPermissions } from "./operatorPermissions";
 import type { OperatorPermissionKey } from "./operatorPermissions";
 import type { JwtPayload } from "./types";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "change_me";
 
-export function authRequired(req: Request, res: Response, next: NextFunction) {
+let prismaRef: PrismaClient | null = null;
+
+export function configureAuthMiddleware(prisma: PrismaClient): void {
+  prismaRef = prisma;
+}
+
+export async function authRequired(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.header("authorization") ?? req.header("x-auth-token");
   const token = authHeader?.startsWith("Bearer ")
     ? authHeader.slice(7)
@@ -18,6 +26,22 @@ export function authRequired(req: Request, res: Response, next: NextFunction) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+
+    if (prismaRef && payload.companyId && payload.role !== Role.ADMIN) {
+      const membership = await prismaRef.userCompany.findUnique({
+        where: {
+          userId_companyId: { userId: payload.userId, companyId: payload.companyId },
+        },
+      });
+      if (membership) {
+        payload.role = membership.role;
+        payload.operatorPerms = mergeOperatorPermissions(
+          membership.role,
+          membership.operatorPermissions,
+        );
+      }
+    }
+
     (req as Request & { user?: JwtPayload }).user = payload;
     return next();
   } catch {

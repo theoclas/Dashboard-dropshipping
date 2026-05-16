@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { fetchDropiWithdrawals, patchDropiWithdrawalNota } from "../api";
 import { useAuth } from "../contexts/AuthContext";
+import { usePermission } from "../hooks/usePermission";
 import type { DropiWithdrawalRow } from "../types";
 
 const { Text, Paragraph } = Typography;
@@ -18,7 +19,8 @@ function fmtMonto(s: string | null): string {
 export function DropiRetirosPanel() {
   const { user } = useAuth();
   const activeCompany = user?.activeCompany;
-  const canEditNota = user?.role === "ADMIN" || user?.role === "OPERADOR";
+  const canEditRetirosNotas = usePermission("actionConfigRetirosDropiNotas");
+  const canEditNota = user?.role === "ADMIN" || canEditRetirosNotas;
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<DropiWithdrawalRow[]>([]);

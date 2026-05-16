@@ -38,7 +38,7 @@ function fmtCell(v: unknown): string {
 
 export function CpaExperimentalPage() {
   const canModule = usePermission("moduleCpa");
-  const canRebuild = usePermission("moduleCpa");
+  const canRebuild = usePermission("actionCpaRegistrosCrud");
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [accounts, setAccounts] = useState<AdvertisingAccount[]>([]);

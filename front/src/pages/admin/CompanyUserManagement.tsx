@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   Button,
   Card,
-  Checkbox,
   Divider,
   Drawer,
   Flex,
@@ -28,8 +27,8 @@ import {
   patchCompanyMember,
   removeUserMembership,
 } from "../../api";
+import { OperatorPermissionsEditor } from "../../components/OperatorPermissionsEditor";
 import { useAuth } from "../../contexts/AuthContext";
-import { OPERATOR_PERMISSION_LABELS, permissionGroups } from "../../operatorPermissionLabels";
 import { mergeOperatorPermissions } from "../../operatorPermissionsMerge";
 import type {
   AssignableCompanyUser,
@@ -418,7 +417,14 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
                     body.operatorPermissions = permState;
                   }
                   await patchCompanyMember(companyId, editingMember.id, body);
-                  message.success("Guardado. El usuario debe volver a iniciar sesión para ver los cambios.");
+                  if (editingMember.userId === authUser?.id) {
+                    await refreshAuth();
+                    message.success("Permisos actualizados. Recarga la página (F5) si el menú no cambia.");
+                  } else {
+                    message.success(
+                      "Permisos guardados. El usuario verá los cambios al recargar la página o cambiar de empresa.",
+                    );
+                  }
                   setDrawerOpen(false);
                   void loadMembers();
                 } catch {
@@ -587,37 +593,18 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
                 options={roleOptions}
                 onChange={(r) => {
                   setDrawerRole(r);
-                  setPermState(mergeOperatorPermissions(r, r === "ADMIN" ? null : editingMember.operatorPermissions));
+                  setPermState(
+                    mergeOperatorPermissions(r, r === "ADMIN" ? null : editingMember.operatorPermissions),
+                  );
                 }}
               />
             </div>
-            {drawerRole !== "ADMIN" ? (
-              <>
-                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                  Activa o desactiva cada permiso para este usuario en <strong>esta empresa</strong>.
-                </Paragraph>
-                {permissionGroups().map((g) => (
-                  <div key={g.title}>
-                    <Text strong style={{ display: "block", marginBottom: 8 }}>
-                      {g.title}
-                    </Text>
-                    <Space direction="vertical" style={{ paddingLeft: 8 }}>
-                      {g.keys.map((key) => (
-                        <Checkbox
-                          key={key}
-                          checked={permState[key]}
-                          onChange={(e) => setPermState((prev) => ({ ...prev, [key]: e.target.checked }))}
-                        >
-                          {OPERATOR_PERMISSION_LABELS[key]}
-                        </Checkbox>
-                      ))}
-                    </Space>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <Text type="secondary">Los administradores tienen acceso completo; no se guardan permisos granulares.</Text>
-            )}
+            <OperatorPermissionsEditor
+              key={`${editingMember.id}-${drawerRole}`}
+              role={drawerRole}
+              permState={permState}
+              onChange={setPermState}
+            />
           </Space>
         ) : null}
       </Drawer>

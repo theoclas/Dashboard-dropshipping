@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layouts/AppShell";
+import { AppIndexRedirect, RootRedirect } from "./layouts/AppIndexRedirect";
 import { RequireAuth } from "./layouts/RequireAuth";
+import { RequirePermission } from "./layouts/RequirePermission";
 import { RequireRoles } from "./layouts/RequireRoles";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -22,9 +24,8 @@ import { AdvertisingAccountsPage } from "./pages/AdvertisingAccountsPage";
 import { OperationalExpensesPage } from "./pages/OperationalExpensesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
-function RootRedirect() {
-  const token = localStorage.getItem("fersua_token");
-  return <Navigate to={token ? "/app/pedidos" : "/login"} replace />;
+function Perm({ perm, children }: { perm: Parameters<typeof RequirePermission>[0]["perm"]; children: React.ReactNode }) {
+  return <RequirePermission perm={perm}>{children}</RequirePermission>;
 }
 
 export function AppRoutes() {
@@ -39,55 +40,111 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="pedidos" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="pedidos" element={<OrdersPage />} />
-        <Route path="productos" element={<ProductosPedidosPage />} />
+        <Route index element={<AppIndexRedirect />} />
+        <Route
+          path="dashboard"
+          element={
+            <Perm perm="moduleDashboard">
+              <DashboardPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="pedidos"
+          element={
+            <Perm perm="modulePedidos">
+              <OrdersPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="productos"
+          element={
+            <Perm perm="modulePedidos">
+              <ProductosPedidosPage />
+            </Perm>
+          }
+        />
         <Route
           path="logistica"
           element={
-            <RequireRoles roles={["ADMIN", "OPERADOR"]}>
+            <Perm perm="moduleImportaciones">
               <LogisticsPage />
-            </RequireRoles>
+            </Perm>
           }
         />
-        <Route path="reportes" element={<ReportsPage />} />
+        <Route
+          path="reportes"
+          element={
+            <Perm perm="moduleReportes">
+              <ReportsPage />
+            </Perm>
+          }
+        />
         <Route
           path="importar"
           element={
-            <RequireRoles roles={["ADMIN", "OPERADOR"]}>
+            <Perm perm="moduleImportaciones">
               <ImportPage />
-            </RequireRoles>
+            </Perm>
           }
         />
         <Route
           path="mapeo"
           element={
-            <RequireRoles roles={["ADMIN", "OPERADOR"]}>
+            <Perm perm="moduleMapeo">
               <MapeoPage />
-            </RequireRoles>
+            </Perm>
           }
         />
         <Route
           path="cpa"
           element={
-            <RequireRoles roles={["ADMIN", "OPERADOR"]}>
+            <Perm perm="moduleCpa">
               <CpaPage />
-            </RequireRoles>
+            </Perm>
           }
         />
         <Route
           path="cpa-experimental"
           element={
-            <RequireRoles roles={["ADMIN", "OPERADOR", "LECTOR"]}>
+            <Perm perm="moduleCpa">
               <CpaExperimentalPage />
-            </RequireRoles>
+            </Perm>
           }
         />
-        <Route path="campanas-meta" element={<CampaignsPage />} />
-        <Route path="cuentas-publicitarias" element={<AdvertisingAccountsPage />} />
-        <Route path="gasto-operacional" element={<OperationalExpensesPage />} />
-        <Route path="configuracion" element={<SettingsPage />} />
+        <Route
+          path="campanas-meta"
+          element={
+            <Perm perm="moduleCampanasMeta">
+              <CampaignsPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="cuentas-publicitarias"
+          element={
+            <Perm perm="moduleCuentasPublicitarias">
+              <AdvertisingAccountsPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="gasto-operacional"
+          element={
+            <Perm perm="moduleGastoOperacional">
+              <OperationalExpensesPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="configuracion"
+          element={
+            <Perm perm="moduleConfiguracion">
+              <SettingsPage />
+            </Perm>
+          }
+        />
         <Route
           path="empresas"
           element={

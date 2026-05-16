@@ -4,6 +4,7 @@ import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
 import type { ImportEndpoint, ImportResult } from "./api";
 import { importFile, wipeCpa, wipeImportedTables } from "./api";
+import { usePermission } from "./hooks/usePermission";
 
 const { Dragger } = Upload;
 const { Title, Text, Paragraph } = Typography;
@@ -15,6 +16,7 @@ const STEPS: { key: ImportEndpoint; title: string; description: string }[] = [
 ];
 
 export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
+  const canImportDropi = usePermission("actionImportarDropi");
   const [results, setResults] = useState<Record<ImportEndpoint, ImportResult | null>>({
     cartera: null,
     productos: null,
@@ -133,6 +135,13 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
         <Text strong>cartera → productos → pedidos</Text>. Carga antes el mapeo de estados si no quieres ver todo en
         «SIN MAPEAR».
       </Paragraph>
+      {!canImportDropi ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="No tienes permiso para importar archivos Dropi. Un administrador puede activarlo en Rol y permisos → Importar → Ver acciones."
+        />
+      ) : null}
       <Row gutter={[16, 16]}>
         {STEPS.map((s) => (
           <Col xs={24} md={8} key={s.key}>
@@ -144,8 +153,14 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
                 accept=".xlsx,.xls"
                 multiple={false}
                 showUploadList={false}
-                disabled={loading[s.key]}
-                beforeUpload={(file) => handleUpload(s.key, file)}
+                disabled={loading[s.key] || !canImportDropi}
+                beforeUpload={(file) => {
+                  if (!canImportDropi) {
+                    message.warning("Sin permiso para importar archivos Dropi.");
+                    return Upload.LIST_IGNORE;
+                  }
+                  return handleUpload(s.key, file);
+                }}
               >
                 <p className="ant-upload-drag-icon">
                   <InboxOutlined />

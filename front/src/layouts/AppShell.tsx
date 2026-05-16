@@ -22,7 +22,7 @@ import {
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
 import { useAuth } from "../contexts/AuthContext";
-import { usePermission } from "../hooks/usePermission";
+import { useFirstAllowedAppPath, usePermission } from "../hooks/usePermission";
 
 const { Header, Sider, Content } = Layout;
 
@@ -67,19 +67,27 @@ export function AppShell() {
 
   const selectedKey = pathToKey(location.pathname);
 
+  const homePath = useFirstAllowedAppPath();
   const canAdmin = user?.role === "ADMIN";
-  const canImport = user?.role === "ADMIN" || user?.role === "OPERADOR";
-
+  const canDashboard = usePermission("moduleDashboard");
+  const canPedidos = usePermission("modulePedidos");
+  const canReportes = usePermission("moduleReportes");
+  const canImportaciones = usePermission("moduleImportaciones");
+  const canMapeo = usePermission("moduleMapeo");
+  const canCpa = usePermission("moduleCpa");
   const canCampanas = usePermission("moduleCampanasMeta");
   const canCuentas = usePermission("moduleCuentasPublicitarias");
   const canGastoOp = usePermission("moduleGastoOperacional");
   const canConfig = usePermission("moduleConfiguracion");
-  const canPedidos = usePermission("modulePedidos");
 
   const menuItems: MenuProps["items"] = useMemo(
     () => [
-      { key: "/app/dashboard", icon: <DashboardOutlined />, label: <Link to="/app/dashboard">Dashboard</Link> },
-      { key: "/app/pedidos", icon: <ShoppingOutlined />, label: <Link to="/app/pedidos">Pedidos</Link> },
+      ...(canDashboard
+        ? [{ key: "/app/dashboard", icon: <DashboardOutlined />, label: <Link to="/app/dashboard">Dashboard</Link> }]
+        : []),
+      ...(canPedidos
+        ? [{ key: "/app/pedidos", icon: <ShoppingOutlined />, label: <Link to="/app/pedidos">Pedidos</Link> }]
+        : []),
       ...(canPedidos
         ? [
             {
@@ -89,8 +97,10 @@ export function AppShell() {
             },
           ]
         : []),
-      { key: "/app/reportes", icon: <LineChartOutlined />, label: <Link to="/app/reportes">Reportes</Link> },
-      ...(canImport
+      ...(canReportes
+        ? [{ key: "/app/reportes", icon: <LineChartOutlined />, label: <Link to="/app/reportes">Reportes</Link> }]
+        : []),
+      ...(canImportaciones
         ? [
             {
               key: "/app/logistica",
@@ -102,40 +112,46 @@ export function AppShell() {
               icon: <CloudUploadOutlined />,
               label: <Link to="/app/importar">Importar</Link>,
             },
-            { key: "/app/mapeo", icon: <SwapOutlined />, label: <Link to="/app/mapeo">Mapeo estados</Link> },
+          ]
+        : []),
+      ...(canMapeo
+        ? [{ key: "/app/mapeo", icon: <SwapOutlined />, label: <Link to="/app/mapeo">Mapeo estados</Link> }]
+        : []),
+      ...(canCpa
+        ? [
             { key: "/app/cpa", icon: <FileTextOutlined />, label: <Link to="/app/cpa">CPA</Link> },
             {
               key: "/app/cpa-experimental",
               icon: <ExperimentOutlined />,
               label: <Link to="/app/cpa-experimental">CPA experimental</Link>,
             },
-            ...(canCampanas
-              ? [
-                  {
-                    key: "/app/campanas-meta",
-                    icon: <FundProjectionScreenOutlined />,
-                    label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
-                  },
-                ]
-              : []),
-            ...(canCuentas
-              ? [
-                  {
-                    key: "/app/cuentas-publicitarias",
-                    icon: <BankOutlined />,
-                    label: <Link to="/app/cuentas-publicitarias">Cuentas publicitarias</Link>,
-                  },
-                ]
-              : []),
-            ...(canGastoOp
-              ? [
-                  {
-                    key: "/app/gasto-operacional",
-                    icon: <DollarCircleOutlined />,
-                    label: <Link to="/app/gasto-operacional">Gasto operacional</Link>,
-                  },
-                ]
-              : []),
+          ]
+        : []),
+      ...(canCampanas
+        ? [
+            {
+              key: "/app/campanas-meta",
+              icon: <FundProjectionScreenOutlined />,
+              label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
+            },
+          ]
+        : []),
+      ...(canCuentas
+        ? [
+            {
+              key: "/app/cuentas-publicitarias",
+              icon: <BankOutlined />,
+              label: <Link to="/app/cuentas-publicitarias">Cuentas publicitarias</Link>,
+            },
+          ]
+        : []),
+      ...(canGastoOp
+        ? [
+            {
+              key: "/app/gasto-operacional",
+              icon: <DollarCircleOutlined />,
+              label: <Link to="/app/gasto-operacional">Gasto operacional</Link>,
+            },
           ]
         : []),
       ...(canAdmin
@@ -174,7 +190,19 @@ export function AppShell() {
           ]
         : []),
     ],
-    [canAdmin, canImport, canCampanas, canCuentas, canGastoOp, canConfig, canPedidos],
+    [
+      canAdmin,
+      canDashboard,
+      canPedidos,
+      canReportes,
+      canImportaciones,
+      canMapeo,
+      canCpa,
+      canCampanas,
+      canCuentas,
+      canGastoOp,
+      canConfig,
+    ],
   );
 
   return (
@@ -197,7 +225,7 @@ export function AppShell() {
             borderBottom: `1px solid ${token.colorBorder}`,
           }}
         >
-          <Link to="/app/dashboard" style={{ display: "flex", justifyContent: "center", width: "100%", lineHeight: 0 }}>
+          <Link to={homePath} style={{ display: "flex", justifyContent: "center", width: "100%", lineHeight: 0 }}>
             <img
               src={BRANDING_LOGO_SIDER_SRC}
               alt="Fersua Analytics (FSA)"

@@ -19,6 +19,14 @@ export const OPERATOR_PERMISSION_KEYS = [
   "actionCuentasPublicitariasCrud",
   "actionGastoOperacionalCrud",
   "actionImportMetaBillingOperacional",
+  "actionPedidosEditar",
+  "actionPedidosExportar",
+  "actionImportarDropi",
+  "actionMapeoEstadosCrud",
+  "actionCpaRegistrosCrud",
+  "actionCpaImportarExcel",
+  "actionConfigDashboardTarjetas",
+  "actionConfigRetirosDropiNotas",
 ] as const;
 
 export type OperatorPermissionKey = (typeof OPERATOR_PERMISSION_KEYS)[number];

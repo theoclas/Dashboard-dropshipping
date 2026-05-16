@@ -41,6 +41,7 @@ const dashboardCardBodyScroll = {
 export function SettingsPage() {
   const { user, refresh } = useAuth();
   const canModule = usePermission("moduleConfiguracion");
+  const canDashboardCards = usePermission("actionConfigDashboardTarjetas");
   const isAdmin = user?.role === "ADMIN";
 
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -156,6 +157,7 @@ export function SettingsPage() {
                 extra={
                   <Button
                     type="primary"
+                    disabled={!canDashboardCards}
                     onClick={async () => {
                       try {
                         await patchDashboardConfig(cards);
@@ -186,6 +188,7 @@ export function SettingsPage() {
                           <Checkbox
                             key={key}
                             checked={cards[key]}
+                            disabled={!canDashboardCards}
                             onChange={(e) => setCards((prev) => ({ ...prev, [key]: e.target.checked }))}
                           >
                             {DASHBOARD_CARD_LABELS[key].label}

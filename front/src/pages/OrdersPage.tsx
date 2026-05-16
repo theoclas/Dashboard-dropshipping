@@ -33,6 +33,7 @@ import {
   updateOrder,
 } from "../api";
 import { useAuth } from "../contexts/AuthContext";
+import { usePermission } from "../hooks/usePermission";
 import { dayjsFromYmdFilterString, fmtCalendarDateDdMmYyyy } from "../utils/calendarDateLocal";
 
 const { Title, Text } = Typography;
@@ -157,6 +158,9 @@ const initialColumnFilters: Record<PedidoColumnFilterKey, string> = {
 
 export function OrdersPage() {
   const { user } = useAuth();
+  const canEditPedidos = usePermission("actionPedidosEditar");
+  const canExportPedidos = usePermission("actionPedidosExportar");
+  const canRemapear = usePermission("actionMapeoEstadosCrud");
   const activeCompanyId = localStorage.getItem("fersua_company_id");
   const [form] = Form.useForm();
   const [data, setData] = useState<Pedido[]>([]);
@@ -609,7 +613,7 @@ export function OrdersPage() {
       width: 100,
       fixed: "right",
       render: (_, record) => {
-        if (user?.role === "LECTOR") return null;
+        if (!canEditPedidos) return null;
         if (editingId === record.id) {
           return (
             <Space size="small">
@@ -681,7 +685,7 @@ export function OrdersPage() {
               setPage(1);
             }}
           />
-          {user?.role !== "LECTOR" && (
+          {canRemapear ? (
             <Button
               type="primary"
               onClick={async () => {
@@ -702,8 +706,13 @@ export function OrdersPage() {
             >
               Sincronizar Estados
             </Button>
-          )}
-          <Button icon={<DownloadOutlined />} onClick={() => void handleExportExcel()} loading={exporting}>
+          ) : null}
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() => void handleExportExcel()}
+            loading={exporting}
+            disabled={!canExportPedidos}
+          >
             Exportar Excel
           </Button>
           <Button icon={<ReloadOutlined />} onClick={() => void fetchData()}>

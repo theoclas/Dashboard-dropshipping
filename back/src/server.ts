@@ -11,7 +11,13 @@ import * as XLSX from "xlsx";
 import { z } from "zod";
 import { Prisma, Role, type Order } from "@prisma/client";
 import { prisma } from "./prisma";
-import { authRequired, companyRequired, requireRoles, requirePermission } from "./middleware";
+import {
+  authRequired,
+  companyRequired,
+  configureAuthMiddleware,
+  requireRoles,
+  requirePermission,
+} from "./middleware";
 import type { JwtPayload } from "./types";
 import { mergeOperatorPermissions } from "./operatorPermissions";
 import { registerBusinessModules } from "./registerBusinessModules";
@@ -42,6 +48,7 @@ import { listCpaExperimental, rebuildCpaExperimentalRange } from "./cpaExperimen
 import * as catalogProductService from "./catalogProductService";
 
 const app = express();
+configureAuthMiddleware(prisma);
 const upload = multer({ storage: multer.memoryStorage() });
 const JWT_SECRET = process.env.JWT_SECRET ?? "change_me";
 const PORT = Number(process.env.PORT ?? 4000);
@@ -226,7 +233,11 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
 
 const dashboardConfigPatchSchema = z.record(z.string(), z.boolean());
 
-app.patch("/api/auth/me/dashboard-config", authRequired, async (req, res) => {
+app.patch(
+  "/api/auth/me/dashboard-config",
+  authRequired,
+  requirePermission("actionConfigDashboardTarjetas"),
+  async (req, res) => {
   const userPayload = (req as express.Request & { user?: JwtPayload }).user!;
   const parsed = dashboardConfigPatchSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -252,7 +263,8 @@ app.patch("/api/auth/me/dashboard-config", authRequired, async (req, res) => {
     data: { dashboardConfig: prev as Prisma.InputJsonValue },
   });
   return res.json({ dashboardConfig: prev });
-});
+  },
+);
 
 const switchCompanySchema = z.object({ companyId: z.string().min(1) });
 
@@ -671,7 +683,7 @@ function serializeOrder(o: Order) {
   };
 }
 
-app.get("/api/orders", authRequired, companyRequired, async (req, res) => {
+app.get("/api/orders", authRequired, companyRequired, requirePermission("modulePedidos"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const parsed = orderListQuerySchema.safeParse(flattenParams(req.query as Record<string, unknown>));
@@ -713,7 +725,7 @@ app.get("/api/orders", authRequired, companyRequired, async (req, res) => {
   }
 });
 
-app.patch("/api/orders/:id", authRequired, companyRequired, async (req, res) => {
+app.patch("/api/orders/:id", authRequired, companyRequired, requirePermission("actionPedidosEditar"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   if (user.role === Role.LECTOR) {
     return res.status(403).json({ message: "No autorizado." });
@@ -760,7 +772,7 @@ app.patch("/api/orders/:id", authRequired, companyRequired, async (req, res) => 
   return res.json(serializeOrder(updated));
 });
 
-app.get("/api/product-details", authRequired, companyRequired, async (req, res) => {
+app.get("/api/product-details", authRequired, companyRequired, requirePermission("modulePedidos"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const pedidoIdDropi = String(req.query.pedidoIdDropi ?? "").trim();
   if (!pedidoIdDropi) {
@@ -783,7 +795,12 @@ app.get("/api/product-details", authRequired, companyRequired, async (req, res) 
   );
 });
 
-app.get("/api/order-product-lines", authRequired, companyRequired, async (req, res) => {
+app.get(
+  "/api/order-product-lines",
+  authRequired,
+  companyRequired,
+  requirePermission("modulePedidos"),
+  async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
@@ -1033,7 +1050,7 @@ app.get("/api/order-product-lines", authRequired, companyRequired, async (req, r
   }
 });
 
-app.post("/api/orders", authRequired, companyRequired, async (req, res) => {
+app.post("/api/orders", authRequired, companyRequired, requirePermission("actionPedidosEditar"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const schema = z.object({
     externalOrderId: z.string().min(1),
@@ -1070,12 +1087,7 @@ app.post("/api/orders", authRequired, companyRequired, async (req, res) => {
   return res.status(201).json(order);
 });
 
-const importExcelMiddleware: RequestHandler[] = [
-  authRequired,
-  companyRequired,
-  requireRoles([Role.ADMIN, Role.OPERADOR]),
-  upload.single("file"),
-];
+const importUploadMiddleware: RequestHandler[] = [authRequired, companyRequired, upload.single("file")];
 
 async function importPedidosHandler(req: express.Request, res: express.Response) {
   if (!req.file) {
@@ -1111,10 +1123,30 @@ async function importCarteraHandler(req: express.Request, res: express.Response)
   }
 }
 
-app.post("/api/import/pedidos", ...importExcelMiddleware, importPedidosHandler);
-app.post("/api/import/pedidos/", ...importExcelMiddleware, importPedidosHandler);
-app.post("/api/import/cartera", ...importExcelMiddleware, importCarteraHandler);
-app.post("/api/import/cartera/", ...importExcelMiddleware, importCarteraHandler);
+app.post(
+  "/api/import/pedidos",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importPedidosHandler,
+);
+app.post(
+  "/api/import/pedidos/",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importPedidosHandler,
+);
+app.post(
+  "/api/import/cartera",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importCarteraHandler,
+);
+app.post(
+  "/api/import/cartera/",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importCarteraHandler,
+);
 
 app.get("/api/dropi-retiros", authRequired, companyRequired, requirePermission("moduleConfiguracion"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
@@ -1126,8 +1158,7 @@ app.patch(
   "/api/dropi-retiros/:id",
   authRequired,
   companyRequired,
-  requireRoles([Role.ADMIN, Role.OPERADOR]),
-  requirePermission("moduleConfiguracion"),
+  requirePermission("actionConfigRetirosDropiNotas"),
   async (req, res) => {
     const user = (req as express.Request & { user?: JwtPayload }).user!;
     const id = String(req.params.id);
@@ -1167,8 +1198,18 @@ async function importProductosHandler(req: express.Request, res: express.Respons
   }
 }
 
-app.post("/api/import/productos", ...importExcelMiddleware, importProductosHandler);
-app.post("/api/import/productos/", ...importExcelMiddleware, importProductosHandler);
+app.post(
+  "/api/import/productos",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importProductosHandler,
+);
+app.post(
+  "/api/import/productos/",
+  ...importUploadMiddleware,
+  requirePermission("actionImportarDropi"),
+  importProductosHandler,
+);
 
 async function importMapeoHandler(req: express.Request, res: express.Response) {
   if (!req.file) {
@@ -1198,12 +1239,22 @@ async function importCpaHandler(req: express.Request, res: express.Response) {
   }
 }
 
-app.post("/api/import/mapeo-estados", ...importExcelMiddleware, importMapeoHandler);
-app.post("/api/import/mapeo-estados/", ...importExcelMiddleware, importMapeoHandler);
-app.post("/api/import/cpa", ...importExcelMiddleware, importCpaHandler);
-app.post("/api/import/cpa/", ...importExcelMiddleware, importCpaHandler);
+app.post(
+  "/api/import/mapeo-estados",
+  ...importUploadMiddleware,
+  requirePermission("actionMapeoEstadosCrud"),
+  importMapeoHandler,
+);
+app.post(
+  "/api/import/mapeo-estados/",
+  ...importUploadMiddleware,
+  requirePermission("actionMapeoEstadosCrud"),
+  importMapeoHandler,
+);
+app.post("/api/import/cpa", ...importUploadMiddleware, requirePermission("actionCpaImportarExcel"), importCpaHandler);
+app.post("/api/import/cpa/", ...importUploadMiddleware, requirePermission("actionCpaImportarExcel"), importCpaHandler);
 
-app.get("/api/mapeo-estados", authRequired, companyRequired, async (req, res) => {
+app.get("/api/mapeo-estados", authRequired, companyRequired, requirePermission("moduleMapeo"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rows = await prisma.mapeoEstado.findMany({
     where: { companyId: user.companyId },
@@ -1212,7 +1263,7 @@ app.get("/api/mapeo-estados", authRequired, companyRequired, async (req, res) =>
   return res.json(rows);
 });
 
-app.post("/api/mapeo-estados", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.post("/api/mapeo-estados", authRequired, companyRequired, requirePermission("actionMapeoEstadosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const schema = z.object({
     transportadora: z.string().optional(),
@@ -1244,7 +1295,7 @@ app.post("/api/mapeo-estados", authRequired, companyRequired, requireRoles([Role
   return res.status(201).json(row);
 });
 
-app.patch("/api/mapeo-estados/:id", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.patch("/api/mapeo-estados/:id", authRequired, companyRequired, requirePermission("actionMapeoEstadosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const id = String(req.params.id);
   const schema = z.object({ estadoUnificado: z.string().min(1).optional(), transportadora: z.string().optional() });
@@ -1259,7 +1310,7 @@ app.patch("/api/mapeo-estados/:id", authRequired, companyRequired, requireRoles(
   return res.json(row);
 });
 
-app.delete("/api/mapeo-estados/:id", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.delete("/api/mapeo-estados/:id", authRequired, companyRequired, requirePermission("actionMapeoEstadosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const id = String(req.params.id);
   const existing = await prisma.mapeoEstado.findFirst({ where: { id, companyId: user.companyId } });
@@ -1268,7 +1319,12 @@ app.delete("/api/mapeo-estados/:id", authRequired, companyRequired, requireRoles
   return res.status(204).send();
 });
 
-app.post("/api/import/remapear-estados", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.post(
+  "/api/import/remapear-estados",
+  authRequired,
+  companyRequired,
+  requirePermission("actionMapeoEstadosCrud"),
+  async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const result = await remapearPedidos(prisma, user.companyId);
   return res.json(result);
@@ -1304,7 +1360,7 @@ app.post("/api/import/wipe-cpa", authRequired, companyRequired, requireRoles([Ro
   }
 });
 
-app.get("/api/cpa-records", authRequired, companyRequired, async (req, res) => {
+app.get("/api/cpa-records", authRequired, companyRequired, requirePermission("moduleCpa"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rows = await prisma.cpaRecord.findMany({
     where: { companyId: user.companyId },
@@ -1314,7 +1370,7 @@ app.get("/api/cpa-records", authRequired, companyRequired, async (req, res) => {
   return res.json(rows);
 });
 
-app.post("/api/cpa-records", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.post("/api/cpa-records", authRequired, companyRequired, requirePermission("actionCpaRegistrosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const row = await createCpaRecord(prisma, user.companyId, req.body);
@@ -1325,7 +1381,7 @@ app.post("/api/cpa-records", authRequired, companyRequired, requireRoles([Role.A
   }
 });
 
-app.patch("/api/cpa-records/:id", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.patch("/api/cpa-records/:id", authRequired, companyRequired, requirePermission("actionCpaRegistrosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const id = String(req.params.id);
   try {
@@ -1338,7 +1394,7 @@ app.patch("/api/cpa-records/:id", authRequired, companyRequired, requireRoles([R
   }
 });
 
-app.delete("/api/cpa-records/:id", authRequired, companyRequired, requireRoles([Role.ADMIN, Role.OPERADOR]), async (req, res) => {
+app.delete("/api/cpa-records/:id", authRequired, companyRequired, requirePermission("actionCpaRegistrosCrud"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const id = String(req.params.id);
   try {
@@ -1378,8 +1434,7 @@ app.post(
   "/api/cpa-experimental/rebuild",
   authRequired,
   companyRequired,
-  requirePermission("moduleCpa"),
-  requireRoles([Role.ADMIN, Role.OPERADOR]),
+  requirePermission("actionCpaRegistrosCrud"),
   async (req, res) => {
     const user = (req as express.Request & { user?: JwtPayload }).user!;
     const schema = z.object({
@@ -1406,7 +1461,7 @@ app.post(
   },
 );
 
-app.post("/api/orders/export", authRequired, companyRequired, async (req, res) => {
+app.post("/api/orders/export", authRequired, companyRequired, requirePermission("actionPedidosExportar"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const parsed = orderExportBodySchema.safeParse(flattenParams((req.body ?? {}) as Record<string, unknown>));
@@ -1465,7 +1520,7 @@ app.post("/api/orders/export", authRequired, companyRequired, async (req, res) =
   }
 });
 
-app.get("/api/reports/dashboard", authRequired, companyRequired, async (req, res) => {
+app.get("/api/reports/dashboard", authRequired, companyRequired, requirePermission("moduleDashboard"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const qv = (k: string): string | undefined => {
     const v = req.query[k];
@@ -1485,7 +1540,7 @@ app.get("/api/reports/dashboard", authRequired, companyRequired, async (req, res
   }
 });
 
-app.get("/api/reports/rentability", authRequired, companyRequired, async (req, res) => {
+app.get("/api/reports/rentability", authRequired, companyRequired, requirePermission("moduleReportes"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rows = await prisma.order.groupBy({
     by: ["estadoUnificado"],
@@ -1495,7 +1550,12 @@ app.get("/api/reports/rentability", authRequired, companyRequired, async (req, r
   return res.json(rows);
 });
 
-app.get("/api/reportes-logistica/efectividad-transportadoras", authRequired, companyRequired, async (req, res) => {
+app.get(
+  "/api/reportes-logistica/efectividad-transportadoras",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleReportes"),
+  async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const rows = await queryEfectividadTransportadoras(prisma, user.companyId, {
@@ -1511,7 +1571,12 @@ app.get("/api/reportes-logistica/efectividad-transportadoras", authRequired, com
   }
 });
 
-app.get("/api/reportes-logistica/ciudades-comparativa", authRequired, companyRequired, async (req, res) => {
+app.get(
+  "/api/reportes-logistica/ciudades-comparativa",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleReportes"),
+  async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const list = await queryCiudadesComparativa(prisma, user.companyId, {
@@ -1526,7 +1591,12 @@ app.get("/api/reportes-logistica/ciudades-comparativa", authRequired, companyReq
   }
 });
 
-app.get("/api/reportes-logistica/comparativa-geografica", authRequired, companyRequired, async (req, res) => {
+app.get(
+  "/api/reportes-logistica/comparativa-geografica",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleReportes"),
+  async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const dimension = req.query.dimension === "ciudad" ? "ciudad" : "departamento";
   const metrica = req.query.metrica === "devolucion" ? "devolucion" : "efectividad";
