@@ -45,6 +45,8 @@ model Company {
   catalogProductDropiLinks   CatalogProductDropiLink[]
   advertisingCampaignMetrics AdvertisingCampaignMetric[]
   advertisingAccounts        AdvertisingAccount[]
+  cpaExperimentalRecords     CpaExperimentalRecord[]
+  dropiWithdrawals           DropiWithdrawal[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -60,6 +62,7 @@ model AdvertisingAccount {
   company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   operationalExpenses  OperationalExpense[]
   advertisingCampaigns AdvertisingCampaign[]
+  cpaExperimentalRecords CpaExperimentalRecord[]
 
   @@unique([companyId, metaAccountId])
   @@index([companyId])
@@ -181,6 +184,27 @@ model WalletMovement {
   @@map("cartera_movimientos")
 }
 
+/// Retiros Dropi: movimientos con descripción de retiro de saldo en cartera (ver import cartera). Nota adicional editable en UI.
+model DropiWithdrawal {
+  id               String    @id @default(cuid())
+  companyId        String    @map("company_id")
+  /// Mismo ID numérico del movimiento en Dropi / columna «ID» del Excel.
+  dropiMovementId  BigInt    @map("dropi_movement_id")
+  fecha            DateTime? @map("fecha")
+  monto            Decimal?  @map("monto") @db.Decimal(14, 2)
+  descripcion      String?   @map("descripcion") @db.Text
+  conceptoRetiro   String?   @map("concepto_retiro") @db.Text
+  notaAdicional    String?   @map("nota_adicional") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, dropiMovementId])
+  @@index([companyId, fecha])
+  @@map("retiros_dropi")
+}
+
 /// Mapeo de estados (`mapeo_estados`) + `companyId`.
 model MapeoEstado {
   id               String   @id @default(cuid())
@@ -224,6 +248,7 @@ model CatalogProduct {
   company    Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   campaigns  AdvertisingCampaign[]
   cpaRecords CpaRecord[]
+  cpaExperimentalRecords CpaExperimentalRecord[]
   dropiLinks CatalogProductDropiLink[]
 
   @@index([companyId, name])
@@ -327,6 +352,39 @@ model CpaRecord {
   @@index([companyId, fecha])
   @@index([companyId, productId])
   @@map("cpas")
+}
+
+/// CPA derivado de pedidos + gastos por cuenta + métricas Meta (sin Excel).
+model CpaExperimentalRecord {
+  id                     String   @id @default(cuid())
+  companyId              String   @map("company_id")
+  catalogProductId       String   @map("catalog_product_id")
+  advertisingAccountId   String   @map("advertising_account_id")
+  fecha                  DateTime @db.Date
+  semana                 String?  @db.VarChar(50)
+  producto               String?  @db.VarChar(255)
+  cuentaPublicitaria     String?  @map("cuenta_publicitaria") @db.VarChar(255)
+  gastoPublicidad        Decimal? @map("gasto_publicidad") @db.Decimal(12, 2)
+  conversaciones         Int?
+  totalFacturado         Decimal? @map("total_facturado") @db.Decimal(12, 2)
+  gananciaPromedio       Decimal? @map("ganancia_promedio") @db.Decimal(12, 2)
+  ventas                 Int?
+  ticketPromedioProducto Decimal? @map("ticket_promedio_producto") @db.Decimal(12, 2)
+  cpa                    Decimal? @db.Decimal(12, 2)
+  conversionRate         Decimal? @map("conversion_rate") @db.Decimal(12, 4)
+  costoPublicitario      Decimal? @map("costo_publicitario") @db.Decimal(12, 2)
+  rentabilidad           Decimal? @db.Decimal(12, 4)
+  utilidadAproximada     Decimal? @map("utilidad_aproximada") @db.Decimal(12, 2)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  catalogProduct     CatalogProduct     @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount @relation(fields: [advertisingAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, fecha, catalogProductId, advertisingAccountId], map: "cpa_exp_day_unique")
+  @@index([companyId, fecha])
+  @@map("cpa_experimental")
 }
 
 enum OperationalExpenseCategory {

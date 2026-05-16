@@ -1,4 +1,15 @@
-/** Campos derivados CPA calculados a partir del gasto y métricas de fila (plantilla CPA_JD). */
+/**
+ * Campos derivados CPA (plantilla CPA_JD / Excel):
+ * - `conversion_rate`: como en Excel `SI.ERROR([@VENTAS]/[@CONVERSACIONES];"")` — ratio `ventas/conversaciones`
+ *   (0–1); en la UI se muestra como porcentaje (×100).
+ * - `costo_publicitario`: como en Excel `SI([@CPA]="";"";[@CPA]*100%/[@[TICKET PROMEDIO DE PRODUCTO]])`,
+ *   es decir `(CPA / ticket_promedio) * 100` usando los valores ya calculados de CPA y ticket.
+ * - `rentabilidad`: como en Excel
+ *   `SI.ERROR(SI([@VENTAS]="";"";SI([@VENTAS]=0;100%;[@CPA]/[@[GANANCIA PROMEDIO]]));"")`:
+ *   vacío si no hay ventas; **100** (puntos %) si ventas = 0; si no `(CPA / ganancia_promedio) * 100` en puntos %.
+ * - `utilidad_aproximada`: como en Excel
+ *   `SI([@VENTAS]=0;-[@GASTO];(([@GANANCIA]*[@VENTAS])-[@GASTO])*0.75)` con `ganancia_promedio` y `gasto_publicidad`.
+ */
 
 export type CpaRowLike = {
   semana?: string;
@@ -41,8 +52,6 @@ export function applyCpaDerivedFields(r: CpaRowLike): void {
       ? Number(r.ganancia_promedio)
       : null;
 
-  r.costo_publicitario = gasto != null ? roundDec(gasto, 2) : null;
-
   if (ventas != null && ventas > 0) {
     r.ticket_promedio_producto = total != null ? roundDec(total / ventas, 2) : null;
     r.cpa = gasto != null ? roundDec(gasto / ventas, 2) : null;
@@ -51,25 +60,60 @@ export function applyCpaDerivedFields(r: CpaRowLike): void {
     r.cpa = null;
   }
 
+  // Excel: SI.ERROR([@VENTAS]/[@CONVERSACIONES];"")
   if (conv != null && conv > 0 && ventas != null && !Number.isNaN(ventas)) {
     r.conversion_rate = roundDec(ventas / conv, 4);
   } else {
     r.conversion_rate = null;
   }
 
-  if (gan != null && ventas != null && gasto != null) {
-    r.utilidad_aproximada = roundDec(gan * ventas - gasto, 2);
+  // Excel: SI(CPA="";""; CPA*100%/TICKET_PROMEDIO)
+  const cpaVal = r.cpa != null ? Number(r.cpa) : null;
+  const ticketVal = r.ticket_promedio_producto != null ? Number(r.ticket_promedio_producto) : null;
+  if (
+    cpaVal != null &&
+    ticketVal != null &&
+    !Number.isNaN(cpaVal) &&
+    !Number.isNaN(ticketVal) &&
+    ticketVal > 0
+  ) {
+    r.costo_publicitario = roundDec((cpaVal / ticketVal) * 100, 2);
+  } else {
+    r.costo_publicitario = null;
+  }
+
+  // Excel: SI([@VENTAS]=0;-GASTO;((GAN*VENTAS)-GASTO)*0.75)
+  if (ventas == null || Number.isNaN(ventas)) {
+    r.utilidad_aproximada = null;
+  } else if (ventas === 0) {
+    if (gasto != null) {
+      r.utilidad_aproximada = roundDec(-gasto, 2);
+    } else {
+      r.utilidad_aproximada = null;
+    }
+  } else if (gan != null && gasto != null) {
+    r.utilidad_aproximada = roundDec((gan * ventas - gasto) * 0.75, 2);
   } else {
     r.utilidad_aproximada = null;
   }
 
-  const util =
-    r.utilidad_aproximada != null && !Number.isNaN(Number(r.utilidad_aproximada))
-      ? Number(r.utilidad_aproximada)
-      : null;
-  if (gasto != null && gasto > 0 && util != null) {
-    r.rentabilidad = roundDec(util / gasto, 4);
-  } else {
+  // Excel: SI.ERROR(SI([@VENTAS]="";"";SI([@VENTAS]=0;100%;[@CPA]/[@[GANANCIA PROMEDIO]]));"")
+  if (ventas == null || Number.isNaN(ventas)) {
     r.rentabilidad = null;
+  } else if (ventas === 0) {
+    r.rentabilidad = 100;
+  } else {
+    const cpaForRent = r.cpa != null ? Number(r.cpa) : null;
+    if (
+      cpaForRent != null &&
+      gan != null &&
+      gan !== 0 &&
+      !Number.isNaN(cpaForRent) &&
+      !Number.isNaN(gan)
+    ) {
+      r.rentabilidad = roundDec((cpaForRent / gan) * 100, 2);
+    } else {
+      r.rentabilidad = null;
+    }
   }
 }

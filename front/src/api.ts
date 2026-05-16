@@ -1,16 +1,23 @@
 import axios from "axios";
 import type {
   AdvertisingAccount,
+  AdvertisingAccountOperationalExpensesResponse,
   AdvertisingAccountWithStats,
   AdvertisingCampaignMetricRow,
   AdvertisingCampaignRow,
+  AssignableCompanyUser,
   CatalogProduct,
   Company,
+  CompanyMemberRow,
   CpaRecordRow,
+  CpaExperimentalRecordRow,
+  CpaExperimentalRebuildResult,
+  DropiWithdrawalRow,
   ImportAdvertisingCampaignMetricsResult,
   ImportAdvertisingPreviewResponse,
   ImportMetaBillingResult,
   OperationalExpenseRow,
+  Role,
 } from "./types";
 
 /** Petición cancelada (AbortController); no mostrar error al usuario. */
@@ -38,7 +45,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export type ImportResult = { imported: number; errors: string[] };
+export type ImportResult = { imported: number; errors: string[]; retirosUpserted?: number };
 
 export type ImportEndpoint = "cartera" | "productos" | "pedidos";
 
@@ -121,6 +128,26 @@ export async function deleteCpaRecord(id: string): Promise<void> {
   await api.delete(`/cpa-records/${id}`);
 }
 
+export async function fetchCpaExperimental(params?: {
+  catalogProductId?: string;
+  advertisingAccountId?: string;
+  desde?: string;
+  hasta?: string;
+}): Promise<CpaExperimentalRecordRow[]> {
+  const { data } = await api.get<CpaExperimentalRecordRow[]>("/cpa-experimental", { params });
+  return data;
+}
+
+export async function rebuildCpaExperimental(body: {
+  catalogProductId: string;
+  advertisingAccountId: string;
+  desde: string;
+  hasta: string;
+}): Promise<CpaExperimentalRebuildResult> {
+  const { data } = await api.post<CpaExperimentalRebuildResult>("/cpa-experimental/rebuild", body);
+  return data;
+}
+
 export async function importCpaFile(file: File, onProgress?: (percent: number) => void): Promise<ImportResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -141,7 +168,12 @@ export async function remapearEstados(): Promise<{ procesados: number; remapeado
 }
 
 export async function wipeImportedTables(password: string): Promise<{
-  deleted: { productos_detalle: number; cartera_movimientos: number; pedidos: number };
+  deleted: {
+    productos_detalle: number;
+    cartera_movimientos: number;
+    pedidos: number;
+    retiros_dropi: number;
+  };
 }> {
   const { data } = await api.post("/import/wipe-imported-tables", { password });
   return data;
@@ -149,6 +181,16 @@ export async function wipeImportedTables(password: string): Promise<{
 
 export async function wipeCpa(password: string): Promise<{ deleted: number }> {
   const { data } = await api.post("/import/wipe-cpa", { password });
+  return data;
+}
+
+export async function fetchDropiWithdrawals(): Promise<DropiWithdrawalRow[]> {
+  const { data } = await api.get<DropiWithdrawalRow[]>("/dropi-retiros");
+  return data;
+}
+
+export async function patchDropiWithdrawalNota(id: string, notaAdicional: string | null): Promise<DropiWithdrawalRow> {
+  const { data } = await api.patch<DropiWithdrawalRow>(`/dropi-retiros/${id}`, { notaAdicional });
   return data;
 }
 
@@ -188,6 +230,117 @@ export async function updateOrder(id: string, payload: Record<string, unknown>):
 export async function fetchProductosDetalle(pedidoIdDropi: string): Promise<unknown[]> {
   const { data } = await api.get<unknown[]>("/product-details", { params: { pedidoIdDropi } });
   return Array.isArray(data) ? data : [];
+}
+
+export type OrderProductLine = {
+  id: number;
+  pedido_id_dropi: string;
+  producto_id: string | null;
+  producto_nombre: string | null;
+  sku: string | null;
+  variacion_id: string | null;
+  variacion: string | null;
+  cantidad: number | null;
+  precio_proveedor: number | null;
+  precio_proveedor_x_cantidad: number | null;
+  variant_key: string;
+  catalog_product_id: string | null;
+  catalog_product_name: string | null;
+  catalog_dropi_link_id: string | null;
+};
+
+/** Fila agregada por `producto_id` (vista agrupada). */
+export type OrderProductGroup = {
+  producto_id: string;
+  producto_nombre: string | null;
+  line_count: number;
+  pedidos_distinct: number;
+  cantidad: number;
+  precio_proveedor_min: number | null;
+  precio_proveedor_max: number | null;
+  precio_proveedor_x_cantidad: number | null;
+  sku_variacion_resumen: string;
+  variant_count: number;
+  linked_variant_count: number;
+  catalog_link_status: "none" | "partial" | "full";
+  catalog_product_name: string | null;
+  catalog_product_id: string | null;
+};
+
+export type OrderProductLinesResponse = {
+  grouped: boolean;
+  items: OrderProductLine[] | OrderProductGroup[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export async function fetchOrderProductLines(params: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  /** Si true, una fila por `producto_id` (excluye líneas sin id de producto). */
+  grouped?: boolean;
+  /** Filtra líneas por id de producto Dropi (vista por línea). */
+  productoId?: string;
+}): Promise<OrderProductLinesResponse> {
+  const { data } = await api.get<OrderProductLinesResponse>("/order-product-lines", {
+    params: {
+      page: params.page,
+      limit: params.limit,
+      q: params.q,
+      grouped: params.grouped ? "1" : undefined,
+      productoId: params.productoId || undefined,
+    },
+  });
+  return data;
+}
+
+export async function upsertCatalogProductDropiLink(
+  catalogProductId: string,
+  body: {
+    productoId?: string | null;
+    sku?: string | null;
+    variacionId?: string | null;
+    variacion?: string | null;
+    productoNombre?: string | null;
+  },
+): Promise<{
+  id: string;
+  variant_key: string;
+  producto_id: string | null;
+  sku: string | null;
+  variacion_id: string | null;
+  producto_nombre: string | null;
+  variacion: string | null;
+}> {
+  const { data } = await api.post(`/catalog-products/${catalogProductId}/dropi-links`, body);
+  return data;
+}
+
+export type CatalogDropiLinkBulkConflict = {
+  sku: string | null;
+  variacion: string | null;
+  variacion_id: string | null;
+  message: string;
+};
+
+export async function upsertCatalogProductDropiLinksBulk(
+  catalogProductId: string,
+  variants: {
+    productoId?: string | null;
+    sku?: string | null;
+    variacionId?: string | null;
+    variacion?: string | null;
+    productoNombre?: string | null;
+  }[],
+): Promise<{ applied: number; skipped_conflict: number; conflicts: CatalogDropiLinkBulkConflict[] }> {
+  const { data } = await api.post(`/catalog-products/${catalogProductId}/dropi-links/bulk`, { variants });
+  return data;
+}
+
+export async function deleteCatalogProductDropiLink(catalogProductId: string, linkId: string): Promise<void> {
+  await api.delete(`/catalog-products/${catalogProductId}/dropi-links/${linkId}`);
 }
 
 // ── Logística (reportes por empresa activa; mismos paths que Petho) ──
@@ -315,6 +468,10 @@ export async function patchAdvertisingMetric(
   return data;
 }
 
+export async function deleteAdvertisingMetric(metricId: string): Promise<void> {
+  await api.delete(`/advertising-campaign-metrics/${metricId}`);
+}
+
 export async function previewAdvertisingCampaignImport(
   productId: string,
   file: File,
@@ -337,6 +494,8 @@ export async function importAdvertisingCampaignMetrics(
     shopifySessionsByCampaignId?: Record<string, number>;
     applyAdvertisingAccount?: boolean;
     advertisingAccountId?: string | null;
+    /** Solo importar estas campañas (normalizadas); usar cuando el archivo trae varias. */
+    allowedCampaignIds?: string[];
   },
 ): Promise<ImportAdvertisingCampaignMetricsResult> {
   const fd = new FormData();
@@ -365,6 +524,17 @@ export async function postMetaCampaignAdvertisingAccount(body: {
 
 export async function fetchAdvertisingAccountsWithStats(): Promise<AdvertisingAccountWithStats[]> {
   const { data } = await api.get<AdvertisingAccountWithStats[]>("/advertising-accounts/with-stats");
+  return data;
+}
+
+export async function fetchAdvertisingAccountOperationalExpenses(
+  accountId: string,
+  params?: { desde?: string; hasta?: string },
+): Promise<AdvertisingAccountOperationalExpensesResponse> {
+  const { data } = await api.get<AdvertisingAccountOperationalExpensesResponse>(
+    `/advertising-accounts/${accountId}/operational-expenses`,
+    { params },
+  );
   return data;
 }
 
@@ -421,10 +591,70 @@ export async function importMetaBillingOperationalCsv(file: File): Promise<Impor
   return data;
 }
 
+export async function fetchCompanies(): Promise<Company[]> {
+  const { data } = await api.get<Company[]>("/companies");
+  return data;
+}
+
+export async function assignUserToCompany(
+  companyId: string,
+  body: { email?: string; username?: string; role: Role },
+): Promise<unknown> {
+  const { data } = await api.post(`/companies/${companyId}/users`, body);
+  return data;
+}
+
+export type CreateCompanyUserPayload = {
+  username: string;
+  email: string;
+  fullName: string;
+  password: string;
+  role: Role;
+};
+
+export async function createCompanyUserAccount(
+  companyId: string,
+  body: CreateCompanyUserPayload,
+): Promise<unknown> {
+  const { data } = await api.post(`/companies/${companyId}/users/create`, body);
+  return data;
+}
+
+export async function fetchCompanyMembers(companyId: string): Promise<CompanyMemberRow[]> {
+  const { data } = await api.get<CompanyMemberRow[]>(`/companies/${companyId}/members`);
+  return data;
+}
+
+export async function fetchAssignableUsersForCompany(companyId: string, q: string): Promise<AssignableCompanyUser[]> {
+  const { data } = await api.get<AssignableCompanyUser[]>(`/companies/${companyId}/assignable-users`, {
+    params: { q },
+  });
+  return data;
+}
+
+export async function patchCompanyMember(
+  companyId: string,
+  membershipId: string,
+  body: { role?: Role; operatorPermissions?: Record<string, boolean> | null },
+): Promise<CompanyMemberRow> {
+  const { data } = await api.patch<CompanyMemberRow>(`/companies/${companyId}/members/${membershipId}`, body);
+  return data;
+}
+
 export async function patchCompanySettings(
   companyId: string,
   body: { operationalExpenseEnabled?: boolean },
 ): Promise<Company> {
   const { data } = await api.patch<Company>(`/companies/${companyId}/settings`, body);
+  return data;
+}
+
+export async function patchDashboardConfig(dashboardConfig: Record<string, boolean>): Promise<{
+  dashboardConfig: Record<string, boolean>;
+}> {
+  const { data } = await api.patch<{ dashboardConfig: Record<string, boolean> }>(
+    "/auth/me/dashboard-config",
+    dashboardConfig,
+  );
   return data;
 }

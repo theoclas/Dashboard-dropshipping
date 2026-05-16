@@ -23,6 +23,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import type { FilterDropdownProps } from "antd/es/table/interface";
 import { isAxiosError } from "axios";
+import { Link } from "react-router-dom";
 import {
   api,
   downloadOrdersExport,
@@ -74,6 +75,22 @@ interface ProductoDetalle {
   precio_proveedor: number | null;
   sku: string | null;
   variacion: string | null;
+}
+
+function pedidoMapeoPrefillPath(p: Pedido): string {
+  const q = new URLSearchParams();
+  const tr = (p.transportadora ?? "").trim();
+  const eo = (p.estatus_original ?? "").trim();
+  const um = (p.ultimo_mov ?? "").trim();
+  if (tr) q.set("transportadora", tr);
+  if (eo) q.set("estatusOriginal", eo);
+  if (um) q.set("ultimoMovimiento", um);
+  const s = q.toString();
+  return s ? `/app/mapeo?${s}` : "/app/mapeo";
+}
+
+function isSinMapearUnificado(v: string | null | undefined): boolean {
+  return (v ?? "").trim().toUpperCase() === "SIN MAPEAR";
 }
 
 const estadoColors: Record<string, string> = {
@@ -572,10 +589,19 @@ export function OrdersPage() {
       title: "Estado Asignado",
       dataIndex: "estado_unificado",
       key: "estado_unificado",
-      width: 150,
+      width: 200,
       sorter: true,
       ...getColumnSearchProps("Estado asignado", "estado_unificado"),
-      render: (v: string | null) => <Tag color={estadoColors[v ?? ""] || "default"}>{v || "-"}</Tag>,
+      render: (v: string | null, record: Pedido) => (
+        <Space size={6} wrap align="center">
+          <Tag color={estadoColors[v ?? ""] || "default"}>{v || "-"}</Tag>
+          {user?.role !== "LECTOR" && isSinMapearUnificado(v) ? (
+            <Tooltip title="Ir a Mapeo de estados con transportadora, estatus Dropi y último movimiento de esta fila. Indica el estado unificado y guarda; luego puedes sincronizar desde Pedidos.">
+              <Link to={pedidoMapeoPrefillPath(record)}>Mapear</Link>
+            </Tooltip>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: "Acciones",
@@ -602,6 +628,19 @@ export function OrdersPage() {
   const sumGanancia = selectedRows.reduce((s, r) => s + Number(r.ganancia_calc ?? 0), 0);
   const sumFlete = selectedRows.reduce((s, r) => s + Number(r.flete ?? 0), 0);
   const sumCartera = selectedRows.reduce((s, r) => s + Number(r.cartera ?? 0), 0);
+
+  /** Índice de la columna «Venta» en `columns`. */
+  const idxColVenta = columns.findIndex(
+    (c) => typeof c === "object" && c !== null && "dataIndex" in c && c.dataIndex === "venta",
+  );
+  /**
+   * Celdas extra a la izquierda que Ant Design añade antes de `columns`:
+   * expandir fila (+) y checkbox de selección. El summary debe usar el mismo offset.
+   */
+  const tableLeadingExtraCols = 2;
+  const summaryColSpanLabel = (idxColVenta >= 0 ? idxColVenta : 10) + tableLeadingExtraCols;
+  const summaryColSpanTail =
+    idxColVenta >= 0 ? Math.max(1, columns.length - idxColVenta - 4) : 7;
 
   return (
     <div>
@@ -689,29 +728,29 @@ export function OrdersPage() {
           selectedRowKeys.length > 0 ? (
             <Table.Summary fixed>
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={10}>
+                <Table.Summary.Cell index={0} colSpan={summaryColSpanLabel}>
                   <Text strong>
                     Total ({selectedRowKeys.length} fila{selectedRowKeys.length !== 1 ? "s" : ""} seleccionada
                     {selectedRowKeys.length !== 1 ? "s" : ""})
                   </Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={9} align="right">
+                <Table.Summary.Cell index={1} align="right">
                   <Text strong>${sumVenta.toLocaleString()}</Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={10} align="right">
+                <Table.Summary.Cell index={2} align="right">
                   <Text strong type={sumGanancia >= 0 ? "success" : "danger"}>
                     ${sumGanancia.toLocaleString()}
                   </Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={11} align="right">
+                <Table.Summary.Cell index={3} align="right">
                   <Text strong>${sumFlete.toLocaleString()}</Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={12} align="right">
+                <Table.Summary.Cell index={4} align="right">
                   <Text strong type={sumCartera >= 0 ? "success" : "danger"}>
                     ${sumCartera.toLocaleString()}
                   </Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={13} colSpan={7} />
+                <Table.Summary.Cell index={5} colSpan={summaryColSpanTail} />
               </Table.Summary.Row>
             </Table.Summary>
           ) : null

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button, Layout, Menu, Select, Typography, message, theme } from "antd";
 import type { MenuProps } from "antd";
@@ -7,14 +7,17 @@ import {
   DashboardOutlined,
   DollarCircleOutlined,
   FileTextOutlined,
+  ExperimentOutlined,
   FundProjectionScreenOutlined,
+  InboxOutlined,
   LineChartOutlined,
   LogoutOutlined,
   ShoppingOutlined,
   SwapOutlined,
-  TeamOutlined,
+  UserOutlined,
   TruckOutlined,
   BankOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
@@ -28,13 +31,20 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/pedidos")) return "/app/pedidos";
+  if (pathname.startsWith("/app/productos")) return "/app/productos";
   if (pathname.startsWith("/app/logistica")) return "/app/logistica";
   if (pathname.startsWith("/app/importar")) return "/app/importar";
   if (pathname.startsWith("/app/dashboard")) return "/app/dashboard";
   if (pathname.startsWith("/app/reportes")) return "/app/reportes";
   if (pathname.startsWith("/app/mapeo")) return "/app/mapeo";
+  if (pathname.startsWith("/app/cpa-experimental")) return "/app/cpa-experimental";
   if (pathname.startsWith("/app/cpa")) return "/app/cpa";
-  if (pathname.startsWith("/app/empresas")) return "/app/empresas";
+  if (pathname.startsWith("/app/admin/empresas")) return "/app/admin/empresas";
+  if (pathname.startsWith("/app/admin/usuarios")) return "/app/admin/usuarios";
+  if (pathname.startsWith("/app/admin/configuracion")) return "/app/admin/configuracion";
+  if (pathname.startsWith("/app/admin")) return "/app/admin/empresas";
+  if (pathname.startsWith("/app/empresas")) return "/app/admin/empresas";
+  if (pathname.startsWith("/app/configuracion")) return "/app/configuracion";
   return "/app/pedidos";
 };
 
@@ -45,6 +55,15 @@ export function AppShell() {
   const { user, logout, refresh } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [companyId, setCompanyId] = useState(() => localStorage.getItem("fersua_company_id") ?? "");
+  const [configSubOpen, setConfigSubOpen] = useState(() => location.pathname.startsWith("/app/admin"));
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/app/admin")) {
+      setConfigSubOpen(true);
+    } else {
+      setConfigSubOpen(false);
+    }
+  }, [location.pathname]);
 
   const selectedKey = pathToKey(location.pathname);
 
@@ -54,11 +73,22 @@ export function AppShell() {
   const canCampanas = usePermission("moduleCampanasMeta");
   const canCuentas = usePermission("moduleCuentasPublicitarias");
   const canGastoOp = usePermission("moduleGastoOperacional");
+  const canConfig = usePermission("moduleConfiguracion");
+  const canPedidos = usePermission("modulePedidos");
 
   const menuItems: MenuProps["items"] = useMemo(
     () => [
       { key: "/app/dashboard", icon: <DashboardOutlined />, label: <Link to="/app/dashboard">Dashboard</Link> },
       { key: "/app/pedidos", icon: <ShoppingOutlined />, label: <Link to="/app/pedidos">Pedidos</Link> },
+      ...(canPedidos
+        ? [
+            {
+              key: "/app/productos",
+              icon: <InboxOutlined />,
+              label: <Link to="/app/productos">Productos</Link>,
+            },
+          ]
+        : []),
       { key: "/app/reportes", icon: <LineChartOutlined />, label: <Link to="/app/reportes">Reportes</Link> },
       ...(canImport
         ? [
@@ -74,6 +104,11 @@ export function AppShell() {
             },
             { key: "/app/mapeo", icon: <SwapOutlined />, label: <Link to="/app/mapeo">Mapeo estados</Link> },
             { key: "/app/cpa", icon: <FileTextOutlined />, label: <Link to="/app/cpa">CPA</Link> },
+            {
+              key: "/app/cpa-experimental",
+              icon: <ExperimentOutlined />,
+              label: <Link to="/app/cpa-experimental">CPA experimental</Link>,
+            },
             ...(canCampanas
               ? [
                   {
@@ -104,10 +139,42 @@ export function AppShell() {
           ]
         : []),
       ...(canAdmin
-        ? [{ key: "/app/empresas", icon: <TeamOutlined />, label: <Link to="/app/empresas">Empresas</Link> }]
+        ? [
+            {
+              key: "submenu-config",
+              icon: <SettingOutlined />,
+              label: "Configuración",
+              children: [
+                {
+                  key: "/app/admin/empresas",
+                  icon: <BankOutlined />,
+                  label: <Link to="/app/admin/empresas">Empresas</Link>,
+                },
+                {
+                  key: "/app/admin/usuarios",
+                  icon: <UserOutlined />,
+                  label: <Link to="/app/admin/usuarios">Usuarios</Link>,
+                },
+                {
+                  key: "/app/admin/configuracion",
+                  icon: <DashboardOutlined />,
+                  label: <Link to="/app/admin/configuracion">Configuraciones especiales</Link>,
+                },
+              ],
+            },
+          ]
+        : []),
+      ...(canConfig && !canAdmin
+        ? [
+            {
+              key: "/app/configuracion",
+              icon: <SettingOutlined />,
+              label: <Link to="/app/configuracion">Configuración</Link>,
+            },
+          ]
         : []),
     ],
-    [canAdmin, canImport, canCampanas, canCuentas, canGastoOp],
+    [canAdmin, canImport, canCampanas, canCuentas, canGastoOp, canConfig, canPedidos],
   );
 
   return (
@@ -148,7 +215,15 @@ export function AppShell() {
             />
           </Link>
         </div>
-        <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]} items={menuItems} style={{ borderInlineEnd: 0 }} />
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          openKeys={configSubOpen ? ["submenu-config"] : []}
+          onOpenChange={(keys) => setConfigSubOpen(keys.includes("submenu-config"))}
+          items={menuItems}
+          style={{ borderInlineEnd: 0 }}
+        />
       </Sider>
       <Layout>
         <Header

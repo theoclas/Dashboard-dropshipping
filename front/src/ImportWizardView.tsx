@@ -40,7 +40,12 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
     try {
       const result = await importFile(endpoint, file, (pct) => setProgress((p) => ({ ...p, [endpoint]: pct })));
       setResults((p) => ({ ...p, [endpoint]: result }));
-      message.success(`${endpoint}: importados ${result.imported}`);
+      message.success(
+        `${endpoint}: importados ${result.imported}` +
+          (endpoint === "cartera" && typeof result.retirosUpserted === "number"
+            ? `; retiros Dropi ${result.retirosUpserted}`
+            : ""),
+      );
     } catch (e: unknown) {
       let detail = "Error de red o servidor";
       if (isAxiosError(e)) {
@@ -67,8 +72,8 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
       title: "¿Borrar datos importados de esta empresa?",
       content: (
         <Paragraph>
-          Se eliminarán pedidos, líneas de producto y movimientos de cartera de la empresa activa. Otras empresas no se
-          ven afectadas.
+          Se eliminarán pedidos, líneas de producto, movimientos de cartera y retiros Dropi de la empresa activa. Otras
+          empresas no se ven afectadas.
         </Paragraph>
       ),
       okText: "Sí, borrar",
@@ -78,7 +83,7 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
         try {
           const r = await wipeImportedTables(pwd);
           message.success(
-            `Borrado: pedidos ${r.deleted.pedidos}, productos ${r.deleted.productos_detalle}, cartera ${r.deleted.cartera_movimientos}`,
+            `Borrado: pedidos ${r.deleted.pedidos}, productos ${r.deleted.productos_detalle}, cartera ${r.deleted.cartera_movimientos}, retiros Dropi ${r.deleted.retiros_dropi}`,
           );
         } catch {
           message.error("No se pudo limpiar (revisa contraseña y IMPORT_WIPE_SECRET en el backend).");

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Button, Card, Form, Input, Modal, Space, Table, Typography, Upload, message } from "antd";
 import { InboxOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api, importMapeoEstadosFile, remapearEstados } from "./api";
@@ -7,6 +8,8 @@ import type { MapeoEstadoRow } from "./types";
 const { Dragger } = Upload;
 
 export function MapeoEstadosView() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<MapeoEstadoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -16,6 +19,7 @@ export function MapeoEstadosView() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MapeoEstadoRow | null>(null);
   const [form] = Form.useForm();
+  const prefillQueryHandled = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -32,6 +36,33 @@ export function MapeoEstadosView() {
   useEffect(() => {
     void load();
   }, []);
+
+  /** Desde Pedidos: `/app/mapeo?transportadora=…&estatusOriginal=…&ultimoMovimiento=…` abre el modal listo para completar el estado unificado. */
+  useEffect(() => {
+    const raw = searchParams.toString();
+    if (!raw.trim()) return;
+
+    const t = searchParams.get("transportadora") ?? "";
+    const eo = searchParams.get("estatusOriginal") ?? "";
+    const um = searchParams.get("ultimoMovimiento") ?? "";
+    const has = [t, eo, um].some((x) => x.trim() !== "");
+    if (!has) return;
+    if (prefillQueryHandled.current === raw) return;
+    prefillQueryHandled.current = raw;
+
+    setEditing(null);
+    form.setFieldsValue({
+      transportadora: t,
+      estatusOriginal: eo,
+      ultimoMovimiento: um,
+      estadoUnificado: "",
+    });
+    setModalOpen(true);
+    message.info(
+      "Indica el estado unificado y guarda; luego en Pedidos usa «Sincronizar Estados» para aplicar a los pedidos.",
+    );
+    navigate("/app/mapeo", { replace: true });
+  }, [searchParams, form, navigate]);
 
   function openCreate() {
     setEditing(null);

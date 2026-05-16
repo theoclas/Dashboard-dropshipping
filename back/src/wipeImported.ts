@@ -22,7 +22,12 @@ export async function wipeImportedForCompany(
   companyId: string,
   password: string,
 ): Promise<{
-  deleted: { productos_detalle: number; cartera_movimientos: number; pedidos: number };
+  deleted: {
+    productos_detalle: number;
+    cartera_movimientos: number;
+    pedidos: number;
+    retiros_dropi: number;
+  };
 }> {
   assertWipePassword(password);
 
@@ -30,9 +35,11 @@ export async function wipeImportedForCompany(
     const nPd = await tx.productDetail.count({ where: { companyId } });
     const nCar = await tx.walletMovement.count({ where: { companyId } });
     const nPe = await tx.order.count({ where: { companyId } });
+    const nRet = await tx.dropiWithdrawal.count({ where: { companyId } });
 
     await tx.productDetail.deleteMany({ where: { companyId } });
     await tx.walletMovement.deleteMany({ where: { companyId } });
+    await tx.dropiWithdrawal.deleteMany({ where: { companyId } });
     await tx.order.deleteMany({ where: { companyId } });
 
     return {
@@ -40,6 +47,7 @@ export async function wipeImportedForCompany(
         productos_detalle: nPd,
         cartera_movimientos: nCar,
         pedidos: nPe,
+        retiros_dropi: nRet,
       },
     };
   });

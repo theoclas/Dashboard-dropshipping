@@ -2,6 +2,7 @@ export type Role = "ADMIN" | "OPERADOR" | "LECTOR";
 
 export const OPERATOR_PERMISSION_KEYS = [
   "moduleDashboard",
+  "moduleConfiguracion",
   "modulePedidos",
   "moduleReportes",
   "moduleImportaciones",
@@ -38,9 +39,13 @@ export type AuthUser = {
   activeCompany: string;
   companies: CompanyMembership[];
   operatorPerms?: Record<OperatorPermissionKey, boolean> | null;
+  /** Preferencias de tarjetas del dashboard (`User.dashboard_config`). */
+  dashboardConfig?: Record<string, boolean> | null;
   companySettings?: {
+    id: string;
     name: string;
     slug: string;
+    isActive: boolean;
     operationalExpenseEnabled: boolean;
   } | null;
 };
@@ -51,6 +56,36 @@ export type Company = {
   slug: string;
   isActive: boolean;
   operationalExpenseEnabled?: boolean;
+};
+
+/** Retiros Dropi (`retiros_dropi`), sincronizados al importar cartera. */
+export type DropiWithdrawalRow = {
+  id: string;
+  dropiMovementId: string;
+  fecha: string | null;
+  monto: string | null;
+  descripcion: string | null;
+  conceptoRetiro: string | null;
+  notaAdicional: string | null;
+};
+
+export type CompanyMemberRow = {
+  id: string;
+  userId: string;
+  role: Role;
+  operatorPermissions: unknown;
+  email: string;
+  username: string | null;
+  fullName: string;
+};
+
+/** Resultado de búsqueda para asignar usuario a empresa (GET assignable-users). */
+export type AssignableCompanyUser = {
+  id: string;
+  email: string;
+  username: string | null;
+  fullName: string;
+  alreadyInCompany: boolean;
 };
 
 /** Fila `pedidos` alineada con Prisma `Order` (decimales vienen como string en JSON). */
@@ -99,6 +134,18 @@ export type CpaRecordRow = {
   utilidadAproximada?: string | number | null;
 };
 
+export type CpaExperimentalRecordRow = CpaRecordRow & {
+  catalogProductId: string;
+  advertisingAccountId: string;
+  catalogProduct?: { id: string; name: string; sku?: string | null };
+  advertisingAccount?: { id: string; metaAccountId: string; businessName?: string | null };
+};
+
+export type CpaExperimentalRebuildResult = {
+  daysWritten: number;
+  warnings: string[];
+};
+
 export type CatalogProduct = {
   id: string;
   name: string;
@@ -128,11 +175,17 @@ export type AdvertisingCampaignMetricRow = {
   metaConversationsStarted?: number | null;
   shopifySessions?: number | null;
   updatedAt?: string;
+  createdAt?: string;
+  campaignId?: string;
+  companyId?: string;
+  /** Copia de columnas del Excel Meta al importar (cabecera → valor). */
+  metaExcelSnapshot?: Record<string, unknown> | null;
 };
 
 export type ImportAdvertisingPreviewResponse = {
   sampleRows: Array<{
     externalCampaignId: string;
+    externalAdId?: string;
     displayName?: string;
     recordDate: string;
     metaLinkClicks?: number;
@@ -141,6 +194,12 @@ export type ImportAdvertisingPreviewResponse = {
   }>;
   totalRows: number;
   errors: string[];
+  /** IDs Meta de campaña normalizados (sin espacios), únicos en el archivo. */
+  uniqueCampaignIds: string[];
+  /** Primer nombre de campaña visto por ID (si existe). */
+  campaignDisplayNames: Record<string, string>;
+  /** Filas agregadas (campaña + día) por ID de campaña normalizado. */
+  campaignAggregatedRowCounts?: Record<string, number>;
 };
 
 export type ImportAdvertisingCampaignMetricsResult = {
@@ -170,6 +229,17 @@ export type OperationalExpenseRow = {
 
 export type AdvertisingAccountWithStats = AdvertisingAccount & {
   _count: { advertisingCampaigns: number; operationalExpenses: number };
+};
+
+export type AdvertisingAccountExpensesSummary = {
+  totalGastado: number;
+  totalPagado: number;
+  pendientePorPagar: number;
+};
+
+export type AdvertisingAccountOperationalExpensesResponse = {
+  summary: AdvertisingAccountExpensesSummary;
+  items: OperationalExpenseRow[];
 };
 
 export type ImportMetaBillingResult = {

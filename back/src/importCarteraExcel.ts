@@ -10,12 +10,31 @@ const BATCH_TX_OPTIONS = { maxWait: 60_000, timeout: 300_000 } as const;
  * Paridad con Petho `importCartera`; cada movimiento queda ligado a `companyId`.
  * - Hoja `HISTORIAL DE CARTERA` si existe; si no, la primera.
  * - Columnas: ID, FECHA, TIPO, MONTO, MONTO PREVIO, ORDEN ID, NUMERO DE GUIA, DESCRIPCIÓN, CONCEPTO DE RETIRO
+ * - Retiros (`retiros_dropi`): DESCRIPCIÓN contiene «SALIDA POR PETICION DE RETIRO DE SALDO EN CARTERA» (normalizado).
  */
+const DESCRIPCION_RETIRO_SALDO_CARTERA = "SALIDA POR PETICION DE RETIRO DE SALDO EN CARTERA";
+
+function normalizarTextoComparacion(s: string | undefined): string {
+  return String(s ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+/** Retiro = misma frase en DESCRIPCIÓN (tolerante a acentos y espacios). */
+function esDescripcionRetiroCartera(descripcion: string | undefined): boolean {
+  const desc = normalizarTextoComparacion(descripcion);
+  const ref = normalizarTextoComparacion(DESCRIPCION_RETIRO_SALDO_CARTERA);
+  return desc.includes(ref);
+}
+
 export async function importCarteraExcel(
   prisma: PrismaClient,
   companyId: string,
   buffer: Buffer,
-): Promise<{ imported: number; errors: string[] }> {
+): Promise<{ imported: number; retirosUpserted: number; errors: string[] }> {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName =
     wb.SheetNames.find((s) => s === "HISTORIAL DE CARTERA") || wb.SheetNames[0];
@@ -67,6 +86,8 @@ export async function importCarteraExcel(
 
   const CHUNK = 40;
   let imported = 0;
+  let retirosUpserted = 0;
+  let avisoTablaRetirosFaltante = false;
   for (let i = 0; i < registros.length; i += CHUNK) {
     const batch = registros.slice(i, i + CHUNK);
     await prisma.$transaction(
@@ -99,6 +120,40 @@ export async function importCarteraExcel(
               conceptoRetiro: r.concepto_retiro ?? null,
             },
           });
+
+          if (!avisoTablaRetirosFaltante && esDescripcionRetiroCartera(r.descripcion)) {
+            try {
+              await tx.dropiWithdrawal.upsert({
+                where: {
+                  companyId_dropiMovementId: { companyId, dropiMovementId: r.id },
+                },
+                create: {
+                  companyId,
+                  dropiMovementId: r.id,
+                  fecha: r.fecha ?? null,
+                  monto: r.monto !== undefined ? new Prisma.Decimal(String(r.monto)) : null,
+                  descripcion: r.descripcion ?? null,
+                  conceptoRetiro: r.concepto_retiro ?? null,
+                },
+                update: {
+                  fecha: r.fecha ?? null,
+                  monto: r.monto !== undefined ? new Prisma.Decimal(String(r.monto)) : null,
+                  descripcion: r.descripcion ?? null,
+                  conceptoRetiro: r.concepto_retiro ?? null,
+                },
+              });
+              retirosUpserted += 1;
+            } catch (e) {
+              if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2021") {
+                errors.push(
+                  "La tabla retiros_dropi no existe en la base de datos; aplica la migración correspondiente. La cartera se importó; los retiros no se guardaron.",
+                );
+                avisoTablaRetirosFaltante = true;
+              } else {
+                throw e;
+              }
+            }
+          }
         }
       },
       BATCH_TX_OPTIONS,
@@ -106,5 +161,5 @@ export async function importCarteraExcel(
     imported += batch.length;
   }
 
-  return { imported, errors };
+  return { imported, retirosUpserted, errors };
 }

@@ -31,6 +31,19 @@ export function computePedidoFinancials(p: PedidoFinInput): {
   return { gananciaCalc, costoDevolucionEstimado, cartera };
 }
 
+/**
+ * Misma lógica que `dashboardMetrics` / `reportesLogistica`: cancelado o rechazado no cuenta como pedido activo
+ * (p. ej. CPA experimental).
+ */
+export function isPedidoCanceladoORechazado(
+  estadoUnificado: string | null | undefined,
+  estadoOperativo: string | null | undefined,
+): boolean {
+  const u = (estadoUnificado ?? "").toLowerCase();
+  const o = (estadoOperativo ?? "").toLowerCase();
+  return u.includes("cancel") || o.includes("cancel") || u.includes("rechaz") || o.includes("rechaz");
+}
+
 export function toDec(n: number): Prisma.Decimal {
   return new Prisma.Decimal(String(n));
 }

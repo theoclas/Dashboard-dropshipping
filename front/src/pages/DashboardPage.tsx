@@ -13,19 +13,28 @@ import {
 } from "antd";
 import {
   BarChartOutlined,
+  BellOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   DollarOutlined,
+  ExportOutlined,
   InfoCircleOutlined,
   ShoppingCartOutlined,
   ShoppingOutlined,
+  StopOutlined,
   TruckOutlined,
+  UndoOutlined,
+  WalletOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
 import { api } from "../api";
+import { isDashboardCardVisible } from "../dashboardVisibility";
+import { useAuth } from "../contexts/AuthContext";
+import { usePermission } from "../hooks/usePermission";
 import { fmtInteger, fmtMoney, fmtPercent } from "../utils/format";
 
 const { RangePicker } = DatePicker;
@@ -44,6 +53,8 @@ export type DashboardMetrics = {
   totalGuias: number;
   productosVendidos: number;
   sinMapear: number;
+  pedidosCancelados: number;
+  pedidosCanceladosPct: number;
   entregados: number;
   entregadosPct: number;
   devoluciones: number;
@@ -52,9 +63,23 @@ export type DashboardMetrics = {
   enProcesoPct: number;
   totalVentas: number;
   gananciaTotal: number;
+  gananciaEstimada: number;
   gananciaProyectada: number;
   cpaPromedio: number;
   totalCpaSpend: number;
+  gastoOperacional: number;
+  retirosDropiTotal: number;
+  retirosDropiCount: number;
+  pedidosCarteraSinOk: number;
+  pedidosCarteraSinOkPct: number;
+  pedidosCarteraSinOkEntregados: number;
+  pedidosCarteraSinOkEntregadosPct: number;
+  pedidosCarteraOkEntregados: number;
+  pedidosCarteraOkEntregadosPct: number;
+  pedidosCarteraOkDevoluciones: number;
+  pedidosCarteraOkDevolucionesPct: number;
+  pedidosNovedad: number;
+  pedidosNovedadPct: number;
 };
 
 function SectionLabel({ children }: { children: ReactNode }) {
@@ -120,6 +145,9 @@ function MetricCard({
 
 export function DashboardPage() {
   const { token } = theme.useToken();
+  const { user } = useAuth();
+  const canOpenSettings = usePermission("moduleConfiguracion");
+  const dashCfg = user?.dashboardConfig;
   const defaultRange = useMemo((): [Dayjs, Dayjs] => [dayjs().startOf("month"), dayjs().endOf("month")], []);
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(defaultRange);
   const [data, setData] = useState<DashboardMetrics | null>(null);
@@ -158,6 +186,11 @@ export function DashboardPage() {
           </Title>
         </Space>
         <Space align="center" wrap>
+          {canOpenSettings ? (
+            <Link to="/app/configuracion" style={{ fontSize: 13 }}>
+              Configuración
+            </Link>
+          ) : null}
           <Text type="secondary">Filtrar por fecha:</Text>
           <RangePicker
             value={range}
@@ -175,6 +208,7 @@ export function DashboardPage() {
       <div>
         <SectionLabel>Volumen y pedidos</SectionLabel>
         <Row gutter={[16, 16]}>
+          {isDashboardCardVisible(dashCfg, "card_totalOrders") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               emphasize
@@ -183,6 +217,8 @@ export function DashboardPage() {
               value={loading ? "…" : fmtInteger(data?.totalOrders ?? 0)}
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_totalGuias") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<TruckOutlined />}
@@ -195,6 +231,8 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_productosVendidos") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ShoppingOutlined />}
@@ -207,6 +245,8 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_sinMapear") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<WarningOutlined />}
@@ -214,12 +254,32 @@ export function DashboardPage() {
               value={loading ? "…" : fmtInteger(data?.sinMapear ?? 0)}
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosCancelados") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<StopOutlined />}
+              label="Total pedidos cancelados"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosCancelados ?? 0)} (${fmtPercent(data?.pedidosCanceladosPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos con estado cancelado o rechazado en el rango. El porcentaje es sobre el total de pedidos.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
         </Row>
       </div>
 
       <div>
         <SectionLabel>Estados de entrega</SectionLabel>
         <Row gutter={[16, 16]}>
+          {isDashboardCardVisible(dashCfg, "card_entregados") ? (
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<CheckCircleOutlined />}
@@ -231,6 +291,8 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_devoluciones") ? (
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<CloseCircleOutlined />}
@@ -242,6 +304,8 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_enProceso") ? (
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<ClockCircleOutlined />}
@@ -253,12 +317,14 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
         </Row>
       </div>
 
       <div>
         <SectionLabel>Finanzas</SectionLabel>
         <Row gutter={[16, 16]}>
+          {isDashboardCardVisible(dashCfg, "card_totalVentas") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
@@ -266,30 +332,50 @@ export function DashboardPage() {
               value={loading ? "…" : `$${fmtMoney(data?.totalVentas ?? 0)}`}
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_gananciaTotal") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Ganancia total"
+              label="Ganancia total (cartera OK)"
               value={loading ? "…" : `$${fmtMoney(data?.gananciaTotal ?? 0)}`}
               hint={
-                <Tooltip title="Neto tipo cartera en el rango: entregados (ganancia) más devoluciones (cargos negativos: flete/cartera). Si importaste cartera con estado OK, usa el neto real por pedido; si no, estimación del pedido. No resta CPA.">
+                <Tooltip title="Neto de movimientos de cartera (ENTRADA suma, otros restan) enlazados a pedidos con cartera OK y estado entregado o devolución en el rango. Las devoluciones quedan reflejadas en ese neto. No incluye CPA.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_gananciaEstimada") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<DollarOutlined />}
+              label="Ganancia estimada"
+              value={loading ? "…" : `$${fmtMoney(data?.gananciaEstimada ?? 0)}`}
+              hint={
+                <Tooltip title="Ganancia total (cartera OK) más la suma de ganancia_calc de pedidos entregados cuya cartera aún no está en OK.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_gananciaProyectada") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
               label="Ganancia proyectada"
               value={loading ? "…" : `$${fmtMoney(data?.gananciaProyectada ?? 0)}`}
               hint={
-                <Tooltip title="Suma de ganancia calculada en pedidos en proceso (excluye entregados, devoluciones y sin mapear).">
+                <Tooltip title="Ganancia estimada más la suma de ganancia_calc de pedidos en tránsito (pendientes), como si todo lo pendiente se entregara.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_cpaPromedio") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<BarChartOutlined />}
@@ -304,7 +390,146 @@ export function DashboardPage() {
               }
             />
           </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_gastoOperacional") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<WalletOutlined />}
+              label="Gasto operacional"
+              value={loading ? "…" : `$${fmtMoney(data?.gastoOperacional ?? 0)}`}
+              hint={
+                <Tooltip title="Suma de gastos operacionales registrados para la empresa en el mismo rango de fechas que los pedidos.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_retirosDropi") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<ExportOutlined />}
+              label="Retiros Dropi"
+              value={
+                loading
+                  ? "…"
+                  : `$${fmtMoney(data?.retirosDropiTotal ?? 0)} (${fmtInteger(data?.retirosDropiCount ?? 0)} mov.)`
+              }
+              hint={
+                <Tooltip title="Suma de montos en retiros_dropi (detectados al importar cartera por la descripción estándar de retiro de saldo), con fecha del movimiento en el rango. El número entre paréntesis es la cantidad de movimientos. Detalle en Configuración → Retiros Dropi.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
         </Row>
+      </div>
+
+      <div>
+        <SectionLabel>Cartera y novedades</SectionLabel>
+        <Row gutter={[16, 16]}>
+          {isDashboardCardVisible(dashCfg, "card_pedidosCarteraSinOk") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<WarningOutlined />}
+              label="Devoluciones cartera sin OK"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosCarteraSinOk ?? 0)} (${fmtPercent(data?.pedidosCarteraSinOkPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Solo pedidos clasificados como devolución en el rango, con estado de cartera distinto de «OK». No incluye entregados. El % es sobre el total de pedidos del rango.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosCarteraSinOkEntregados") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<TruckOutlined />}
+              label="Entregados cartera sin OK"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosCarteraSinOkEntregados ?? 0)} (${fmtPercent(data?.pedidosCarteraSinOkEntregadosPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos clasificados como entregados con estado de cartera distinto de «OK». No incluye devoluciones. El % es sobre el total de pedidos del rango.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosCarteraOkEntregados") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<CheckCircleOutlined />}
+              label="Cartera OK — entregados"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosCarteraOkEntregados ?? 0)} (${fmtPercent(data?.pedidosCarteraOkEntregadosPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos clasificados como entregados con estado de cartera «OK». El % es sobre el total de pedidos del rango.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosCarteraOkDevoluciones") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<UndoOutlined />}
+              label="Cartera OK — devoluciones"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosCarteraOkDevoluciones ?? 0)} (${fmtPercent(data?.pedidosCarteraOkDevolucionesPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos clasificados como devolución con estado de cartera «OK». El % es sobre el total de pedidos del rango.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosNovedad") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<BellOutlined />}
+              label="Novedades (pedidos)"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosNovedad ?? 0)} (${fmtPercent(data?.pedidosNovedadPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos con estado unificado NOVEDAD o cuyo estado operativo, último movimiento o estatus original menciona novedad. El % es sobre el total de pedidos del rango.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+        </Row>
+        {!loading &&
+        (isDashboardCardVisible(dashCfg, "card_pedidosCarteraSinOk") ||
+          isDashboardCardVisible(dashCfg, "card_pedidosCarteraSinOkEntregados") ||
+          isDashboardCardVisible(dashCfg, "card_pedidosCarteraOkEntregados") ||
+          isDashboardCardVisible(dashCfg, "card_pedidosCarteraOkDevoluciones") ||
+          isDashboardCardVisible(dashCfg, "card_pedidosNovedad")) ? (
+          <Text type="secondary" style={{ display: "block", marginTop: 10, fontSize: 12 }}>
+            <Link to="/app/pedidos">Abrir grilla de pedidos</Link> para filtrar por columna (estado cartera, estado unificado, etc.).
+          </Text>
+        ) : null}
       </div>
     </Space>
   );

@@ -4,6 +4,7 @@ import type { Role } from "@prisma/client";
 /** Claves alineadas con `UserCompany.operator_permissions` (JSON parcial). */
 export const OPERATOR_PERMISSION_KEYS = [
   "moduleDashboard",
+  "moduleConfiguracion",
   "modulePedidos",
   "moduleReportes",
   "moduleImportaciones",
@@ -40,6 +41,7 @@ export function defaultOperatorPermissions(): Record<OperatorPermissionKey, bool
 export function defaultLectorPermissions(): Record<OperatorPermissionKey, boolean> {
   const r = keyRecord(false);
   r.moduleDashboard = true;
+  r.moduleConfiguracion = true;
   r.modulePedidos = true;
   r.moduleReportes = true;
   r.moduleImportaciones = false;

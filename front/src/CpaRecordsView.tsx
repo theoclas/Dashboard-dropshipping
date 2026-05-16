@@ -27,7 +27,7 @@ import {
   type CpaRecordWriteBody,
 } from "./api";
 import type { CpaRecordRow } from "./types";
-import { fmtInteger, fmtMoney } from "./utils/format";
+import { fmtInteger, fmtMoney, fmtPercentPoints, fmtPercentRatio } from "./utils/format";
 import { semanaDelMesDesdeFecha } from "./utils/cpaSemana";
 
 const { Dragger } = Upload;
@@ -149,10 +149,10 @@ export function CpaRecordsView() {
     { title: "Ventas", dataIndex: "ventas", width: 80, render: (n) => (n != null ? fmtInteger(n) : "—") },
     { title: "Ticket prom.", dataIndex: "ticketPromedioProducto", width: 110, render: fmtCell },
     { title: "CPA", dataIndex: "cpa", width: 100, render: fmtCell },
-    { title: "Conv. rate", dataIndex: "conversionRate", width: 90, render: fmtCell },
-    { title: "Costo pub.", dataIndex: "costoPublicitario", width: 100, render: fmtCell },
+    { title: "Conv. rate", dataIndex: "conversionRate", width: 90, render: (v) => fmtPercentRatio(v) },
+    { title: "Costo pub.", dataIndex: "costoPublicitario", width: 100, render: (v) => fmtPercentPoints(v) },
+    { title: "Rentab.", dataIndex: "rentabilidad", width: 90, render: (v) => fmtPercentPoints(v) },
     { title: "Utilidad apx.", dataIndex: "utilidadAproximada", width: 110, render: fmtCell },
-    { title: "Rentab.", dataIndex: "rentabilidad", width: 90, render: fmtCell },
     {
       title: "Acciones",
       key: "acciones",
@@ -198,7 +198,9 @@ export function CpaRecordsView() {
         <Typography.Paragraph type="secondary">
           Importa el Excel de CPA (reemplaza todos los registros de la empresa) o crea/edita filas desde aquí. Al
           guardar, el sistema calcula automáticamente: <strong>CPA</strong>, ticket promedio, tasa de conversión, costo
-          publicitario, utilidad aproximada y rentabilidad (misma lógica que la plantilla / import).
+          publicitario (según la plantilla: <strong>CPA × 100% / ticket promedio</strong>), rentabilidad (100% si
+          ventas = 0; si no CPA / ganancia promedio como %) y utilidad aproximada (si ventas = 0: <strong>−gasto</strong>;
+          si no <strong>((ganancia × ventas) − gasto) × 0,75</strong>), misma lógica que la plantilla / import.
         </Typography.Paragraph>
         <Dragger
           accept=".xlsx,.xls"

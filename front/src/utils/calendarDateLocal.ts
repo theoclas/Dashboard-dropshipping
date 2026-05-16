@@ -22,6 +22,19 @@ export function fmtCalendarDateDdMmYyyy(raw: string | null | undefined, emptyLab
   return fallback.isValid() ? fallback.format("DD/MM/YYYY") : emptyLabel;
 }
 
+/** YYYY-MM-DD desde API (campo DATE / ISO `…T00:00:00.000Z`) sin desfase por zona local del navegador. */
+export function fmtApiDateIsoYmd(raw: string | null | undefined, emptyLabel = "—"): string {
+  const p = parseCalendarYmdFromIsoDate(raw);
+  if (p) {
+    const [y, mo, d] = p;
+    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  if (raw == null || raw === "") return emptyLabel;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return emptyLabel;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 /** Rango guardado como YYYY-MM-DD → instancia local para RangePicker. */
 export function dayjsFromYmdFilterString(ymd: string): Dayjs {
   const p = parseCalendarYmdFromIsoDate(ymd);

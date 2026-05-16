@@ -1,6 +1,66 @@
 import type { OperationalExpenseCategory, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
+function expenseFechaRangeFilter(desde: Date | null, hasta: Date | null): Prisma.DateTimeFilter | undefined {
+  if (!desde && !hasta) return undefined;
+  const f: Prisma.DateTimeFilter = {};
+  if (desde) {
+    f.gte = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth(), desde.getUTCDate(), 0, 0, 0, 0));
+  }
+  if (hasta) {
+    f.lte = new Date(Date.UTC(hasta.getUTCFullYear(), hasta.getUTCMonth(), hasta.getUTCDate(), 23, 59, 59, 999));
+  }
+  return f.gte !== undefined || f.lte !== undefined ? f : undefined;
+}
+
+export function parseExpenseFilterDate(ymd: string | undefined): Date | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  return new Date(`${ymd}T12:00:00.000Z`);
+}
+
+export async function listOperationalExpensesByAdvertisingAccount(
+  companyId: string,
+  advertisingAccountId: string,
+  range?: { desde: Date | null; hasta: Date | null },
+) {
+  const where: Prisma.OperationalExpenseWhereInput = {
+    companyId,
+    advertisingAccountId,
+  };
+  const fe = expenseFechaRangeFilter(range?.desde ?? null, range?.hasta ?? null);
+  if (fe) where.fecha = fe;
+  return prisma.operationalExpense.findMany({
+    where,
+    orderBy: { fecha: "desc" },
+    include: { advertisingAccount: { select: { id: true, metaAccountId: true, businessName: true } } },
+  });
+}
+
+export async function summarizeOperationalExpensesByAdvertisingAccount(
+  companyId: string,
+  advertisingAccountId: string,
+  range?: { desde: Date | null; hasta: Date | null },
+) {
+  const base: Prisma.OperationalExpenseWhereInput = {
+    companyId,
+    advertisingAccountId,
+  };
+  const fe = expenseFechaRangeFilter(range?.desde ?? null, range?.hasta ?? null);
+  if (fe) base.fecha = fe;
+
+  const [totalAgg, pagadoAgg, pendienteAgg] = await Promise.all([
+    prisma.operationalExpense.aggregate({ where: base, _sum: { monto: true } }),
+    prisma.operationalExpense.aggregate({ where: { ...base, pagado: true }, _sum: { monto: true } }),
+    prisma.operationalExpense.aggregate({ where: { ...base, pagado: false }, _sum: { monto: true } }),
+  ]);
+
+  return {
+    totalGastado: Number(totalAgg._sum.monto ?? 0),
+    totalPagado: Number(pagadoAgg._sum.monto ?? 0),
+    pendientePorPagar: Number(pendienteAgg._sum.monto ?? 0),
+  };
+}
+
 export function listOperationalExpenses(companyId: string) {
   return prisma.operationalExpense.findMany({
     where: { companyId },

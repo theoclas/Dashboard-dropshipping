@@ -23,3 +23,8 @@ export async function patchAdvertisingCampaignMetric(
     },
   });
 }
+
+export async function deleteAdvertisingCampaignMetric(companyId: string, metricId: string): Promise<boolean> {
+  const r = await prisma.advertisingCampaignMetric.deleteMany({ where: { id: metricId, companyId } });
+  return r.count > 0;
+}

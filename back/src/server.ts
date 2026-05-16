@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
 import { z } from "zod";
 import { Prisma, Role, type Order } from "@prisma/client";
 import { prisma } from "./prisma";
-import { authRequired, companyRequired, requireRoles } from "./middleware";
+import { authRequired, companyRequired, requireRoles, requirePermission } from "./middleware";
 import type { JwtPayload } from "./types";
 import { mergeOperatorPermissions } from "./operatorPermissions";
 import { registerBusinessModules } from "./registerBusinessModules";
@@ -22,6 +22,7 @@ import { importMapeoEstadosExcel } from "./importMapeoEstadosExcel";
 import { importCpaExcel } from "./importCpaExcel";
 import { remapearPedidos } from "./remapearPedidos";
 import { wipeCpaForCompany, wipeImportedForCompany } from "./wipeImported";
+import { listDropiWithdrawals, patchDropiWithdrawalNota } from "./dropiWithdrawalService";
 import {
   buildOrderOrderBy,
   buildPrismaOrderWhere,
@@ -37,6 +38,8 @@ import {
 } from "./reportesLogistica";
 import { getDashboardMetrics } from "./dashboardMetrics";
 import { createCpaRecord, deleteCpaRecord, updateCpaRecord } from "./cpaRecordService";
+import { listCpaExperimental, rebuildCpaExperimentalRange } from "./cpaExperimentalService";
+import * as catalogProductService from "./catalogProductService";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -200,7 +203,7 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
       : null;
   const companySettings = await prisma.company.findUnique({
     where: { id: userPayload!.companyId },
-    select: { name: true, slug: true, operationalExpenseEnabled: true },
+    select: { id: true, name: true, slug: true, isActive: true, operationalExpenseEnabled: true },
   });
   return res.json({
     id: user.id,
@@ -210,6 +213,7 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     activeCompany: userPayload?.companyId,
     role: userPayload?.role,
     operatorPerms,
+    dashboardConfig: user.dashboardConfig,
     companySettings,
     companies: user.memberships.map((m) => ({
       companyId: m.companyId,
@@ -218,6 +222,36 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
       isActive: m.company.isActive,
     })),
   });
+});
+
+const dashboardConfigPatchSchema = z.record(z.string(), z.boolean());
+
+app.patch("/api/auth/me/dashboard-config", authRequired, async (req, res) => {
+  const userPayload = (req as express.Request & { user?: JwtPayload }).user!;
+  const parsed = dashboardConfigPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Payload inválido." });
+  }
+  const u = await prisma.user.findUnique({
+    where: { id: userPayload.userId },
+    select: { dashboardConfig: true },
+  });
+  const prev: Record<string, boolean> =
+    u?.dashboardConfig && typeof u.dashboardConfig === "object" && !Array.isArray(u.dashboardConfig)
+      ? Object.fromEntries(
+          Object.entries(u.dashboardConfig as Record<string, unknown>).filter(
+            ([, v]) => typeof v === "boolean",
+          ) as [string, boolean][],
+        )
+      : {};
+  for (const [k, val] of Object.entries(parsed.data)) {
+    prev[k] = val;
+  }
+  await prisma.user.update({
+    where: { id: userPayload.userId },
+    data: { dashboardConfig: prev as Prisma.InputJsonValue },
+  });
+  return res.json({ dashboardConfig: prev });
 });
 
 const switchCompanySchema = z.object({ companyId: z.string().min(1) });
@@ -272,7 +306,14 @@ app.post("/api/companies", authRequired, requireRoles([Role.ADMIN]), async (req,
 });
 
 app.post("/api/companies/:companyId/users", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
   const companyId = String(req.params.companyId);
+  const callerMembership = await prisma.userCompany.findFirst({
+    where: { userId: caller.userId, companyId, role: Role.ADMIN },
+  });
+  if (!callerMembership) {
+    return res.status(403).json({ message: "Solo un administrador de esa empresa puede asignar usuarios." });
+  }
   const schema = z
     .object({
       email: z.string().email().optional(),
@@ -307,7 +348,14 @@ const createCompanyUserSchema = z.object({
 
 /** Crea una cuenta nueva y la vincula a la empresa (solo ADMIN). */
 app.post("/api/companies/:companyId/users/create", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
   const companyId = String(req.params.companyId);
+  const callerMembership = await prisma.userCompany.findFirst({
+    where: { userId: caller.userId, companyId, role: Role.ADMIN },
+  });
+  if (!callerMembership) {
+    return res.status(403).json({ message: "Solo un administrador de esa empresa puede crear usuarios aquí." });
+  }
   const parsed = createCompanyUserSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Payload inválido.", errors: parsed.error.flatten() });
@@ -353,6 +401,116 @@ app.post("/api/companies/:companyId/users/create", authRequired, requireRoles([R
     fullName: user.fullName,
     role,
     companyId,
+  });
+});
+
+app.get("/api/companies/:companyId/members", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const companyId = String(req.params.companyId);
+  const ok = await prisma.userCompany.findFirst({
+    where: { userId: caller.userId, companyId, role: Role.ADMIN },
+  });
+  if (!ok) return res.status(403).json({ message: "No autorizado." });
+  const rows = await prisma.userCompany.findMany({
+    where: { companyId },
+    include: { user: { select: { id: true, email: true, username: true, fullName: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return res.json(
+    rows.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      role: m.role,
+      operatorPermissions: m.operatorPermissions,
+      email: m.user.email,
+      username: m.user.username,
+      fullName: m.user.fullName,
+    })),
+  );
+});
+
+app.get("/api/companies/:companyId/assignable-users", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const companyId = String(req.params.companyId);
+  const ok = await prisma.userCompany.findFirst({
+    where: { userId: caller.userId, companyId, role: Role.ADMIN },
+  });
+  if (!ok) return res.status(403).json({ message: "No autorizado." });
+  const q = String(req.query.q ?? "").trim();
+  if (q.length < 2) {
+    return res.json([]);
+  }
+  const memberRows = await prisma.userCompany.findMany({
+    where: { companyId },
+    select: { userId: true },
+  });
+  const inCompany = new Set(memberRows.map((m) => m.userId));
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ email: { contains: q } }, { username: { contains: q } }, { fullName: { contains: q } }],
+    },
+    select: { id: true, email: true, username: true, fullName: true },
+    take: 25,
+    orderBy: [{ fullName: "asc" }],
+  });
+  return res.json(
+    users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      fullName: u.fullName,
+      alreadyInCompany: inCompany.has(u.id),
+    })),
+  );
+});
+
+app.patch("/api/companies/:companyId/members/:membershipId", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const companyId = String(req.params.companyId);
+  const membershipId = String(req.params.membershipId);
+  const ok = await prisma.userCompany.findFirst({
+    where: { userId: caller.userId, companyId, role: Role.ADMIN },
+  });
+  if (!ok) return res.status(403).json({ message: "No autorizado." });
+  const target = await prisma.userCompany.findFirst({ where: { id: membershipId, companyId } });
+  if (!target) return res.status(404).json({ message: "Membresía no encontrada." });
+
+  const schema = z.object({
+    role: z.nativeEnum(Role).optional(),
+    operatorPermissions: z.union([z.record(z.string(), z.boolean()), z.null()]).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+
+  const nextRole = parsed.data.role ?? target.role;
+  let nextPerms: Prisma.InputJsonValue | typeof Prisma.JsonNull | typeof Prisma.DbNull = target.operatorPermissions ?? Prisma.JsonNull;
+
+  if (nextRole === Role.ADMIN) {
+    nextPerms = Prisma.JsonNull;
+  } else if (parsed.data.operatorPermissions !== undefined) {
+    nextPerms =
+      parsed.data.operatorPermissions === null
+        ? Prisma.JsonNull
+        : (parsed.data.operatorPermissions as Prisma.InputJsonValue);
+  }
+
+  const updated = await prisma.userCompany.update({
+    where: { id: membershipId },
+    data: {
+      role: nextRole,
+      operatorPermissions: nextPerms,
+    },
+    include: { user: { select: { id: true, email: true, username: true, fullName: true } } },
+  });
+
+  return res.json({
+    id: updated.id,
+    userId: updated.userId,
+    role: updated.role,
+    operatorPermissions: updated.operatorPermissions,
+    email: updated.user.email,
+    username: updated.user.username,
+    fullName: updated.user.fullName,
   });
 });
 
@@ -502,6 +660,256 @@ app.get("/api/product-details", authRequired, companyRequired, async (req, res) 
   );
 });
 
+app.get("/api/order-product-lines", authRequired, companyRequired, async (req, res) => {
+  const user = (req as express.Request & { user?: JwtPayload }).user!;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+  const skip = (page - 1) * limit;
+  const q = String(req.query.q ?? "").trim();
+  const grouped = /^(1|true|yes)$/i.test(String(req.query.grouped ?? ""));
+  const productoIdFilter = String(req.query.productoId ?? "").trim();
+
+  const where: Prisma.ProductDetailWhereInput = { companyId: user.companyId };
+  if (productoIdFilter) {
+    where.productoId = productoIdFilter;
+  }
+  if (q.length > 0) {
+    where.OR = [
+      { pedidoIdDropi: { contains: q } },
+      { productoId: { contains: q } },
+      { productoNombre: { contains: q } },
+      { sku: { contains: q } },
+      { variacion: { contains: q } },
+    ];
+  }
+
+  try {
+    if (grouped && !productoIdFilter) {
+      let whereSql: Prisma.Sql = Prisma.sql`companyId = ${user.companyId} AND producto_id IS NOT NULL AND TRIM(producto_id) <> ''`;
+      if (q.length > 0) {
+        const like = `%${q}%`;
+        whereSql = Prisma.sql`${whereSql} AND (pedido_id_dropi LIKE ${like} OR producto_id LIKE ${like} OR producto_nombre LIKE ${like} OR sku LIKE ${like} OR variacion LIKE ${like})`;
+      }
+
+      type GroupRow = {
+        producto_id: string;
+        producto_nombre: string | null;
+        line_count: bigint;
+        pedidos_distinct: bigint;
+        cantidad_sum: bigint | null;
+        precio_x_cant_sum: unknown;
+        precio_prov_min: unknown;
+        precio_prov_max: unknown;
+        max_id: number;
+        sku_variacion_resumen: string | null;
+      };
+
+      const [groupedRows, countRows] = await Promise.all([
+        prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+          SELECT
+            producto_id,
+            MAX(producto_nombre) AS producto_nombre,
+            COUNT(*) AS line_count,
+            COUNT(DISTINCT pedido_id_dropi) AS pedidos_distinct,
+            SUM(COALESCE(cantidad, 0)) AS cantidad_sum,
+            SUM(COALESCE(precio_proveedor_x_cantidad, 0)) AS precio_x_cant_sum,
+            MIN(precio_proveedor) AS precio_prov_min,
+            MAX(precio_proveedor) AS precio_prov_max,
+            MAX(id) AS max_id,
+            SUBSTRING(
+              GROUP_CONCAT(
+                DISTINCT CONCAT(
+                  COALESCE(NULLIF(TRIM(sku), ''), '—'),
+                  ' · ',
+                  COALESCE(NULLIF(TRIM(variacion), ''), '—')
+                )
+                ORDER BY sku
+                SEPARATOR ' | '
+              ),
+              1,
+              500
+            ) AS sku_variacion_resumen
+          FROM productos_detalle
+          WHERE ${whereSql}
+          GROUP BY producto_id
+          ORDER BY max_id DESC
+          LIMIT ${limit} OFFSET ${skip}
+        `),
+        prisma.$queryRaw<[{ c: bigint }]>(Prisma.sql`
+          SELECT COUNT(*) AS c FROM (
+            SELECT 1 AS x FROM productos_detalle WHERE ${whereSql} GROUP BY producto_id
+          ) t
+        `),
+      ]);
+
+      const total = Number(countRows[0]?.c ?? 0);
+      const pids = groupedRows.map((r) => r.producto_id).filter(Boolean);
+
+      type CatAgg = {
+        variant_count: number;
+        linked_variant_count: number;
+        catalog_link_status: "none" | "partial" | "full";
+        catalog_product_name: string | null;
+        catalog_product_id: string | null;
+      };
+      const catByProduct = new Map<string, CatAgg>();
+
+      if (pids.length > 0) {
+        type SqlVarRow = {
+          producto_id?: string | null;
+          productoId?: string | null;
+          sku?: string | null;
+          variacion_id?: string | null;
+          variacionId?: string | null;
+          variacion?: string | null;
+        };
+        const sqlRowToParts = (v: SqlVarRow) => ({
+          productoId: String(v.producto_id ?? v.productoId ?? "").trim() || null,
+          sku: v.sku ?? null,
+          variacionId: (v.variacion_id ?? v.variacionId ?? null) as string | null,
+          variacion: v.variacion ?? null,
+        });
+
+        const variantRows = await prisma.$queryRaw<SqlVarRow[]>(Prisma.sql`
+          SELECT DISTINCT producto_id, sku, variacion_id, variacion
+          FROM productos_detalle
+          WHERE companyId = ${user.companyId} AND producto_id IN (${Prisma.join(pids)})
+        `);
+        const keys = variantRows.map((v) => {
+          const p = sqlRowToParts(v);
+          return catalogProductService.dropiVariantKey({
+            productoId: p.productoId,
+            sku: p.sku,
+            variacionId: p.variacionId,
+            variacion: p.variacion,
+          });
+        });
+        const linkMap = await catalogProductService.mapVariantKeysToCatalogLinks(user.companyId, keys);
+
+        const byPid = new Map<string, SqlVarRow[]>();
+        for (const v of variantRows) {
+          const pid = String(v.producto_id ?? v.productoId ?? "");
+          if (!byPid.has(pid)) byPid.set(pid, []);
+          byPid.get(pid)!.push(v);
+        }
+
+        for (const [pid, variants] of byPid) {
+          const catNames = new Set<string>();
+          const catIds = new Set<string>();
+          let linked = 0;
+          for (const v of variants) {
+            const p = sqlRowToParts(v);
+            const vk = catalogProductService.dropiVariantKey({
+              productoId: p.productoId,
+              sku: p.sku,
+              variacionId: p.variacionId,
+              variacion: p.variacion,
+            });
+            const link = linkMap.get(vk);
+            if (link) {
+              linked++;
+              catNames.add(link.catalogProductName);
+              catIds.add(link.catalogProductId);
+            }
+          }
+          const n = variants.length;
+          let status: CatAgg["catalog_link_status"] = "none";
+          if (linked === 0) status = "none";
+          else if (linked === n && catIds.size === 1) status = "full";
+          else status = "partial";
+          const singleName = status === "full" ? [...catNames][0] ?? null : null;
+          const singleId = status === "full" ? [...catIds][0] ?? null : null;
+          catByProduct.set(pid, {
+            variant_count: n,
+            linked_variant_count: linked,
+            catalog_link_status: status,
+            catalog_product_name: singleName,
+            catalog_product_id: singleId,
+          });
+        }
+      }
+
+      const items = groupedRows.map((r) => {
+        const cat = catByProduct.get(r.producto_id);
+        return {
+          producto_id: r.producto_id,
+          producto_nombre: r.producto_nombre,
+          line_count: Number(r.line_count),
+          pedidos_distinct: Number(r.pedidos_distinct),
+          cantidad: Number(r.cantidad_sum ?? 0),
+          precio_proveedor_min: r.precio_prov_min != null ? Number(r.precio_prov_min) : null,
+          precio_proveedor_max: r.precio_prov_max != null ? Number(r.precio_prov_max) : null,
+          precio_proveedor_x_cantidad: r.precio_x_cant_sum != null ? Number(r.precio_x_cant_sum) : null,
+          sku_variacion_resumen: r.sku_variacion_resumen ?? "",
+          variant_count: cat?.variant_count ?? 0,
+          linked_variant_count: cat?.linked_variant_count ?? 0,
+          catalog_link_status: cat?.catalog_link_status ?? "none",
+          catalog_product_name: cat?.catalog_product_name ?? null,
+          catalog_product_id: cat?.catalog_product_id ?? null,
+        };
+      });
+
+      return res.json({
+        grouped: true,
+        items,
+        total,
+        page,
+        limit,
+      });
+    }
+
+    const [rows, total] = await Promise.all([
+      prisma.productDetail.findMany({
+        where,
+        orderBy: { id: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.productDetail.count({ where }),
+    ]);
+    const variantKeys = rows.map((r) =>
+      catalogProductService.dropiVariantKey({
+        productoId: r.productoId,
+        sku: r.sku,
+        variacionId: r.variacionId,
+        variacion: r.variacion,
+      }),
+    );
+    const linkMap = await catalogProductService.mapVariantKeysToCatalogLinks(user.companyId, variantKeys);
+
+    return res.json({
+      grouped: false,
+      items: rows.map((r, i) => {
+        const vk = variantKeys[i]!;
+        const link = linkMap.get(vk);
+        return {
+          id: r.id,
+          pedido_id_dropi: r.pedidoIdDropi,
+          producto_id: r.productoId,
+          producto_nombre: r.productoNombre,
+          sku: r.sku,
+          variacion_id: r.variacionId,
+          variacion: r.variacion,
+          cantidad: r.cantidad,
+          precio_proveedor: r.precioProveedor != null ? Number(r.precioProveedor) : null,
+          precio_proveedor_x_cantidad:
+            r.precioProveedorXCantidad != null ? Number(r.precioProveedorXCantidad) : null,
+          variant_key: vk,
+          catalog_product_id: link?.catalogProductId ?? null,
+          catalog_product_name: link?.catalogProductName ?? null,
+          catalog_dropi_link_id: link?.linkId ?? null,
+        };
+      }),
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("[GET /api/order-product-lines]", err);
+    return res.status(500).json({ message: "Error listando líneas de producto." });
+  }
+});
+
 app.post("/api/orders", authRequired, companyRequired, async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const schema = z.object({
@@ -584,6 +992,40 @@ app.post("/api/import/pedidos", ...importExcelMiddleware, importPedidosHandler);
 app.post("/api/import/pedidos/", ...importExcelMiddleware, importPedidosHandler);
 app.post("/api/import/cartera", ...importExcelMiddleware, importCarteraHandler);
 app.post("/api/import/cartera/", ...importExcelMiddleware, importCarteraHandler);
+
+app.get("/api/dropi-retiros", authRequired, companyRequired, requirePermission("moduleConfiguracion"), async (req, res) => {
+  const user = (req as express.Request & { user?: JwtPayload }).user!;
+  const rows = await listDropiWithdrawals(user.companyId);
+  return res.json(rows);
+});
+
+app.patch(
+  "/api/dropi-retiros/:id",
+  authRequired,
+  companyRequired,
+  requireRoles([Role.ADMIN, Role.OPERADOR]),
+  requirePermission("moduleConfiguracion"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const id = String(req.params.id);
+    const parsed = z
+      .object({
+        notaAdicional: z.union([z.string(), z.null()]),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Payload inválido: envía { notaAdicional: string | null }." });
+    const nota =
+      parsed.data.notaAdicional === null
+        ? null
+        : parsed.data.notaAdicional.trim() === ""
+          ? null
+          : parsed.data.notaAdicional.trim();
+
+    const row = await patchDropiWithdrawalNota(user.companyId, id, nota);
+    if (!row) return res.status(404).json({ message: "No encontrado." });
+    return res.json(row);
+  },
+);
 
 async function importProductosHandler(req: express.Request, res: express.Response) {
   if (!req.file) {
@@ -785,6 +1227,61 @@ app.delete("/api/cpa-records/:id", authRequired, companyRequired, requireRoles([
     return res.status(status).json({ message: msg });
   }
 });
+
+app.get(
+  "/api/cpa-experimental",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleCpa"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const q = req.query as Record<string, string | undefined>;
+    try {
+      const rows = await listCpaExperimental(user.companyId, {
+        catalogProductId: q.catalogProductId,
+        advertisingAccountId: q.advertisingAccountId,
+        desde: q.desde,
+        hasta: q.hasta,
+      });
+      return res.json(rows);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ message: msg });
+    }
+  },
+);
+
+app.post(
+  "/api/cpa-experimental/rebuild",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleCpa"),
+  requireRoles([Role.ADMIN, Role.OPERADOR]),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const schema = z.object({
+      catalogProductId: z.string().min(1),
+      advertisingAccountId: z.string().min(1),
+      desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+    try {
+      const result = await rebuildCpaExperimentalRange(
+        user.companyId,
+        parsed.data.catalogProductId,
+        parsed.data.advertisingAccountId,
+        parsed.data.desde,
+        parsed.data.hasta,
+      );
+      return res.json(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ message: msg });
+    }
+  },
+);
 
 app.post("/api/orders/export", authRequired, companyRequired, async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;

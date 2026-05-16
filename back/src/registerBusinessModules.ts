@@ -12,9 +12,16 @@ import * as advertisingAccountService from "./advertisingAccountService";
 import * as operationalExpenseService from "./operationalExpenseService";
 import { importAdvertisingCampaignMetricsExcel } from "./importAdvertisingCampaignMetricsExcel";
 import { importMetaBillingOperationalCsv } from "./importMetaBillingOperationalCsv";
-import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel } from "./metaCampaignExcelParse";
+import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel, aggregateMetricRowsByCampaignAndDate } from "./metaCampaignExcelParse";
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+/** Acepta string o número en JSON (Excel/import) para campos de variante Dropi. */
+const zDropiLinkField = z.preprocess((v) => {
+  if (v === undefined || v === "") return undefined;
+  if (v === null) return null;
+  return String(v);
+}, z.string().nullable().optional());
 
 function user(req: express.Request): JwtPayload {
   return (req as express.Request & { user?: JwtPayload }).user!;
@@ -48,6 +55,8 @@ const importOptionsSchema = z.object({
   shopifySessionsByCampaignId: z.record(z.string(), z.coerce.number()).optional().default({}),
   applyAdvertisingAccount: z.boolean().optional().default(false),
   advertisingAccountId: z.string().nullable().optional(),
+  /** IDs de campaña Meta (se normalizan en servidor). Si se omite, se importan todas las del archivo. */
+  allowedCampaignIds: z.array(z.string().min(1)).min(1).max(500).optional(),
 });
 
 export function registerBusinessModules(app: express.Application) {
@@ -92,6 +101,114 @@ export function registerBusinessModules(app: express.Application) {
       if (r.count === 0) return res.status(404).json({ message: "No encontrado." });
       const row = await catalogProductService.getCatalogProduct(u.companyId, id);
       return res.json(row);
+    },
+  );
+
+  app.get(
+    "/api/catalog-products/:productId/dropi-links",
+    authRequired,
+    companyRequired,
+    requirePermission("moduleCatalogoProductos"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const p = await catalogProductService.getCatalogProduct(u.companyId, productId);
+      if (!p) return res.status(404).json({ message: "Producto no encontrado." });
+      const list = await catalogProductService.listDropiLinks(u.companyId, productId);
+      return res.json(
+        list.map((l) => ({
+          id: l.id,
+          variant_key: l.variantKey,
+          producto_id: l.productoId,
+          sku: l.sku,
+          variacion_id: l.variacionId,
+          producto_nombre: l.productoNombre,
+          variacion: l.variacion,
+          created_at: l.createdAt,
+        })),
+      );
+    },
+  );
+
+  const dropiLinkBodySchema = z.object({
+    productoId: zDropiLinkField,
+    sku: zDropiLinkField,
+    variacionId: zDropiLinkField,
+    variacion: zDropiLinkField,
+    productoNombre: z.string().nullable().optional(),
+  });
+
+  app.post(
+    "/api/catalog-products/:productId/dropi-links/bulk",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCatalogoProductosCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const parsed = z
+        .object({
+          variants: z.array(dropiLinkBodySchema).min(1).max(500),
+        })
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido (variants requerido, 1–500)." });
+      const result = await catalogProductService.bulkUpsertDropiLinks(u.companyId, productId, parsed.data.variants);
+      if (!result.ok) {
+        if (result.code === "NOT_FOUND") return res.status(404).json({ message: "Producto catálogo no encontrado." });
+        return res.status(400).json({ message: "No se pudo vincular." });
+      }
+      return res.status(200).json({
+        applied: result.applied,
+        skipped_conflict: result.skippedConflict,
+        conflicts: result.conflicts,
+      });
+    },
+  );
+
+  app.post(
+    "/api/catalog-products/:productId/dropi-links",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCatalogoProductosCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const parsed = dropiLinkBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      const result = await catalogProductService.upsertDropiLink(u.companyId, productId, parsed.data);
+      if (!result.ok) {
+        if (result.code === "NOT_FOUND") return res.status(404).json({ message: "Producto catálogo no encontrado." });
+        if (result.code === "VARIANT_IN_USE") {
+          return res.status(409).json({
+            message: "Esta variante Dropi ya está vinculada a otro producto del catálogo.",
+          });
+        }
+        return res.status(400).json({ message: "No se pudo vincular." });
+      }
+      return res.status(201).json({
+        id: result.row.id,
+        variant_key: result.row.variantKey,
+        producto_id: result.row.productoId,
+        sku: result.row.sku,
+        variacion_id: result.row.variacionId,
+        producto_nombre: result.row.productoNombre,
+        variacion: result.row.variacion,
+      });
+    },
+  );
+
+  app.delete(
+    "/api/catalog-products/:productId/dropi-links/:linkId",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCatalogoProductosCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const linkId = String(req.params.linkId);
+      const ok = await catalogProductService.deleteDropiLink(u.companyId, productId, linkId);
+      if (!ok) return res.status(404).json({ message: "Vínculo no encontrado." });
+      return res.status(204).send();
     },
   );
 
@@ -210,6 +327,20 @@ export function registerBusinessModules(app: express.Application) {
     },
   );
 
+  app.delete(
+    "/api/advertising-campaign-metrics/:metricId",
+    authRequired,
+    companyRequired,
+    requirePermission("actionEditarMetricasAdvertising"),
+    async (req, res) => {
+      const u = user(req);
+      const metricId = String(req.params.metricId);
+      const ok = await advertisingCampaignMetricService.deleteAdvertisingCampaignMetric(u.companyId, metricId);
+      if (!ok) return res.status(404).json({ message: "Métrica no encontrada." });
+      return res.status(204).send();
+    },
+  );
+
   app.post(
     "/api/catalog-products/:productId/advertising-campaigns/import/preview",
     authRequired,
@@ -223,11 +354,33 @@ export function registerBusinessModules(app: express.Application) {
       if (!p) return res.status(404).json({ message: "Producto no encontrado." });
       const file = req.file;
       if (!file?.buffer) return res.status(400).json({ message: "Archivo requerido." });
-      const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer);
+      const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer, {
+        sourceFilename: file.originalname,
+      });
+      const aggregated = aggregateMetricRowsByCampaignAndDate(rows);
+      const labelByKey = new Map<string, string>();
+      for (const r of aggregated) {
+        const k = normalizeCampaignMapKey(r.externalCampaignId.trim());
+        if (!labelByKey.has(k) && r.displayName?.trim()) labelByKey.set(k, r.displayName.trim());
+      }
+      const uniqueCampaignIds = [...new Set(aggregated.map((r) => normalizeCampaignMapKey(r.externalCampaignId.trim())))].sort(
+        (a, b) => a.localeCompare(b, "es"),
+      );
+      const campaignDisplayNames = Object.fromEntries(labelByKey);
+      const rowCountByCampaign = new Map<string, number>();
+      for (const r of aggregated) {
+        const k = normalizeCampaignMapKey(r.externalCampaignId.trim());
+        rowCountByCampaign.set(k, (rowCountByCampaign.get(k) ?? 0) + 1);
+      }
+      const campaignAggregatedRowCounts = Object.fromEntries(rowCountByCampaign);
+      const sampleRows = aggregated.slice(0, 50).map(({ rawRow: _omit, ...rest }) => rest);
       return res.json({
-        sampleRows: rows.slice(0, 50),
-        totalRows: rows.length,
+        sampleRows,
+        totalRows: aggregated.length,
         errors,
+        uniqueCampaignIds,
+        campaignDisplayNames,
+        campaignAggregatedRowCounts,
       });
     },
   );
@@ -265,11 +418,22 @@ export function registerBusinessModules(app: express.Application) {
         if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
       }
 
+      const normalizedAllowedIds =
+        parsed.data.allowedCampaignIds != null
+          ? [
+              ...new Set(
+                parsed.data.allowedCampaignIds.map((id) => normalizeCampaignMapKey(id)).filter((k) => k.length > 0),
+              ),
+            ]
+          : [];
+
       const result = await importAdvertisingCampaignMetricsExcel(file.buffer, u.companyId, productId, {
+        sourceFilename: file.originalname,
         useShopifySessions: parsed.data.useShopifySessions,
         shopifySessionsByCampaignId: shopifyMap,
         applyAdvertisingAccount: parsed.data.applyAdvertisingAccount,
         advertisingAccountId: parsed.data.applyAdvertisingAccount ? advertisingAccountId : null,
+        ...(normalizedAllowedIds.length > 0 ? { allowedCampaignIds: normalizedAllowedIds } : {}),
       });
 
       return res.json(result);
@@ -328,6 +492,47 @@ export function registerBusinessModules(app: express.Application) {
         orderBy: { metaAccountId: "asc" },
       });
       return res.json(accounts);
+    },
+  );
+
+  app.get(
+    "/api/advertising-accounts/:id/operational-expenses",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleCampanasMeta", "moduleCuentasPublicitarias"]),
+    async (req, res) => {
+      const u = user(req);
+      const id = String(req.params.id);
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, id);
+      if (!acc) return res.status(404).json({ message: "Cuenta no encontrada." });
+      const desde = operationalExpenseService.parseExpenseFilterDate(
+        typeof req.query.desde === "string" ? req.query.desde : undefined,
+      );
+      const hasta = operationalExpenseService.parseExpenseFilterDate(
+        typeof req.query.hasta === "string" ? req.query.hasta : undefined,
+      );
+      const range = desde || hasta ? { desde, hasta } : undefined;
+      const [summary, rows] = await Promise.all([
+        operationalExpenseService.summarizeOperationalExpensesByAdvertisingAccount(u.companyId, id, range),
+        operationalExpenseService.listOperationalExpensesByAdvertisingAccount(u.companyId, id, range),
+      ]);
+      return res.json({
+        summary,
+        items: rows.map((x) => ({
+          id: x.id,
+          fecha: x.fecha.toISOString(),
+          monto: x.monto != null ? Number(x.monto) : 0,
+          concepto: x.concepto,
+          categoria: x.categoria,
+          banco: x.banco,
+          medio: x.medio,
+          cuentaPublicitaria: x.cuentaPublicitaria,
+          advertisingAccountId: x.advertisingAccountId,
+          notas: x.notas,
+          pagado: x.pagado,
+          advertisingAccount: x.advertisingAccount,
+        })),
+      });
     },
   );
 

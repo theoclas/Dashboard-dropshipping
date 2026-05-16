@@ -1,14 +1,26 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel } from "./metaCampaignExcelParse";
+import { toMetricRecordDate } from "./excelImportHelpers";
+import {
+  aggregateMetricRowsByCampaignAndDate,
+  normalizeCampaignMapKey,
+  parseMetaCampaignMetricsExcel,
+} from "./metaCampaignExcelParse";
 
 export type ImportAdvertisingCampaignMetricsOptions = {
+  /** Nombre del archivo subido (`.csv` activa el parser CSV en el servidor). */
+  sourceFilename?: string;
   useShopifySessions: boolean;
   /** Claves normalizadas con `normalizeCampaignMapKey`. */
   shopifySessionsByCampaignId: Record<string, number>;
   applyAdvertisingAccount: boolean;
   /** Si `applyAdvertisingAccount` y valor null, se quita el vínculo. */
   advertisingAccountId: string | null;
+  /**
+   * Si se envía (no vacío), solo se importan filas cuyo ID de campaña normalizado esté en la lista.
+   * Si no se envía, se importan todas las campañas del archivo (comportamiento anterior).
+   */
+  allowedCampaignIds?: string[];
 };
 
 export type ImportAdvertisingCampaignMetricsResult = {
@@ -19,17 +31,15 @@ export type ImportAdvertisingCampaignMetricsResult = {
   errors: string[];
 };
 
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
 export async function importAdvertisingCampaignMetricsExcel(
   buffer: Buffer,
   companyId: string,
   catalogProductId: string,
   options: ImportAdvertisingCampaignMetricsOptions,
 ): Promise<ImportAdvertisingCampaignMetricsResult> {
-  const { rows, errors: parseErrors } = parseMetaCampaignMetricsExcel(buffer);
+  const { rows, errors: parseErrors } = parseMetaCampaignMetricsExcel(buffer, {
+    sourceFilename: options.sourceFilename,
+  });
   const errors = [...parseErrors];
 
   const product = await prisma.catalogProduct.findFirst({ where: { id: catalogProductId, companyId } });
@@ -52,8 +62,21 @@ export async function importAdvertisingCampaignMetricsExcel(
   let metricsCreated = 0;
   let metricsUpdated = 0;
 
-  for (const r of rows) {
-    const recordDate = startOfUtcDay(r.recordDate);
+  const aggregated = aggregateMetricRowsByCampaignAndDate(rows);
+  let rowsToImport = aggregated;
+  if (options.allowedCampaignIds != null && options.allowedCampaignIds.length > 0) {
+    const allow = new Set(options.allowedCampaignIds.map((id) => normalizeCampaignMapKey(id)));
+    rowsToImport = aggregated.filter((r) => allow.has(normalizeCampaignMapKey(r.externalCampaignId.trim())));
+    if (rowsToImport.length === 0) {
+      errors.push(
+        "Ninguna fila coincide con las campañas seleccionadas; revisa los IDs o vuelve a generar la vista previa.",
+      );
+      return { imported: 0, campaignsUpdated: 0, metricsCreated: 0, metricsUpdated: 0, errors };
+    }
+  }
+
+  for (const r of rowsToImport) {
+    const recordDate = toMetricRecordDate(r.recordDate);
     const extId = r.externalCampaignId.trim();
 
     let shopify = r.shopifySessions;
@@ -108,33 +131,30 @@ export async function importAdvertisingCampaignMetricsExcel(
 
       const existingMetric = await prisma.advertisingCampaignMetric.findUnique({
         where: { campaignId_recordDate: { campaignId, recordDate } },
+        select: { id: true },
       });
 
-      if (existingMetric) {
-        await prisma.advertisingCampaignMetric.update({
-          where: { id: existingMetric.id },
-          data: {
-            metaLinkClicks: r.metaLinkClicks ?? null,
-            metaConversationsStarted: r.metaConversationsStarted ?? null,
-            shopifySessions: shopify ?? null,
-            metaExcelSnapshot: snapshot,
-          },
-        });
-        metricsUpdated += 1;
-      } else {
-        await prisma.advertisingCampaignMetric.create({
-          data: {
-            companyId,
-            campaignId,
-            recordDate,
-            metaLinkClicks: r.metaLinkClicks ?? null,
-            metaConversationsStarted: r.metaConversationsStarted ?? null,
-            shopifySessions: shopify ?? null,
-            metaExcelSnapshot: snapshot,
-          },
-        });
-        metricsCreated += 1;
-      }
+      await prisma.advertisingCampaignMetric.upsert({
+        where: { campaignId_recordDate: { campaignId, recordDate } },
+        create: {
+          companyId,
+          campaignId,
+          recordDate,
+          metaLinkClicks: r.metaLinkClicks ?? null,
+          metaConversationsStarted: r.metaConversationsStarted ?? null,
+          shopifySessions: shopify ?? null,
+          metaExcelSnapshot: snapshot,
+        },
+        update: {
+          metaLinkClicks: r.metaLinkClicks ?? null,
+          metaConversationsStarted: r.metaConversationsStarted ?? null,
+          shopifySessions: shopify ?? null,
+          metaExcelSnapshot: snapshot,
+        },
+      });
+
+      if (existingMetric) metricsUpdated += 1;
+      else metricsCreated += 1;
     } catch (e) {
       errors.push(
         `${extId} ${recordDate.toISOString().slice(0, 10)}: ${e instanceof Error ? e.message : String(e)}`,
