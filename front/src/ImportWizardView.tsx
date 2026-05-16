@@ -85,8 +85,11 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
           message.success(
             `Borrado: pedidos ${r.deleted.pedidos}, productos ${r.deleted.productos_detalle}, cartera ${r.deleted.cartera_movimientos}, retiros Dropi ${r.deleted.retiros_dropi}`,
           );
-        } catch {
-          message.error("No se pudo limpiar (revisa contraseña y IMPORT_WIPE_SECRET en el backend).");
+        } catch (e: unknown) {
+          const msg =
+            (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+            "No se pudo limpiar (revisa contraseña y IMPORT_WIPE_SECRET en el backend).";
+          message.error(msg);
         } finally {
           setWipeBusy(null);
         }
@@ -109,8 +112,11 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
         try {
           const r = await wipeCpa(pwd);
           message.success(`CPA eliminadas: ${r.deleted}`);
-        } catch {
-          message.error("No se pudo limpiar CPA.");
+        } catch (e: unknown) {
+          const msg =
+            (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+            "No se pudo limpiar CPA.";
+          message.error(msg);
         } finally {
           setWipeBusy(null);
         }

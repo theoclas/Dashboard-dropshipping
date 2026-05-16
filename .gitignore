@@ -33,3 +33,6 @@ front/.vite/
 Documentos/
 *.xlsx
 back/zout.txt
+backups/
+*.sql
+*.sql.gz
