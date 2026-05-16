@@ -9,6 +9,7 @@ import type {
   CatalogProduct,
   Company,
   CompanyMemberRow,
+  UserMembershipRow,
   CpaRecordRow,
   CpaExperimentalRecordRow,
   CpaExperimentalRebuildResult,
@@ -639,6 +640,23 @@ export async function patchCompanyMember(
 ): Promise<CompanyMemberRow> {
   const { data } = await api.patch<CompanyMemberRow>(`/companies/${companyId}/members/${membershipId}`, body);
   return data;
+}
+
+export async function fetchUserMemberships(userId: string): Promise<UserMembershipRow[]> {
+  const { data } = await api.get<UserMembershipRow[]>(`/users/${userId}/memberships`);
+  return data;
+}
+
+export async function addUserMembership(
+  userId: string,
+  body: { companyId: string; role: Role },
+): Promise<UserMembershipRow> {
+  const { data } = await api.post<UserMembershipRow>(`/users/${userId}/memberships`, body);
+  return data;
+}
+
+export async function removeUserMembership(userId: string, companyId: string): Promise<void> {
+  await api.delete(`/users/${userId}/memberships/${companyId}`);
 }
 
 export async function patchCompanySettings(

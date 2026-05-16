@@ -51,9 +51,8 @@ export function AdminUsersPage() {
           Usuarios
         </Title>
         <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          Crear cuentas nuevas, definir el nivel (rol) y, si es operador o lector, qué módulos y acciones tienen en la
-          aplicación. Para <strong>vincular una cuenta ya existente</strong> a la empresa, usa{" "}
-          <strong>Administración → Empresas</strong> → Gestionar.
+          Crear cuentas, asignar usuarios existentes y gestionar en <strong>Rol, permisos y empresas</strong> el acceso a
+          cada empresa (incluido el tuyo). Solo puedes administrar empresas donde eres ADMIN.
         </Paragraph>
       </div>
 
@@ -73,7 +72,7 @@ export function AdminUsersPage() {
       </Card>
 
       {usersCompanyId ? (
-        <CompanyUserManagement key={usersCompanyId} companyId={usersCompanyId} showAssignExisting={false} />
+        <CompanyUserManagement key={usersCompanyId} companyId={usersCompanyId} showAssignExisting />
       ) : null}
     </Space>
   );

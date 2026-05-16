@@ -297,11 +297,29 @@ app.get("/api/companies", authRequired, async (_req, res) => {
   return res.json(companies);
 });
 
+async function callerIsCompanyAdmin(userId: string, companyId: string): Promise<boolean> {
+  const m = await prisma.userCompany.findFirst({
+    where: { userId, companyId, role: Role.ADMIN },
+  });
+  return Boolean(m);
+}
+
 app.post("/api/companies", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
   const schema = z.object({ name: z.string().min(2), slug: z.string().min(2) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
-  const company = await prisma.company.create({ data: parsed.data });
+  const company = await prisma.$transaction(async (tx) => {
+    const c = await tx.company.create({ data: parsed.data });
+    await tx.userCompany.create({
+      data: { userId: caller.userId, companyId: c.id, role: Role.ADMIN },
+    });
+    const u = await tx.user.findUnique({ where: { id: caller.userId }, select: { activeCompany: true } });
+    if (!u?.activeCompany) {
+      await tx.user.update({ where: { id: caller.userId }, data: { activeCompany: c.id } });
+    }
+    return c;
+  });
   return res.status(201).json(company);
 });
 
@@ -512,6 +530,111 @@ app.patch("/api/companies/:companyId/members/:membershipId", authRequired, requi
     username: updated.user.username,
     fullName: updated.user.fullName,
   });
+});
+
+/** Empresas de un usuario (todas las membresías; `canManage` si el caller es ADMIN en esa empresa). */
+app.get("/api/users/:userId/memberships", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const userId = String(req.params.userId);
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!target) return res.status(404).json({ message: "Usuario no encontrado." });
+
+  const callerAdminRows = await prisma.userCompany.findMany({
+    where: { userId: caller.userId, role: Role.ADMIN },
+    select: { companyId: true },
+  });
+  const adminSet = new Set(callerAdminRows.map((r) => r.companyId));
+
+  const rows = await prisma.userCompany.findMany({
+    where: { userId },
+    include: { company: { select: { id: true, name: true, slug: true, isActive: true } } },
+    orderBy: { company: { name: "asc" } },
+  });
+
+  return res.json(
+    rows.map((m) => ({
+      membershipId: m.id,
+      companyId: m.companyId,
+      companyName: m.company.name,
+      companySlug: m.company.slug,
+      companyActive: m.company.isActive,
+      role: m.role,
+      canManage: adminSet.has(m.companyId),
+    })),
+  );
+});
+
+app.post("/api/users/:userId/memberships", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const userId = String(req.params.userId);
+  const schema = z.object({ companyId: z.string().min(1), role: z.nativeEnum(Role) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+
+  const { companyId, role } = parsed.data;
+  if (!(await callerIsCompanyAdmin(caller.userId, companyId))) {
+    return res.status(403).json({ message: "Solo un administrador de esa empresa puede asignarla." });
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!target) return res.status(404).json({ message: "Usuario no encontrado." });
+
+  const company = await prisma.company.findUnique({ where: { id: companyId } });
+  if (!company) return res.status(404).json({ message: "Empresa no encontrada." });
+
+  const membership = await prisma.userCompany.upsert({
+    where: { userId_companyId: { userId, companyId } },
+    update: { role },
+    create: { userId, companyId, role },
+    include: { company: { select: { id: true, name: true, slug: true, isActive: true } } },
+  });
+
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { activeCompany: true } });
+  if (!u?.activeCompany) {
+    await prisma.user.update({ where: { id: userId }, data: { activeCompany: companyId } });
+  }
+
+  return res.status(201).json({
+    membershipId: membership.id,
+    companyId: membership.companyId,
+    companyName: membership.company.name,
+    companySlug: membership.company.slug,
+    companyActive: membership.company.isActive,
+    role: membership.role,
+    canManage: true,
+  });
+});
+
+app.delete("/api/users/:userId/memberships/:companyId", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const userId = String(req.params.userId);
+  const companyId = String(req.params.companyId);
+
+  if (!(await callerIsCompanyAdmin(caller.userId, companyId))) {
+    return res.status(403).json({ message: "Solo un administrador de esa empresa puede quitarla." });
+  }
+
+  const membership = await prisma.userCompany.findUnique({
+    where: { userId_companyId: { userId, companyId } },
+  });
+  if (!membership) return res.status(404).json({ message: "El usuario no pertenece a esa empresa." });
+
+  const total = await prisma.userCompany.count({ where: { userId } });
+  if (total <= 1) {
+    return res.status(400).json({ message: "El usuario debe pertenecer al menos a una empresa." });
+  }
+
+  await prisma.userCompany.delete({ where: { id: membership.id } });
+
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { activeCompany: true } });
+  if (u?.activeCompany === companyId) {
+    const next = await prisma.userCompany.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
+    if (next) {
+      await prisma.user.update({ where: { id: userId }, data: { activeCompany: next.companyId } });
+    }
+  }
+
+  return res.json({ ok: true });
 });
 
 function serializeOrder(o: Order) {

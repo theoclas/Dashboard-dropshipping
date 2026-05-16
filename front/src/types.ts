@@ -79,6 +79,17 @@ export type CompanyMemberRow = {
   fullName: string;
 };
 
+/** Membresía de un usuario en una empresa (GET /users/:id/memberships). */
+export type UserMembershipRow = {
+  membershipId: string;
+  companyId: string;
+  companyName: string;
+  companySlug: string;
+  companyActive: boolean;
+  role: Role;
+  canManage: boolean;
+};
+
 /** Resultado de búsqueda para asignar usuario a empresa (GET assignable-users). */
 export type AssignableCompanyUser = {
   id: string;

@@ -3,9 +3,12 @@ import {
   Button,
   Card,
   Checkbox,
+  Divider,
   Drawer,
+  Flex,
   Form,
   Input,
+  Popconfirm,
   Select,
   Space,
   Spin,
@@ -16,15 +19,25 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
+  addUserMembership,
   assignUserToCompany,
   createCompanyUserAccount,
   fetchAssignableUsersForCompany,
   fetchCompanyMembers,
+  fetchUserMemberships,
   patchCompanyMember,
+  removeUserMembership,
 } from "../../api";
+import { useAuth } from "../../contexts/AuthContext";
 import { OPERATOR_PERMISSION_LABELS, permissionGroups } from "../../operatorPermissionLabels";
 import { mergeOperatorPermissions } from "../../operatorPermissionsMerge";
-import type { AssignableCompanyUser, CompanyMemberRow, OperatorPermissionKey, Role } from "../../types";
+import type {
+  AssignableCompanyUser,
+  CompanyMemberRow,
+  OperatorPermissionKey,
+  Role,
+  UserMembershipRow,
+} from "../../types";
 
 const { Text, Paragraph } = Typography;
 
@@ -43,6 +56,7 @@ type Props = {
 };
 
 export function CompanyUserManagement({ companyId, heading, showAssignExisting = true }: Props) {
+  const { user: authUser, refresh: refreshAuth } = useAuth();
   const [assignForm] = Form.useForm<{ userId: string; role: Role }>();
   const [createUserForm] = Form.useForm<{
     username: string;
@@ -66,6 +80,22 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
   const [permState, setPermState] = useState<Record<OperatorPermissionKey, boolean>>(
     () => mergeOperatorPermissions("OPERADOR", null),
   );
+
+  const [userMemberships, setUserMemberships] = useState<UserMembershipRow[]>([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+  const [addCompanyId, setAddCompanyId] = useState<string>("");
+  const [addCompanyRole, setAddCompanyRole] = useState<Role>("OPERADOR");
+  const [addingCompany, setAddingCompany] = useState(false);
+
+  const adminCompaniesForAssign = useMemo(
+    () => authUser?.companies.filter((c) => c.role === "ADMIN") ?? [],
+    [authUser],
+  );
+
+  const companiesAvailableToAdd = useMemo(() => {
+    const inUser = new Set(userMemberships.map((m) => m.companyId));
+    return adminCompaniesForAssign.filter((c) => !inUser.has(c.companyId));
+  }, [adminCompaniesForAssign, userMemberships]);
 
   const loadMembers = useCallback(async () => {
     if (!companyId) return;
@@ -120,12 +150,31 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
     };
   }, []);
 
-  const openPermissionsDrawer = useCallback((row: CompanyMemberRow) => {
-    setEditingMember(row);
-    setDrawerRole(row.role);
-    setPermState(mergeOperatorPermissions(row.role, row.operatorPermissions));
-    setDrawerOpen(true);
+  const loadUserMemberships = useCallback(async (userId: string) => {
+    setMembershipsLoading(true);
+    try {
+      const list = await fetchUserMemberships(userId);
+      setUserMemberships(list);
+    } catch {
+      message.error("No se pudieron cargar las empresas del usuario.");
+      setUserMemberships([]);
+    } finally {
+      setMembershipsLoading(false);
+    }
   }, []);
+
+  const openPermissionsDrawer = useCallback(
+    (row: CompanyMemberRow) => {
+      setEditingMember(row);
+      setDrawerRole(row.role);
+      setPermState(mergeOperatorPermissions(row.role, row.operatorPermissions));
+      setAddCompanyId("");
+      setAddCompanyRole("OPERADOR");
+      setDrawerOpen(true);
+      void loadUserMemberships(row.userId);
+    },
+    [loadUserMemberships],
+  );
 
   const memberColumns: ColumnsType<CompanyMemberRow> = useMemo(
     () => [
@@ -184,7 +233,7 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
         align: "right",
         render: (_: unknown, row) => (
           <Button type="link" size="small" style={{ padding: "0 4px" }} onClick={() => openPermissionsDrawer(row)}>
-            Rol y permisos
+            Rol, permisos y empresas
           </Button>
         ),
       },
@@ -309,8 +358,8 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
 
       <Card title="Miembros, rol y permisos de operador" styles={{ body: { paddingTop: 12 } }}>
         <Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          Usa <strong>Rol y permisos</strong> para cambiar el nivel (ADMIN / OPERADOR / LECTOR) y, si no es ADMIN, marcar
-          qué puede hacer el operador en la app (importar, campañas, gasto operacional, etc.).
+          Usa <strong>Rol, permisos y empresas</strong> para el nivel en esta empresa, los permisos de operador y las
+          demás empresas a las que pertenece el usuario (incluido tú mismo).
         </Paragraph>
         <div style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <Table<CompanyMemberRow>
@@ -329,12 +378,13 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
       </Card>
 
       <Drawer
-        title={editingMember ? `Rol y permisos — ${editingMember.fullName}` : "Permisos"}
-        width={560}
+        title={editingMember ? `Usuario — ${editingMember.fullName}` : "Usuario"}
+        width={600}
         open={drawerOpen}
         onClose={() => {
           setDrawerOpen(false);
           setEditingMember(null);
+          setUserMemberships([]);
         }}
         extra={
           <Space>
@@ -387,7 +437,150 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
               <Text type="secondary">Email: {editingMember.email}</Text>
             </div>
             <div>
-              <Text strong>Rol en la empresa</Text>
+              <Text strong>Empresas asignadas</Text>
+              <Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 8 }}>
+                Solo puedes agregar o quitar empresas donde tú eres ADMIN (incluido tu propio usuario).
+              </Paragraph>
+              {membershipsLoading ? (
+                <Spin />
+              ) : userMemberships.length === 0 ? (
+                <Text type="secondary">Sin empresas.</Text>
+              ) : (
+                <Space direction="vertical" style={{ width: "100%" }} size="small">
+                  {userMemberships.map((m) => (
+                    <Flex key={m.companyId} justify="space-between" align="center" wrap="wrap" gap={8}>
+                      <Space size="small" wrap>
+                        <Text>
+                          {m.companyName}
+                          <Text type="secondary"> ({m.companySlug})</Text>
+                        </Text>
+                        {!m.companyActive ? <Tag color="default">inactiva</Tag> : null}
+                        {m.companyId === companyId ? <Tag color="blue">esta vista</Tag> : null}
+                      </Space>
+                      <Space size="small" wrap>
+                        {m.canManage ? (
+                          <Select
+                            size="small"
+                            style={{ width: 118 }}
+                            value={m.role}
+                            options={roleOptions}
+                            onChange={async (role) => {
+                              try {
+                                await addUserMembership(editingMember.userId, { companyId: m.companyId, role });
+                                message.success("Rol actualizado en esa empresa.");
+                                void loadUserMemberships(editingMember.userId);
+                                if (m.companyId === companyId) void loadMembers();
+                                if (editingMember.userId === authUser?.id) void refreshAuth();
+                              } catch {
+                                message.error("No se pudo cambiar el rol.");
+                              }
+                            }}
+                          />
+                        ) : (
+                          <Tag>{m.role}</Tag>
+                        )}
+                        {m.canManage ? (
+                          <Popconfirm
+                            title="¿Quitar de esta empresa?"
+                            description="El usuario dejará de ver datos de esa empresa."
+                            onConfirm={async () => {
+                              try {
+                                await removeUserMembership(editingMember.userId, m.companyId);
+                                message.success("Empresa quitada.");
+                                void loadUserMemberships(editingMember.userId);
+                                void loadMembers();
+                                if (editingMember.userId === authUser?.id) void refreshAuth();
+                              } catch (e: unknown) {
+                                const msg =
+                                  (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                                  "No se pudo quitar.";
+                                message.error(msg);
+                              }
+                            }}
+                          >
+                            <Button type="link" size="small" danger>
+                              Quitar
+                            </Button>
+                          </Popconfirm>
+                        ) : null}
+                      </Space>
+                    </Flex>
+                  ))}
+                </Space>
+              )}
+              {companiesAvailableToAdd.length > 0 ? (
+                <Space wrap style={{ marginTop: 12 }} align="end">
+                  <div>
+                    <Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
+                      Agregar empresa
+                    </Text>
+                    <Select
+                      style={{ minWidth: 220 }}
+                      placeholder="Selecciona empresa"
+                      value={addCompanyId || undefined}
+                      options={companiesAvailableToAdd.map((c) => ({
+                        value: c.companyId,
+                        label: c.name,
+                      }))}
+                      onChange={setAddCompanyId}
+                      allowClear
+                    />
+                  </div>
+                  <div>
+                    <Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
+                      Rol
+                    </Text>
+                    <Select style={{ width: 118 }} value={addCompanyRole} options={roleOptions} onChange={setAddCompanyRole} />
+                  </div>
+                  <Button
+                    type="primary"
+                    loading={addingCompany}
+                    disabled={!addCompanyId}
+                    onClick={async () => {
+                      if (!addCompanyId) return;
+                      setAddingCompany(true);
+                      try {
+                        await addUserMembership(editingMember.userId, {
+                          companyId: addCompanyId,
+                          role: addCompanyRole,
+                        });
+                        message.success(
+                          editingMember.userId === authUser?.id
+                            ? "Empresa agregada. Si no la ves en el menú, cambia de empresa."
+                            : "Empresa agregada.",
+                        );
+                        setAddCompanyId("");
+                        setAddCompanyRole("OPERADOR");
+                        void loadUserMemberships(editingMember.userId);
+                        void loadMembers();
+                        if (editingMember.userId === authUser?.id) void refreshAuth();
+                      } catch (e: unknown) {
+                        const msg =
+                          (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                          "No se pudo agregar.";
+                        message.error(msg);
+                      } finally {
+                        setAddingCompany(false);
+                      }
+                    }}
+                  >
+                    Agregar
+                  </Button>
+                </Space>
+              ) : userMemberships.length > 0 ? (
+                <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+                  Ya está en todas las empresas que administras.
+                </Text>
+              ) : null}
+            </div>
+
+            <Divider style={{ margin: "4px 0" }} />
+
+            <div>
+              <Text strong>Rol en esta empresa</Text>
+              <Text type="secondary" style={{ display: "block", marginTop: 4, marginBottom: 0 }}>
+                Empresa de la vista actual (selector arriba).
+              </Text>
               <Select
                 style={{ width: "100%", marginTop: 8 }}
                 value={drawerRole}
