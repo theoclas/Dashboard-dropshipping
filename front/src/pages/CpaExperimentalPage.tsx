@@ -197,8 +197,10 @@ export function CpaExperimentalPage() {
         title: colTitle("Fecha", "Fecha"),
         dataIndex: "fecha",
         key: "fecha",
-        width: 110,
-        render: (v: string) => fmtApiDateIsoYmd(v),
+        width: 128,
+        render: (v: string) => (
+          <span style={{ whiteSpace: "nowrap" }}>{fmtApiDateIsoYmd(v)}</span>
+        ),
       },
       { title: colTitle("Producto", "Producto"), dataIndex: "producto", key: "prod", ellipsis: true },
       ...(byProductOnly
@@ -490,7 +492,7 @@ export function CpaExperimentalPage() {
           dataSource={rows}
           columns={columns}
           pagination={{ pageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 1640 }}
+          scroll={{ x: 1658 }}
           summary={() =>
             rangeTotals ? (
               <Table.Summary fixed>

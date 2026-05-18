@@ -6,6 +6,7 @@ import {
   Flex,
   Row,
   Space,
+  Table,
   Tooltip,
   Typography,
   message,
@@ -25,6 +26,7 @@ import {
   StopOutlined,
   TruckOutlined,
   UndoOutlined,
+  FundOutlined,
   WalletOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
@@ -69,6 +71,13 @@ export type DashboardMetrics = {
   gananciaProyectada: number;
   cpaPromedio: number;
   totalCpaSpend: number;
+  gastoPublicitarioMeta: number;
+  gastoPublicitarioMetaByProduct: Array<{
+    productId: string;
+    productName: string;
+    amount: number;
+    metricDays: number;
+  }>;
   gastoOperacional: number;
   retirosDropiTotal: number;
   retirosDropiCount: number;
@@ -108,12 +117,16 @@ function MetricCard({
   value,
   hint,
   emphasize,
+  onClick,
+  active,
 }: {
   icon: ReactNode;
   label: ReactNode;
   value: ReactNode;
   hint?: ReactNode;
   emphasize?: boolean;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   const { token } = theme.useToken();
   return (
@@ -122,10 +135,16 @@ function MetricCard({
       style={{
         ...cardSurface,
         height: "100%",
+        cursor: onClick ? "pointer" : undefined,
         ...(emphasize
           ? { borderColor: token.colorPrimary, boxShadow: `0 0 0 1px ${token.colorPrimary}33 inset` }
           : {}),
+        ...(active
+          ? { borderColor: token.colorInfo, boxShadow: `0 0 0 1px ${token.colorInfo}55 inset` }
+          : {}),
       }}
+      onClick={onClick}
+      hoverable={Boolean(onClick)}
     >
       <Space direction="vertical" size={10} style={{ width: "100%" }}>
         <Flex justify="space-between" align="center" style={{ width: "100%" }}>
@@ -154,6 +173,7 @@ export function DashboardPage() {
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(defaultRange);
   const [data, setData] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -177,6 +197,10 @@ export function DashboardPage() {
   useEffect(() => {
     void fetchDashboard();
   }, [fetchDashboard]);
+
+  useEffect(() => {
+    setMetaSpendDetailOpen(false);
+  }, [range, data?.companyId]);
 
   return (
     <Space direction="vertical" size={28} style={{ width: "100%" }}>
@@ -411,6 +435,22 @@ export function DashboardPage() {
             />
           </Col>
           ) : null}
+          {isDashboardCardVisible(dashCfg, "card_gastoPublicitarioMeta") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<FundOutlined />}
+              label="Gasto publicitario"
+              value={loading ? "…" : `$${fmtMoney(data?.gastoPublicitarioMeta ?? 0)}`}
+              active={metaSpendDetailOpen}
+              onClick={() => setMetaSpendDetailOpen((o) => !o)}
+              hint={
+                <Tooltip title="Suma del «Importe gastado» en métricas importadas en Campañas Meta (por día y campaña). Clic para ver desglose por producto.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
           {isDashboardCardVisible(dashCfg, "card_gastoOperacional") ? (
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
@@ -444,6 +484,63 @@ export function DashboardPage() {
           </Col>
           ) : null}
         </Row>
+        {metaSpendDetailOpen && isDashboardCardVisible(dashCfg, "card_gastoPublicitarioMeta") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Gasto publicitario por producto"
+            extra={
+              <Link to="/app/campanas-meta" style={{ fontSize: 13 }}>
+                Campañas Meta
+              </Link>
+            }
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Importe gastado del Excel Meta en el rango seleccionado, agrupado por producto del catálogo vinculado a cada
+              campaña.
+            </Text>
+            <Table
+              size="small"
+              rowKey="productId"
+              loading={loading}
+              pagination={false}
+              locale={{ emptyText: "Sin gasto con importe en métricas Meta para este rango." }}
+              dataSource={data?.gastoPublicitarioMetaByProduct ?? []}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                {
+                  title: "Gasto",
+                  dataIndex: "amount",
+                  key: "amount",
+                  align: "right",
+                  width: 140,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Días con dato",
+                  dataIndex: "metricDays",
+                  key: "days",
+                  align: "right",
+                  width: 120,
+                  render: (n: number) => fmtInteger(n),
+                },
+              ]}
+              summary={() =>
+                (data?.gastoPublicitarioMetaByProduct?.length ?? 0) > 0 ? (
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0}>
+                      <Text strong>Total</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={1} align="right">
+                      <Text strong>${fmtMoney(data?.gastoPublicitarioMeta ?? 0)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} />
+                  </Table.Summary.Row>
+                ) : null
+              }
+            />
+          </Card>
+        ) : null}
       </div>
 
       <div>

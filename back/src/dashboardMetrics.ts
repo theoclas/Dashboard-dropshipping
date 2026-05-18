@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { getMetaAdvertisingSpendSummary, type MetaSpendByProductRow } from "./metaCampaignSpend";
 
 function parseYmd(s: string | undefined): Date | null {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -124,6 +125,9 @@ export type DashboardMetricsPayload = {
   gananciaProyectada: number;
   cpaPromedio: number;
   totalCpaSpend: number;
+  /** Suma de «Importe gastado» en métricas Meta importadas (Campañas Meta) en el rango. */
+  gastoPublicitarioMeta: number;
+  gastoPublicitarioMetaByProduct: MetaSpendByProductRow[];
   gastoOperacional: number;
   /** Suma de montos en retiros_dropi (import cartera: descripción retiro saldo) con fecha en el rango. */
   retirosDropiTotal: number;
@@ -234,7 +238,8 @@ SELECT
 
   const finParams: unknown[] = hasRange ? [companyId, start, end, companyId, start, end, companyId, start, end] : [companyId, companyId, companyId];
 
-  const [aggRows, productRows, finRows, cpaSpend, cpaAvgRow, opExpenseAgg, retirosAgg] = await Promise.all([
+  const [aggRows, productRows, finRows, cpaSpend, cpaAvgRow, opExpenseAgg, retirosAgg, metaSpend] =
+    await Promise.all([
     prisma.$queryRawUnsafe<AggRow[]>(aggSql, ...aggParams),
     prisma.$queryRawUnsafe<{ productos_vendidos: unknown }[]>(productSql, ...aggParams),
     prisma.$queryRawUnsafe<FinRow[]>(finSql, ...finParams),
@@ -254,6 +259,7 @@ SELECT
       },
     }),
     aggregateRetirosDropiSafe(prisma, companyId, Boolean(hasRange && start && end), start, end),
+    getMetaAdvertisingSpendSummary(prisma, companyId, opts),
   ]);
 
   const a = aggRows[0];
@@ -313,6 +319,8 @@ SELECT
     gananciaProyectada,
     cpaPromedio: cpaAvg,
     totalCpaSpend,
+    gastoPublicitarioMeta: metaSpend.total,
+    gastoPublicitarioMetaByProduct: metaSpend.byProduct,
     gastoOperacional,
     retirosDropiTotal,
     retirosDropiCount,
