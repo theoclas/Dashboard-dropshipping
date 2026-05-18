@@ -63,6 +63,18 @@ export const orderListQuerySchema = z.object({
   direccion: zTrimmedOptional(),
   costo_proveedor: zTrimmedOptional(),
   costo_devolucion_estimado: zTrimmedOptional(),
+  /** `true` / `1` / `ok`: cartera en OK; `false` / `0` / `no`: sin OK o vacío. */
+  cartera_ok: z
+    .union([z.string(), z.number(), z.boolean()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === "boolean") return v;
+      const s = String(v).trim().toLowerCase();
+      if (s === "1" || s === "true" || s === "ok" || s === "yes" || s === "si") return true;
+      if (s === "0" || s === "false" || s === "no") return false;
+      return undefined;
+    }),
   /** `1` / `true`: solo pedidos sin número de guía (logística). */
   guia_blank: z
     .union([z.string(), z.number(), z.boolean()])
@@ -176,6 +188,13 @@ export function buildPrismaOrderWhere(
   addContains(and, "estatusOriginal", f.estatus_original);
   addContains(and, "ultimoMov", f.ultimo_mov);
   addContains(and, "estadoCartera", f.estado_cartera);
+  if (f.cartera_ok === true) {
+    and.push({ estadoCartera: "OK" });
+  } else if (f.cartera_ok === false) {
+    and.push({
+      OR: [{ estadoCartera: null }, { estadoCartera: "" }, { estadoCartera: { not: "OK" } }],
+    });
+  }
   addContains(and, "departamento", f.departamento);
   addContains(and, "direccion", f.direccion);
 

@@ -5,6 +5,7 @@ import {
   DatePicker,
   Form,
   Input,
+  Select,
   Space,
   Table,
   Tag,
@@ -94,6 +95,10 @@ function isSinMapearUnificado(v: string | null | undefined): boolean {
   return (v ?? "").trim().toUpperCase() === "SIN MAPEAR";
 }
 
+function isPedidoCarteraOk(estado: string | null | undefined): boolean {
+  return String(estado ?? "").trim().toUpperCase() === "OK";
+}
+
 const estadoColors: Record<string, string> = {
   ENTREGADO: "green",
   DEVOLUCION: "red",
@@ -172,6 +177,7 @@ export function OrdersPage() {
     ...initialColumnFilters,
     startDate: "",
     endDate: "",
+    cartera_ok: "" as "" | "ok" | "no",
   });
   const [sortField, setSortField] = useState<string>("id");
   const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
@@ -194,6 +200,8 @@ export function OrdersPage() {
       params.startDate = filters.startDate;
       params.endDate = filters.endDate;
     }
+    if (filters.cartera_ok === "ok") params.cartera_ok = true;
+    else if (filters.cartera_ok === "no") params.cartera_ok = false;
     return params;
   }, [filters, sortField, sortOrder]);
 
@@ -519,13 +527,70 @@ export function OrdersPage() {
       },
     },
     {
-      title: "Est. Cartera",
+      title: "Cartera OK",
       dataIndex: "estado_cartera",
-      key: "estado_cartera",
-      width: 90,
+      key: "cartera_ok",
+      width: 108,
+      align: "center",
       sorter: true,
-      ...getColumnSearchProps("Est. Cartera", "estado_cartera"),
-      render: (v: string | null) => (v === "OK" ? <Tag color="green">OK</Tag> : "-"),
+      filteredValue: filters.cartera_ok ? [filters.cartera_ok] : null,
+      filterDropdown: ({ confirm, clearFilters }) => (
+        <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+          <Select
+            allowClear
+            placeholder="Filtrar"
+            style={{ width: 160, marginBottom: 8, display: "block" }}
+            value={filters.cartera_ok || undefined}
+            onChange={(v: "" | "ok" | "no" | undefined) => {
+              setFilters((prev) => ({ ...prev, cartera_ok: v ?? "" }));
+            }}
+            options={[
+              { value: "ok", label: "Sí — cartera OK" },
+              { value: "no", label: "No — pendiente u otro" },
+            ]}
+          />
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => {
+                setPage(1);
+                confirm();
+              }}
+            >
+              Aplicar
+            </Button>
+            <Button
+              size="small"
+              onClick={() => {
+                setFilters((prev) => ({ ...prev, cartera_ok: "" }));
+                clearFilters?.();
+                setPage(1);
+                confirm();
+              }}
+            >
+              Limpiar
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered: boolean) => (
+        <SearchOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
+      ),
+      render: (v: string | null) => {
+        if (isPedidoCarteraOk(v)) {
+          return <Tag color="success">OK</Tag>;
+        }
+        const raw = String(v ?? "").trim();
+        if (!raw) {
+          return <Tag color="warning">No</Tag>;
+        }
+        return (
+          <Tooltip title={raw}>
+            <Tag color="error">No</Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Días últ. mov",
@@ -800,6 +865,10 @@ export function OrdersPage() {
                 const first = Array.isArray(fv) ? fv[0] : undefined;
                 next[k] = first != null && first !== "" ? String(first) : "";
               }
+              const fvOk = tableFilters?.cartera_ok;
+              const firstOk = Array.isArray(fvOk) ? fvOk[0] : undefined;
+              next.cartera_ok =
+                firstOk === "ok" || firstOk === "no" ? (firstOk as "ok" | "no") : "";
               return next;
             });
             setSelectedRowKeys([]);
