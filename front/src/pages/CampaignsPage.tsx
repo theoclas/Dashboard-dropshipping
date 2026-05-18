@@ -636,29 +636,52 @@ export function CampaignsPage() {
     );
   };
 
+  const sortMetricNullableNumber = (
+    a: number | null | undefined,
+    b: number | null | undefined,
+  ): number => {
+    const toN = (v: number | null | undefined) =>
+      v != null && !Number.isNaN(Number(v)) ? Number(v) : null;
+    const na = toN(a);
+    const nb = toN(b);
+    if (na === null && nb === null) return 0;
+    if (na === null) return -1;
+    if (nb === null) return 1;
+    return na - nb;
+  };
+
   const metricColumns: ColumnsType<AdvertisingCampaignMetricRow> = [
     {
       title: "Fecha",
       dataIndex: "recordDate",
       key: "d",
+      sorter: (a, b) => dayjs(a.recordDate).valueOf() - dayjs(b.recordDate).valueOf(),
+      sortDirections: ["descend", "ascend"],
+      defaultSortOrder: "descend",
       render: (v: string) => fmtApiDateIsoYmd(v),
     },
     {
       title: "Clics",
       dataIndex: "metaLinkClicks",
       key: "cl",
+      sorter: (a, b) => sortMetricNullableNumber(a.metaLinkClicks, b.metaLinkClicks),
+      sortDirections: ["descend", "ascend"],
       render: (v, row) => renderMetricNumberCell("metaLinkClicks", "cl", v as number | null | undefined, row),
     },
     {
       title: "Conversaciones",
       dataIndex: "metaConversationsStarted",
       key: "co",
+      sorter: (a, b) => sortMetricNullableNumber(a.metaConversationsStarted, b.metaConversationsStarted),
+      sortDirections: ["descend", "ascend"],
       render: (v, row) => renderMetricNumberCell("metaConversationsStarted", "co", v as number | null | undefined, row),
     },
     {
       title: "Sesiones Shopify",
       dataIndex: "shopifySessions",
       key: "sh",
+      sorter: (a, b) => sortMetricNullableNumber(a.shopifySessions, b.shopifySessions),
+      sortDirections: ["descend", "ascend"],
       render: (v, row) => renderMetricNumberCell("shopifySessions", "sh", v as number | null | undefined, row),
     },
     ...(canEditMetrics
@@ -1051,6 +1074,7 @@ export function CampaignsPage() {
             dataSource={metrics}
             columns={metricColumns}
             pagination={{ pageSize: 20 }}
+            showSorterTooltip={{ title: "Ordenar" }}
             onRow={(row) => ({
               onClick: () => setMetricDetail(row),
               style: { cursor: "pointer" },
