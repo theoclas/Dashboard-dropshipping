@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "node scripts/migrate-deploy.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "db:backup": "node scripts/dump-db.mjs"

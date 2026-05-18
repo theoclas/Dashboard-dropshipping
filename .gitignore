@@ -36,3 +36,7 @@ back/zout.txt
 backups/
 *.sql
 *.sql.gz
+# Migraciones Prisma sí van al repo (VPS: npm run prisma:migrate:deploy)
+!back/prisma/migrations/
+!back/prisma/migrations/**/
+!back/prisma/migrations/**/*.sql
