@@ -56,114 +56,16 @@ function dateLTE(a: { y: number; m: number; d: number }, b: { y: number; m: numb
   return a.d <= b.d;
 }
 
-function fechaYmdKey(fecha: Date): string {
-  return fecha.toISOString().slice(0, 10);
-}
-
-type CpaExperimentalDbRow = Awaited<
-  ReturnType<
-    typeof prisma.cpaExperimentalRecord.findMany<{
-      include: {
-        catalogProduct: { select: { id: true; name: true; sku: true } };
-        advertisingAccount: { select: { id: true; metaAccountId: true; businessName: true } };
-      };
-    }>
-  >
->[number];
-
-/** Suma filas diarias de varias cuentas en una fila por producto + día y recalcula columnas derivadas. */
-function aggregateCpaExperimentalByDay(rows: CpaExperimentalDbRow[]): CpaExperimentalDbRow[] {
-  const byDay = new Map<string, CpaExperimentalDbRow[]>();
-  for (const r of rows) {
-    const key = fechaYmdKey(r.fecha);
-    const list = byDay.get(key);
-    if (list) list.push(r);
-    else byDay.set(key, [r]);
-  }
-
-  const aggregated: CpaExperimentalDbRow[] = [];
-  for (const [dayKey, group] of byDay) {
-    const first = group[0]!;
-    let gasto = 0;
-    let conversaciones = 0;
-    let totalFacturado = 0;
-    let ventas = 0;
-    let ganWeighted = 0;
-    let ventasForGan = 0;
-
-    for (const r of group) {
-      if (r.gastoPublicidad != null) {
-        const n = Number(r.gastoPublicidad);
-        if (Number.isFinite(n)) gasto += n;
-      }
-      conversaciones += r.conversaciones ?? 0;
-      if (r.totalFacturado != null) {
-        const n = Number(r.totalFacturado);
-        if (Number.isFinite(n)) totalFacturado += n;
-      }
-      const v = r.ventas ?? 0;
-      ventas += v;
-      if (v > 0 && r.gananciaPromedio != null) {
-        const g = Number(r.gananciaPromedio);
-        if (Number.isFinite(g)) {
-          ganWeighted += g * v;
-          ventasForGan += v;
-        }
-      }
-    }
-
-    const gananciaPromedio = ventasForGan > 0 ? ganWeighted / ventasForGan : null;
-    const rowLike: CpaRowLike = {
-      semana: first.semana ?? undefined,
-      fecha: first.fecha,
-      producto: first.producto ?? first.catalogProduct?.name ?? undefined,
-      cuenta_publicitaria: "Todas las cuentas",
-      gasto_publicidad: gasto > 0 ? gasto : null,
-      conversaciones: conversaciones > 0 ? conversaciones : null,
-      total_facturado: totalFacturado > 0 ? totalFacturado : null,
-      ganancia_promedio: gananciaPromedio,
-      ventas,
-    };
-    applyCpaDerivedFields(rowLike);
-
-    aggregated.push({
-      ...first,
-      id: `agg:${first.catalogProductId}:${dayKey}`,
-      advertisingAccountId: "",
-      fecha: first.fecha,
-      semana: rowLike.semana ?? null,
-      producto: rowLike.producto ?? null,
-      cuentaPublicitaria: rowLike.cuenta_publicitaria ?? null,
-      gastoPublicidad: rowLike.gasto_publicidad ?? null,
-      conversaciones: rowLike.conversaciones != null ? Math.trunc(rowLike.conversaciones) : null,
-      totalFacturado: rowLike.total_facturado ?? null,
-      gananciaPromedio: rowLike.ganancia_promedio ?? null,
-      ventas: rowLike.ventas != null ? Math.trunc(rowLike.ventas) : null,
-      ticketPromedioProducto: rowLike.ticket_promedio_producto ?? null,
-      cpa: rowLike.cpa ?? null,
-      conversionRate: rowLike.conversion_rate ?? null,
-      costoPublicitario: rowLike.costo_publicitario ?? null,
-      rentabilidad: rowLike.rentabilidad ?? null,
-      utilidadAproximada: rowLike.utilidad_aproximada ?? null,
-    } as CpaExperimentalDbRow);
-  }
-
-  aggregated.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
-  return aggregated;
-}
-
 export async function listCpaExperimental(
   companyId: string,
   opts: {
     catalogProductId?: string;
-    advertisingAccountId?: string;
     desde?: string;
     hasta?: string;
   },
 ) {
   const where: Prisma.CpaExperimentalRecordWhereInput = { companyId };
   if (opts.catalogProductId) where.catalogProductId = opts.catalogProductId;
-  if (opts.advertisingAccountId) where.advertisingAccountId = opts.advertisingAccountId;
 
   const d0 = opts.desde ? parseYmd(opts.desde) : null;
   const h0 = opts.hasta ? parseYmd(opts.hasta) : null;
@@ -174,88 +76,19 @@ export async function listCpaExperimental(
     };
   }
 
-  const rows = await prisma.cpaExperimentalRecord.findMany({
+  return prisma.cpaExperimentalRecord.findMany({
     where,
-    orderBy: [{ fecha: "desc" }, { catalogProductId: "asc" }, { advertisingAccountId: "asc" }],
+    orderBy: [{ fecha: "desc" }],
     include: {
       catalogProduct: { select: { id: true, name: true, sku: true } },
-      advertisingAccount: { select: { id: true, metaAccountId: true, businessName: true } },
     },
   });
-
-  if (opts.catalogProductId && !opts.advertisingAccountId) {
-    return aggregateCpaExperimentalByDay(rows);
-  }
-  return rows;
 }
 
-/** Calcula CPA experimental para cada cuenta que tenga campañas del producto. */
+/** CPA por producto y día: suma campañas Meta del producto (todas las cuentas) + pedidos Dropi vinculados. */
 export async function rebuildCpaExperimentalByProduct(
   companyId: string,
   catalogProductId: string,
-  desdeYmd: string,
-  hastaYmd: string,
-): Promise<{ daysWritten: number; warnings: string[]; accountsProcessed: number }> {
-  const campaigns = await prisma.advertisingCampaign.findMany({
-    where: { companyId, productId: catalogProductId },
-    select: { advertisingAccountId: true },
-  });
-  const accountIds = [
-    ...new Set(
-      campaigns.map((c) => c.advertisingAccountId).filter((id): id is string => id != null && id !== ""),
-    ),
-  ];
-  const d0 = parseYmd(desdeYmd);
-  const h0 = parseYmd(hastaYmd);
-  if (!d0 || !h0) {
-    throw new Error("Rango de fechas inválido (usa YYYY-MM-DD).");
-  }
-
-  if (accountIds.length === 0) {
-    await prisma.cpaExperimentalRecord.deleteMany({
-      where: {
-        companyId,
-        catalogProductId,
-        fecha: {
-          gte: utcDayStart(d0.y, d0.m, d0.d),
-          lte: utcDayStart(h0.y, h0.m, h0.d),
-        },
-      },
-    });
-    return {
-      daysWritten: 0,
-      warnings: [
-        "No hay campañas Meta con cuenta para este producto. Se borraron filas guardadas del rango. Crea campañas en Campañas Meta y vuelve a calcular; sin campañas no hay gasto publicitario (las ventas vienen solo de pedidos importados).",
-      ],
-      accountsProcessed: 0,
-    };
-  }
-
-  const warnings: string[] = [];
-  let daysWritten = 0;
-  for (const advertisingAccountId of accountIds) {
-    const result = await rebuildCpaExperimentalRange(
-      companyId,
-      catalogProductId,
-      advertisingAccountId,
-      desdeYmd,
-      hastaYmd,
-    );
-    daysWritten += result.daysWritten;
-    warnings.push(...result.warnings);
-  }
-
-  return {
-    daysWritten,
-    warnings: [...new Set(warnings)],
-    accountsProcessed: accountIds.length,
-  };
-}
-
-export async function rebuildCpaExperimentalRange(
-  companyId: string,
-  catalogProductId: string,
-  advertisingAccountId: string,
   desdeYmd: string,
   hastaYmd: string,
 ): Promise<{ daysWritten: number; warnings: string[] }> {
@@ -266,12 +99,8 @@ export async function rebuildCpaExperimentalRange(
     throw new Error("Rango de fechas inválido (usa YYYY-MM-DD).");
   }
 
-  const [product, account] = await Promise.all([
-    prisma.catalogProduct.findFirst({ where: { id: catalogProductId, companyId } }),
-    prisma.advertisingAccount.findFirst({ where: { id: advertisingAccountId, companyId } }),
-  ]);
+  const product = await prisma.catalogProduct.findFirst({ where: { id: catalogProductId, companyId } });
   if (!product) throw new Error("Producto de catálogo no encontrado.");
-  if (!account) throw new Error("Cuenta publicitaria no encontrada.");
 
   const links = await prisma.catalogProductDropiLink.findMany({
     where: { companyId, catalogProductId },
@@ -302,19 +131,18 @@ export async function rebuildCpaExperimentalRange(
   const orderExternalIds = [...new Set(detailMatches.map((r) => r.pedidoIdDropi).filter(Boolean))];
 
   const campaigns = await prisma.advertisingCampaign.findMany({
-    where: {
-      companyId,
-      productId: catalogProductId,
-      advertisingAccountId,
-    },
-    select: { id: true },
+    where: { companyId, productId: catalogProductId },
+    select: { id: true, advertisingAccountId: true },
   });
   const campaignIds = campaigns.map((c) => c.id);
-  const cuentaLabel =
-    account.businessName?.trim() ? `${account.metaAccountId} — ${account.businessName.trim()}` : account.metaAccountId;
+  const campaignsSinCuenta = campaigns.filter((c) => !c.advertisingAccountId).length;
   if (campaignIds.length === 0) {
     warnings.push(
-      `La cuenta «${cuentaLabel}» no tiene campañas Meta asignadas a este producto. Quita el filtro de cuenta (suma todas) o asigna la cuenta correcta en Campañas Meta. Mientras tanto solo se usarán gastos operacionales de esa cuenta, si existen.`,
+      "No hay campañas Meta para este producto; el gasto publicitario será cero (las ventas pueden venir de pedidos Dropi).",
+    );
+  } else if (campaignsSinCuenta > 0) {
+    warnings.push(
+      `${campaignsSinCuenta} campaña(s) sin cuenta publicitaria asignada; sus métricas sí suman al gasto si están importadas.`,
     );
   }
 
@@ -355,19 +183,6 @@ export async function rebuildCpaExperimentalRange(
       }
     }
 
-    const gastoAgg = await prisma.operationalExpense.aggregate({
-      where: {
-        companyId,
-        advertisingAccountId,
-        fecha: { gte: dayStart, lte: dayEnd },
-      },
-      _sum: { monto: true },
-    });
-    const gastoOperacional =
-      gastoAgg._sum.monto != null && !Number.isNaN(Number(gastoAgg._sum.monto))
-        ? Number(gastoAgg._sum.monto)
-        : 0;
-
     let metaConv = 0;
     let shopifySum = 0;
     let metaSpendSum = 0;
@@ -407,25 +222,13 @@ export async function rebuildCpaExperimentalRange(
       daysImporteMetaParcial.add(ymdKey);
     }
 
-    /**
-     * Gasto = suma «Importe gastado» del Excel Meta (campañas de este producto+cuenta).
-     * Solo si hay campañas y falta importe en métricas → gasto operacional de la cuenta ese día.
-     * Sin campañas del producto no se usa facturación Meta de la cuenta (evita atribuir gasto ajeno al producto).
-     */
-    const gastoPublicidad =
-      metaSpendFilasConImporte > 0
-        ? metaSpendSum
-        : campaignIds.length > 0 && gastoOperacional > 0
-          ? gastoOperacional
-          : 0;
-
+    const gastoPublicidad = metaSpendFilasConImporte > 0 ? metaSpendSum : 0;
     const conversaciones = metaConv + shopifySum;
 
-    const rowLike: CpaRowLike & { fecha?: Date; producto?: string; cuenta_publicitaria?: string } = {
+    const rowLike: CpaRowLike = {
       fecha: dayStart,
       semana: semanaDelMesLabel(cur.y, cur.m, cur.d),
       producto: product.name,
-      cuenta_publicitaria: cuentaLabel,
       gasto_publicidad: gastoPublicidad > 0 ? gastoPublicidad : null,
       ventas,
       conversaciones: conversaciones > 0 ? conversaciones : null,
@@ -437,11 +240,11 @@ export async function rebuildCpaExperimentalRange(
     rowsToCreate.push({
       companyId,
       catalogProductId,
-      advertisingAccountId,
+      advertisingAccountId: null,
       fecha: dayStart,
       semana: rowLike.semana ?? null,
       producto: rowLike.producto ?? null,
-      cuentaPublicitaria: rowLike.cuenta_publicitaria ?? null,
+      cuentaPublicitaria: null,
       gastoPublicidad: rowLike.gasto_publicidad != null ? rowLike.gasto_publicidad : null,
       conversaciones: rowLike.conversaciones != null ? Math.trunc(rowLike.conversaciones) : null,
       totalFacturado: rowLike.total_facturado != null ? rowLike.total_facturado : null,
@@ -463,7 +266,6 @@ export async function rebuildCpaExperimentalRange(
       where: {
         companyId,
         catalogProductId,
-        advertisingAccountId,
         fecha: {
           gte: utcDayStart(desde.y, desde.m, desde.d),
           lte: utcDayStart(hasta.y, hasta.m, hasta.d),
@@ -482,14 +284,14 @@ export async function rebuildCpaExperimentalRange(
     const more =
       daysSinImporteMetaEnSnapshot.size > 3 ? ` (+${daysSinImporteMetaEnSnapshot.size - 3} más)` : "";
     warnings.push(
-      `Hay día(s) con métricas Meta pero sin «Importe gastado» en la copia del Excel (${sample}${more}); en esos días se usó el gasto operacional si existe.`,
+      `Hay día(s) con métricas Meta pero sin «Importe gastado» en el Excel (${sample}${more}); el gasto de ese día queda en cero.`,
     );
   }
   if (daysImporteMetaParcial.size > 0) {
     const sample = [...daysImporteMetaParcial].slice(0, 3).join(", ");
     const more = daysImporteMetaParcial.size > 3 ? ` (+${daysImporteMetaParcial.size - 3} más)` : "";
     warnings.push(
-      `Hay día(s) donde solo parte de las métricas traía «Importe gastado» (${sample}${more}); el gasto publicado es la suma de las filas donde sí aparece.`,
+      `Hay día(s) donde solo parte de las métricas traía «Importe gastado» (${sample}${more}); el gasto es la suma de las filas donde sí aparece.`,
     );
   }
 

@@ -45,11 +45,7 @@ import {
 } from "./reportesLogistica";
 import { getDashboardMetrics } from "./dashboardMetrics";
 import { createCpaRecord, deleteCpaRecord, updateCpaRecord } from "./cpaRecordService";
-import {
-  listCpaExperimental,
-  rebuildCpaExperimentalByProduct,
-  rebuildCpaExperimentalRange,
-} from "./cpaExperimentalService";
+import { listCpaExperimental, rebuildCpaExperimentalByProduct } from "./cpaExperimentalService";
 import * as catalogProductService from "./catalogProductService";
 
 const app = express();
@@ -1482,7 +1478,6 @@ app.get(
     try {
       const rows = await listCpaExperimental(user.companyId, {
         catalogProductId: q.catalogProductId,
-        advertisingAccountId: q.advertisingAccountId,
         desde: q.desde,
         hasta: q.hasta,
       });
@@ -1503,23 +1498,19 @@ app.post(
     const user = (req as express.Request & { user?: JwtPayload }).user!;
     const schema = z.object({
       catalogProductId: z.string().min(1),
-      advertisingAccountId: z.string().min(1).optional(),
       desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
     try {
-      const { catalogProductId, advertisingAccountId, desde, hasta } = parsed.data;
-      const result = advertisingAccountId
-        ? await rebuildCpaExperimentalRange(
-            user.companyId,
-            catalogProductId,
-            advertisingAccountId,
-            desde,
-            hasta,
-          )
-        : await rebuildCpaExperimentalByProduct(user.companyId, catalogProductId, desde, hasta);
+      const { catalogProductId, desde, hasta } = parsed.data;
+      const result = await rebuildCpaExperimentalByProduct(
+        user.companyId,
+        catalogProductId,
+        desde,
+        hasta,
+      );
       return res.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

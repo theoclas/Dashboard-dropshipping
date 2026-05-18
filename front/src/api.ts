@@ -142,7 +142,6 @@ export async function deleteCpaRecord(id: string): Promise<void> {
 
 export async function fetchCpaExperimental(params?: {
   catalogProductId?: string;
-  advertisingAccountId?: string;
   desde?: string;
   hasta?: string;
 }): Promise<CpaExperimentalRecordRow[]> {
@@ -152,14 +151,10 @@ export async function fetchCpaExperimental(params?: {
 
 export async function rebuildCpaExperimental(body: {
   catalogProductId: string;
-  advertisingAccountId?: string;
   desde: string;
   hasta: string;
 }): Promise<CpaExperimentalRebuildResult> {
-  const { catalogProductId, advertisingAccountId, desde, hasta } = body;
-  const payload: Record<string, string> = { catalogProductId, desde, hasta };
-  if (advertisingAccountId) payload.advertisingAccountId = advertisingAccountId;
-  const { data } = await api.post<CpaExperimentalRebuildResult>("/cpa-experimental/rebuild", payload);
+  const { data } = await api.post<CpaExperimentalRebuildResult>("/cpa-experimental/rebuild", body);
   return data;
 }
 

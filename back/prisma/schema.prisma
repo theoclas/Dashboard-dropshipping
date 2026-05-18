@@ -355,12 +355,12 @@ model CpaRecord {
   @@map("cpas")
 }
 
-/// CPA derivado de pedidos + gastos por cuenta + métricas Meta (sin Excel).
+/// CPA derivado por producto y día: pedidos Dropi + métricas Meta de todas sus campañas.
 model CpaExperimentalRecord {
   id                     String   @id @default(cuid())
   companyId              String   @map("company_id")
   catalogProductId       String   @map("catalog_product_id")
-  advertisingAccountId   String   @map("advertising_account_id")
+  advertisingAccountId   String?  @map("advertising_account_id")
   fecha                  DateTime @db.Date
   semana                 String?  @db.VarChar(50)
   producto               String?  @db.VarChar(255)
@@ -381,9 +381,9 @@ model CpaExperimentalRecord {
 
   company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   catalogProduct     CatalogProduct     @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
-  advertisingAccount AdvertisingAccount @relation(fields: [advertisingAccountId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount? @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
 
-  @@unique([companyId, fecha, catalogProductId, advertisingAccountId], map: "cpa_exp_day_unique")
+  @@unique([companyId, fecha, catalogProductId], map: "cpa_exp_product_day_unique")
   @@index([companyId, fecha])
   @@map("cpa_experimental")
 }

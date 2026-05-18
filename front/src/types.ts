@@ -156,15 +156,12 @@ export type CpaRecordRow = {
 
 export type CpaExperimentalRecordRow = CpaRecordRow & {
   catalogProductId: string;
-  advertisingAccountId?: string;
   catalogProduct?: { id: string; name: string; sku?: string | null };
-  advertisingAccount?: { id: string; metaAccountId: string; businessName?: string | null };
 };
 
 export type CpaExperimentalRebuildResult = {
   daysWritten: number;
   warnings: string[];
-  accountsProcessed?: number;
 };
 
 export type CatalogProduct = {
