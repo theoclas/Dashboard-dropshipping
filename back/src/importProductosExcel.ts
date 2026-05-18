@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import type { ProductosUndoPayload } from "./importBatchTypes";
 import { getExcelCell, toNumber, toString } from "./excelImportHelpers";
 
 /**
@@ -31,7 +32,7 @@ export async function importProductosExcel(
   prisma: PrismaClient,
   companyId: string,
   buffer: Buffer,
-): Promise<{ imported: number; errors: string[] }> {
+): Promise<{ imported: number; errors: string[]; undoPayload: ProductosUndoPayload }> {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName = wb.SheetNames.find((s) => s === "Sheet1") || wb.SheetNames[0];
   const ws = sheetName ? wb.Sheets[sheetName] : undefined;
@@ -78,11 +79,29 @@ export async function importProductosExcel(
     todosLosProductos.push(...productos);
   }
 
+  const previousProductDetails: ProductosUndoPayload["previousProductDetails"] = [];
+
   try {
     const DELETE_BATCH = 1000;
     if (todosPedidoIds.length > 0) {
       for (let i = 0; i < todosPedidoIds.length; i += DELETE_BATCH) {
         const batch = todosPedidoIds.slice(i, i + DELETE_BATCH);
+        const existing = await prisma.productDetail.findMany({
+          where: { companyId, pedidoIdDropi: { in: batch } },
+        });
+        for (const row of existing) {
+          previousProductDetails.push({
+            pedidoIdDropi: row.pedidoIdDropi,
+            productoId: row.productoId,
+            sku: row.sku,
+            variacionId: row.variacionId,
+            productoNombre: row.productoNombre,
+            variacion: row.variacion,
+            cantidad: row.cantidad,
+            precioProveedor: row.precioProveedor?.toString() ?? null,
+            precioProveedorXCantidad: row.precioProveedorXCantidad?.toString() ?? null,
+          });
+        }
         await prisma.productDetail.deleteMany({
           where: { companyId, pedidoIdDropi: { in: batch } },
         });
@@ -118,5 +137,9 @@ export async function importProductosExcel(
     errors.push(`Error en inserción masiva de productos: ${msg}`);
   }
 
-  return { imported, errors };
+  return {
+    imported,
+    errors,
+    undoPayload: { pedidoIds: todosPedidoIds, previousProductDetails },
+  };
 }

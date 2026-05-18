@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type Order, type PrismaClient } from "@prisma/client";
+import type { OrderSnapshot, PedidosUndoPayload } from "./importBatchTypes";
 import { getExcelCell, parseDate, parseTime, toNumber, toString } from "./excelImportHelpers";
 
 /** Prisma limita el tiempo de las transacciones por lotes; el valor por defecto (~5s) rompe imports grandes. */
@@ -113,6 +114,37 @@ function dec(n: number | undefined): Prisma.Decimal | null {
   return new Prisma.Decimal(String(n));
 }
 
+function orderToSnapshot(o: Order): OrderSnapshot {
+  return {
+    externalOrderId: o.externalOrderId,
+    fecha: o.fecha?.toISOString() ?? null,
+    cliente: o.cliente,
+    transportadora: o.transportadora,
+    estadoOperativo: o.estadoOperativo,
+    guia: o.guia,
+    departamento: o.departamento,
+    ciudad: o.ciudad,
+    direccion: o.direccion,
+    telefono: o.telefono,
+    notas: o.notas,
+    notasManuales: o.notasManuales,
+    venta: o.venta?.toString() ?? null,
+    gananciaCalc: o.gananciaCalc?.toString() ?? null,
+    flete: o.flete?.toString() ?? null,
+    costoDevolucionEstimado: o.costoDevolucionEstimado?.toString() ?? null,
+    costoProveedor: o.costoProveedor?.toString() ?? null,
+    estatusOriginal: o.estatusOriginal,
+    ultimoMov: o.ultimoMov,
+    fechaUltMov: o.fechaUltMov?.toISOString() ?? null,
+    horaUltMov: o.horaUltMov?.toString() ?? null,
+    diasDesdeUltMov: o.diasDesdeUltMov,
+    estadoUnificado: o.estadoUnificado,
+    cartera: o.cartera?.toString() ?? null,
+    carteraAplicada: o.carteraAplicada?.toString() ?? null,
+    estadoCartera: o.estadoCartera,
+  };
+}
+
 function mapUpsert(
   companyId: string,
   p: PedidoRowInput,
@@ -161,7 +193,7 @@ export async function importPedidosExcel(
   prisma: PrismaClient,
   companyId: string,
   buffer: Buffer,
-): Promise<{ imported: number; errors: string[] }> {
+): Promise<{ imported: number; errors: string[]; undoPayload: PedidosUndoPayload }> {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName = wb.SheetNames.find((s) => s === "Sheet1") || wb.SheetNames[0];
   const ws = sheetName ? wb.Sheets[sheetName] : undefined;
@@ -291,11 +323,26 @@ export async function importPedidosExcel(
 
   const CHUNK = 100;
   let imported = 0;
+  const createdOrderIds: string[] = [];
+  const updatedOrders: OrderSnapshot[] = [];
+
   for (let i = 0; i < pedidosParaInsertar.length; i += CHUNK) {
     const batch = pedidosParaInsertar.slice(i, i + CHUNK);
+    const ids = batch.map((p) => p.id_dropi);
+    const existingRows = await prisma.order.findMany({
+      where: { companyId, externalOrderId: { in: ids } },
+    });
+    const existingMap = new Map(existingRows.map((o) => [o.externalOrderId, o]));
+
     await prisma.$transaction(
       async (tx) => {
         for (const p of batch) {
+          const prev = existingMap.get(p.id_dropi);
+          if (prev) {
+            updatedOrders.push(orderToSnapshot(prev));
+          } else {
+            createdOrderIds.push(p.id_dropi);
+          }
           const { create, update } = mapUpsert(companyId, p);
           await tx.order.upsert({
             where: {
@@ -311,5 +358,5 @@ export async function importPedidosExcel(
     imported += batch.length;
   }
 
-  return { imported, errors };
+  return { imported, errors, undoPayload: { createdOrderIds, updatedOrders } };
 }

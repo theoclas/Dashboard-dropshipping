@@ -27,6 +27,7 @@ import {
   type CpaRecordWriteBody,
 } from "./api";
 import type { CpaRecordRow } from "./types";
+import { fmtCpaDisplay } from "./utils/cpaDisplay";
 import { fmtInteger, fmtMoney, fmtPercentPoints, fmtPercentRatio } from "./utils/format";
 import { semanaDelMesDesdeFecha } from "./utils/cpaSemana";
 
@@ -148,7 +149,12 @@ export function CpaRecordsView() {
     { title: "Gan. prom.", dataIndex: "gananciaPromedio", width: 110, render: fmtCell },
     { title: "Ventas", dataIndex: "ventas", width: 80, render: (n) => (n != null ? fmtInteger(n) : "—") },
     { title: "Ticket prom.", dataIndex: "ticketPromedioProducto", width: 110, render: fmtCell },
-    { title: "CPA", dataIndex: "cpa", width: 100, render: fmtCell },
+    {
+      title: "CPA",
+      dataIndex: "cpa",
+      width: 100,
+      render: (cpa, row) => fmtCpaDisplay(cpa, row.gastoPublicidad, row.ventas),
+    },
     { title: "Conv. rate", dataIndex: "conversionRate", width: 90, render: (v) => fmtPercentRatio(v) },
     { title: "Costo pub.", dataIndex: "costoPublicitario", width: 100, render: (v) => fmtPercentPoints(v) },
     { title: "Rentab.", dataIndex: "rentabilidad", width: 90, render: (v) => fmtPercentPoints(v) },

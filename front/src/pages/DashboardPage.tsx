@@ -55,6 +55,8 @@ export type DashboardMetrics = {
   sinMapear: number;
   pedidosCancelados: number;
   pedidosCanceladosPct: number;
+  pedidosPendientes: number;
+  pedidosPendientesPct: number;
   entregados: number;
   entregadosPct: number;
   devoluciones: number;
@@ -267,6 +269,24 @@ export function DashboardPage() {
               }
               hint={
                 <Tooltip title="Pedidos con estado cancelado o rechazado en el rango. El porcentaje es sobre el total de pedidos.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_pedidosPendientes") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<ClockCircleOutlined />}
+              label="Total pedidos pendientes"
+              value={
+                loading
+                  ? "…"
+                  : `${fmtInteger(data?.pedidosPendientes ?? 0)} (${fmtPercent(data?.pedidosPendientesPct ?? 0)})`
+              }
+              hint={
+                <Tooltip title="Pedidos en tránsito: aún no entregados, devueltos ni cancelados (misma base que «En proceso»).">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }

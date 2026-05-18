@@ -109,6 +109,9 @@ export type DashboardMetricsPayload = {
   sinMapear: number;
   pedidosCancelados: number;
   pedidosCanceladosPct: number;
+  /** Pedidos en tránsito (no entregados, devueltos ni cancelados). */
+  pedidosPendientes: number;
+  pedidosPendientesPct: number;
   entregados: number;
   entregadosPct: number;
   devoluciones: number;
@@ -296,6 +299,8 @@ SELECT
     sinMapear,
     pedidosCancelados,
     pedidosCanceladosPct: safeDiv(pedidosCancelados, totalOrders),
+    pedidosPendientes: enProceso,
+    pedidosPendientesPct: safeDiv(enProceso, totalOrders),
     entregados,
     entregadosPct: safeDiv(entregados, totalOrders),
     devoluciones,

@@ -46,7 +46,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export type ImportResult = { imported: number; errors: string[]; retirosUpserted?: number };
+export type ImportResult = { imported: number; errors: string[]; retirosUpserted?: number; batchId?: string };
+
+export type ImportBatchKind = "CARTERA" | "PRODUCTOS" | "PEDIDOS";
+
+export type ImportBatchRow = {
+  id: string;
+  kind: ImportBatchKind;
+  fileName: string | null;
+  imported: number;
+  undoneAt: string | null;
+  createdAt: string;
+};
 
 export type ImportEndpoint = "cartera" | "productos" | "pedidos";
 
@@ -141,11 +152,14 @@ export async function fetchCpaExperimental(params?: {
 
 export async function rebuildCpaExperimental(body: {
   catalogProductId: string;
-  advertisingAccountId: string;
+  advertisingAccountId?: string;
   desde: string;
   hasta: string;
 }): Promise<CpaExperimentalRebuildResult> {
-  const { data } = await api.post<CpaExperimentalRebuildResult>("/cpa-experimental/rebuild", body);
+  const { catalogProductId, advertisingAccountId, desde, hasta } = body;
+  const payload: Record<string, string> = { catalogProductId, desde, hasta };
+  if (advertisingAccountId) payload.advertisingAccountId = advertisingAccountId;
+  const { data } = await api.post<CpaExperimentalRebuildResult>("/cpa-experimental/rebuild", payload);
   return data;
 }
 
@@ -165,6 +179,20 @@ export async function importCpaFile(file: File, onProgress?: (percent: number) =
 
 export async function remapearEstados(): Promise<{ procesados: number; remapeados: number }> {
   const { data } = await api.post<{ procesados: number; remapeados: number }>("/import/remapear-estados");
+  return data;
+}
+
+export async function fetchImportBatches(): Promise<ImportBatchRow[]> {
+  const { data } = await api.get<ImportBatchRow[]>("/import/batches");
+  return data;
+}
+
+export async function undoImportBatch(batchId: string): Promise<{
+  kind: ImportBatchKind;
+  deleted: Record<string, number>;
+  restored: Record<string, number>;
+}> {
+  const { data } = await api.post(`/import/batches/${batchId}/undo`);
   return data;
 }
 

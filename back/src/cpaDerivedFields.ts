@@ -23,6 +23,8 @@ export type CpaRowLike = {
   ganancia_promedio?: number | null;
   ticket_promedio_producto?: number | null;
   cpa?: number | null;
+  /** Gasto publicitario sin ventas del día (pedidos / Excel). */
+  cpa_es_perdida?: boolean;
   conversion_rate?: number | null;
   costo_publicitario?: number | null;
   rentabilidad?: number | null;
@@ -52,12 +54,17 @@ export function applyCpaDerivedFields(r: CpaRowLike): void {
       ? Number(r.ganancia_promedio)
       : null;
 
+  const hayGasto = gasto != null && gasto > 0;
+  const sinVentas = ventas == null || ventas === 0;
+
   if (ventas != null && ventas > 0) {
+    r.cpa_es_perdida = false;
     r.ticket_promedio_producto = total != null ? roundDec(total / ventas, 2) : null;
     r.cpa = gasto != null ? roundDec(gasto / ventas, 2) : null;
   } else {
     r.ticket_promedio_producto = null;
     r.cpa = null;
+    r.cpa_es_perdida = hayGasto && sinVentas;
   }
 
   // Excel: SI.ERROR([@VENTAS]/[@CONVERSACIONES];"")
@@ -83,14 +90,12 @@ export function applyCpaDerivedFields(r: CpaRowLike): void {
   }
 
   // Excel: SI([@VENTAS]=0;-GASTO;((GAN*VENTAS)-GASTO)*0.75)
-  if (ventas == null || Number.isNaN(ventas)) {
+  if (sinVentas && hayGasto) {
+    r.utilidad_aproximada = roundDec(-gasto!, 2);
+  } else if (ventas == null || Number.isNaN(ventas)) {
     r.utilidad_aproximada = null;
   } else if (ventas === 0) {
-    if (gasto != null) {
-      r.utilidad_aproximada = roundDec(-gasto, 2);
-    } else {
-      r.utilidad_aproximada = null;
-    }
+    r.utilidad_aproximada = null;
   } else if (gan != null && gasto != null) {
     r.utilidad_aproximada = roundDec((gan * ventas - gasto) * 0.75, 2);
   } else {
@@ -98,10 +103,12 @@ export function applyCpaDerivedFields(r: CpaRowLike): void {
   }
 
   // Excel: SI.ERROR(SI([@VENTAS]="";"";SI([@VENTAS]=0;100%;[@CPA]/[@[GANANCIA PROMEDIO]]));"")
-  if (ventas == null || Number.isNaN(ventas)) {
+  if (sinVentas && hayGasto) {
+    r.rentabilidad = 100;
+  } else if (ventas == null || Number.isNaN(ventas)) {
     r.rentabilidad = null;
   } else if (ventas === 0) {
-    r.rentabilidad = 100;
+    r.rentabilidad = null;
   } else {
     const cpaForRent = r.cpa != null ? Number(r.cpa) : null;
     if (

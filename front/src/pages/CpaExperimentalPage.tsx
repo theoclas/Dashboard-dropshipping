@@ -9,6 +9,7 @@ import {
   Select,
   Space,
   Table,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -16,6 +17,7 @@ import type { ColumnsType } from "antd/es/table";
 import { ExperimentOutlined, ReloadOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import {
+  fetchAdvertisingCampaigns,
   fetchCatalogProducts,
   fetchCpaExperimental,
   fetchMetaCampaignAdvertisingAccounts,
@@ -23,6 +25,8 @@ import {
 } from "../api";
 import { usePermission } from "../hooks/usePermission";
 import { fmtApiDateIsoYmd } from "../utils/calendarDateLocal";
+import { fmtCpaDisplay } from "../utils/cpaDisplay";
+import { computeCpaExperimentalTotals } from "../utils/cpaExperimentalTotals";
 import { fmtInteger, fmtMoney, fmtPercentPoints, fmtPercentRatio } from "../utils/format";
 import type { AdvertisingAccount, CatalogProduct, CpaExperimentalRecordRow } from "../types";
 
@@ -34,6 +38,15 @@ function fmtCell(v: unknown): string {
   if (typeof v === "number") return fmtMoney(v);
   const n = Number(v);
   return Number.isFinite(n) ? fmtMoney(n) : String(v);
+}
+
+/** Título abreviado en cabecera; tooltip con el nombre completo al pasar el cursor. */
+function colTitle(short: string, full: string) {
+  return (
+    <Tooltip title={full}>
+      <span style={{ cursor: "default" }}>{short}</span>
+    </Tooltip>
+  );
 }
 
 export function CpaExperimentalPage() {
@@ -49,6 +62,8 @@ export function CpaExperimentalPage() {
   const [loading, setLoading] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [lastWarnings, setLastWarnings] = useState<string[]>([]);
+  const [productCampaignAccountIds, setProductCampaignAccountIds] = useState<string[]>([]);
+  const [campaignsSinCuenta, setCampaignsSinCuenta] = useState(0);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -60,8 +75,10 @@ export function CpaExperimentalPage() {
     }
   }, []);
 
+  const byProductOnly = !accountId;
+
   const loadRows = useCallback(async () => {
-    if (!productId || !accountId || !range) return;
+    if (!productId || !range) return;
     setLoading(true);
     try {
       const list = await fetchCpaExperimental({
@@ -84,13 +101,45 @@ export function CpaExperimentalPage() {
   }, [canModule, loadMeta]);
 
   useEffect(() => {
-    if (productId && accountId && range) void loadRows();
+    if (!productId) {
+      setProductCampaignAccountIds([]);
+      setCampaignsSinCuenta(0);
+      setAccountId(undefined);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const campaigns = await fetchAdvertisingCampaigns(productId);
+        if (cancelled) return;
+        const ids = [
+          ...new Set(
+            campaigns.map((c) => c.advertisingAccountId).filter((id): id is string => id != null && id !== ""),
+          ),
+        ];
+        setProductCampaignAccountIds(ids);
+        setCampaignsSinCuenta(campaigns.filter((c) => !c.advertisingAccountId).length);
+        setAccountId((prev) => (prev && !ids.includes(prev) ? undefined : prev));
+      } catch {
+        if (!cancelled) {
+          setProductCampaignAccountIds([]);
+          setCampaignsSinCuenta(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  useEffect(() => {
+    if (productId && range) void loadRows();
     else setRows([]);
   }, [productId, accountId, range, loadRows]);
 
   const handleRebuild = async () => {
-    if (!productId || !accountId || !range) {
-      message.warning("Selecciona producto, cuenta y rango de fechas.");
+    if (!productId || !range) {
+      message.warning("Selecciona producto y rango de fechas.");
       return;
     }
     setRebuilding(true);
@@ -103,7 +152,11 @@ export function CpaExperimentalPage() {
         hasta: range[1].format("YYYY-MM-DD"),
       });
       setLastWarnings(res.warnings);
-      message.success(`CPA experimental: ${res.daysWritten} día(s) calculados.`);
+      const accountsNote =
+        res.accountsProcessed != null && res.accountsProcessed > 1
+          ? ` (${res.accountsProcessed} cuentas)`
+          : "";
+      message.success(`CPA experimental: ${res.daysWritten} fila(s) guardadas${accountsNote}.`);
       if (res.warnings.length) message.warning(res.warnings.join(" "));
       await loadRows();
     } catch (e: unknown) {
@@ -130,20 +183,36 @@ export function CpaExperimentalPage() {
     [accounts],
   );
 
+  const accountOptionsForProduct = useMemo(() => {
+    if (!productId) return [];
+    if (productCampaignAccountIds.length === 0) return [];
+    const idSet = new Set(productCampaignAccountIds);
+    return accountOptions.filter((o) => idSet.has(o.value));
+  }, [productId, productCampaignAccountIds, accountOptions]);
+
   const columns: ColumnsType<CpaExperimentalRecordRow> = useMemo(
     () => [
-      { title: "Semana", dataIndex: "semana", key: "sem", width: 140, ellipsis: true },
+      { title: colTitle("Semana", "Semana"), dataIndex: "semana", key: "sem", width: 140, ellipsis: true },
       {
-        title: "Fecha",
+        title: colTitle("Fecha", "Fecha"),
         dataIndex: "fecha",
         key: "fecha",
         width: 110,
         render: (v: string) => fmtApiDateIsoYmd(v),
       },
-      { title: "Producto", dataIndex: "producto", key: "prod", ellipsis: true },
-      { title: "Cuenta", dataIndex: "cuentaPublicitaria", key: "cuenta", ellipsis: true },
+      { title: colTitle("Producto", "Producto"), dataIndex: "producto", key: "prod", ellipsis: true },
+      ...(byProductOnly
+        ? []
+        : [
+            {
+              title: colTitle("Cuenta", "Cuenta publicitaria"),
+              dataIndex: "cuentaPublicitaria",
+              key: "cuenta",
+              ellipsis: true,
+            } as const,
+          ]),
       {
-        title: "Gasto pub.",
+        title: colTitle("Gasto pub.", "Gasto publicitario"),
         dataIndex: "gastoPublicidad",
         key: "gasto",
         width: 120,
@@ -151,7 +220,7 @@ export function CpaExperimentalPage() {
         render: fmtCell,
       },
       {
-        title: "Conv.",
+        title: colTitle("Conv.", "Conversaciones"),
         dataIndex: "conversaciones",
         key: "conv",
         width: 72,
@@ -159,7 +228,7 @@ export function CpaExperimentalPage() {
         render: (n) => (n != null ? fmtInteger(n) : "—"),
       },
       {
-        title: "Total fact.",
+        title: colTitle("Total fact.", "Total facturado"),
         dataIndex: "totalFacturado",
         key: "tf",
         width: 120,
@@ -167,7 +236,7 @@ export function CpaExperimentalPage() {
         render: fmtCell,
       },
       {
-        title: "Gan. prom.",
+        title: colTitle("Gan. prom.", "Ganancia promedio"),
         dataIndex: "gananciaPromedio",
         key: "gp",
         width: 110,
@@ -175,7 +244,7 @@ export function CpaExperimentalPage() {
         render: fmtCell,
       },
       {
-        title: "Ventas",
+        title: colTitle("Ventas", "Ventas"),
         dataIndex: "ventas",
         key: "ventas",
         width: 80,
@@ -183,16 +252,27 @@ export function CpaExperimentalPage() {
         render: (n) => (n != null ? fmtInteger(n) : "—"),
       },
       {
-        title: "Ticket prom.",
+        title: colTitle("Ticket prom.", "Ticket promedio de producto"),
         dataIndex: "ticketPromedioProducto",
         key: "ticket",
         width: 110,
         align: "right",
         render: fmtCell,
       },
-      { title: "CPA", dataIndex: "cpa", key: "cpa", width: 100, align: "right", render: fmtCell },
       {
-        title: "Conv. rate",
+        title: colTitle("CPA", "Costo por adquisición (CPA)"),
+        dataIndex: "cpa",
+        key: "cpa",
+        width: 100,
+        align: "right",
+        render: (cpa, row) => {
+          const label = fmtCpaDisplay(cpa, row.gastoPublicidad, row.ventas);
+          if (label === "Pérdida") return <Text type="danger">{label}</Text>;
+          return label;
+        },
+      },
+      {
+        title: colTitle("Conv. rate", "Tasa de conversión"),
         dataIndex: "conversionRate",
         key: "cr",
         width: 90,
@@ -200,7 +280,7 @@ export function CpaExperimentalPage() {
         render: (v) => fmtPercentRatio(v),
       },
       {
-        title: "Costo pub.",
+        title: colTitle("Costo pub.", "Costo publicitario"),
         dataIndex: "costoPublicitario",
         key: "costo",
         width: 100,
@@ -208,7 +288,7 @@ export function CpaExperimentalPage() {
         render: (v) => fmtPercentPoints(v),
       },
       {
-        title: "Rentab.",
+        title: colTitle("Rentab.", "Rentabilidad"),
         dataIndex: "rentabilidad",
         key: "rent",
         width: 90,
@@ -216,16 +296,20 @@ export function CpaExperimentalPage() {
         render: (v) => fmtPercentPoints(v),
       },
       {
-        title: "Utilidad apx.",
+        title: colTitle("Utilidad apx.", "Utilidad aproximada"),
         dataIndex: "utilidadAproximada",
         key: "util",
-        width: 110,
+        width: 150,
         align: "right",
         render: fmtCell,
       },
     ],
-    [],
+    [byProductOnly],
   );
+
+  const rangeTotals = useMemo(() => computeCpaExperimentalTotals(rows), [rows]);
+
+  const labelColSpan = byProductOnly ? 3 : 4;
 
   if (!canModule) {
     return <Typography.Paragraph>No tienes permiso para el módulo CPA.</Typography.Paragraph>;
@@ -239,10 +323,10 @@ export function CpaExperimentalPage() {
           CPA experimental
         </Title>
         <Text type="secondary">
-          Arma filas CPA por día: pedidos (ventas, facturación, ganancia; <strong>sin cancelados ni rechazados</strong>), conversaciones Meta + sesiones Shopify de
-          campañas vinculadas al producto y cuenta, y gasto publicitario como la suma del «Importe gastado» del Excel
-          Meta importado en Campañas (mismo valor que ves en el detalle de métricas). Si ese importe no está en la
-          importación, se usa el gasto operacional del día para esa cuenta.
+          Arma filas CPA por día y producto (por defecto suma <strong>todas las cuentas</strong> con campañas de ese
+          producto). Pedidos: ventas, facturación y ganancia <strong>sin cancelados ni rechazados</strong>; conversaciones
+          Meta + sesiones Shopify de esas campañas; gasto como suma del «Importe gastado» del Excel Meta (o gasto
+          operacional del día si falta en la importación). Opcionalmente filtra por una sola cuenta publicitaria.
           Las columnas derivadas siguen la plantilla CPA: ticket y CPA en pesos; tasa de conversión como %;
           costo publicitario como en Excel (<strong>CPA × 100% / ticket promedio</strong>); rentabilidad como en la
           plantilla (<strong>100%</strong> si ventas = 0; si no <strong>CPA / ganancia promedio</strong> como %);
@@ -257,9 +341,10 @@ export function CpaExperimentalPage() {
         message="Cómo se arma el gasto y el CPA"
         description={
           <span>
-            El gasto del día es la suma del «Importe gastado (COP)» / «Amount spent» guardado en cada fila de métricas
-            Meta de las campañas de este producto en esta cuenta. Si hubiera varias campañas, se suman todas. Solo si
-            ninguna fila trae ese importe en la importación se recurre al gasto operacional de la cuenta ese día.
+            El gasto del día sale del Excel de métricas Meta importado en <strong>Campañas Meta</strong> (columna Importe
+            gastado), solo de campañas vinculadas a este producto. Si hay campañas pero el Excel no trae importe, se usa el
+            gasto operacional de esa cuenta (p. ej. facturación Meta). <strong>Sin campañas del producto no hay gasto
+            publicitario</strong> — las ventas pueden venir igual de pedidos Dropi vinculados.
           </span>
         }
       />
@@ -272,7 +357,7 @@ export function CpaExperimentalPage() {
           <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
             <li>Variantes Dropi del producto vinculadas en Productos de pedidos.</li>
             <li>Gastos operacionales con cuenta publicitaria y fecha (p. ej. import facturación Meta).</li>
-            <li>Campañas Meta del producto asignadas a la misma cuenta publicitaria.</li>
+            <li>Campañas Meta del producto con cuenta publicitaria asignada (una o varias).</li>
             <li>Métricas diarias importadas en Campañas Meta (opcional para conversaciones / Shopify).</li>
           </ul>
         }
@@ -291,24 +376,44 @@ export function CpaExperimentalPage() {
               style={{ width: "100%" }}
               options={productOptions}
               value={productId}
-              onChange={setProductId}
+              onChange={(v) => {
+                setProductId(v);
+                setAccountId(undefined);
+              }}
               allowClear
             />
           </Col>
           <Col xs={24} md={8}>
             <Text type="secondary" style={{ display: "block", marginBottom: 6 }}>
-              Cuenta publicitaria
+              Cuenta publicitaria (opcional — vacío = todas)
             </Text>
             <Select
               showSearch
               optionFilterProp="label"
-              placeholder="Cuenta Meta"
+              placeholder={
+                !productId
+                  ? "Primero elige un producto"
+                  : accountOptionsForProduct.length === 0
+                    ? "Sin cuentas en campañas de este producto"
+                    : "Todas las cuentas (recomendado)"
+              }
               style={{ width: "100%" }}
-              options={accountOptions}
+              options={accountOptionsForProduct}
               value={accountId}
               onChange={setAccountId}
               allowClear
+              disabled={!productId || accountOptionsForProduct.length === 0}
             />
+            {productId && accountOptionsForProduct.length > 1 ? (
+              <Text type="secondary" style={{ display: "block", fontSize: 11, marginTop: 6 }}>
+                Deja vacío para sumar {accountOptionsForProduct.length} cuentas con campañas de este producto.
+              </Text>
+            ) : null}
+            {productId && campaignsSinCuenta > 0 ? (
+              <Text type="warning" style={{ display: "block", fontSize: 11, marginTop: 4 }}>
+                {campaignsSinCuenta} campaña(s) sin cuenta asignada — configúralas en Campañas Meta.
+              </Text>
+            ) : null}
           </Col>
           <Col xs={24} md={8}>
             <Text type="secondary" style={{ display: "block", marginBottom: 6 }}>
@@ -327,28 +432,129 @@ export function CpaExperimentalPage() {
             type="primary"
             icon={<ReloadOutlined />}
             loading={rebuilding}
-            disabled={!canRebuild || !productId || !accountId || !range}
+            disabled={!canRebuild || !productId || !range}
             onClick={() => void handleRebuild()}
           >
             Calcular / actualizar
           </Button>
-          <Button onClick={() => void loadRows()} disabled={!productId || !accountId || !range || loading}>
+          <Button onClick={() => void loadRows()} disabled={!productId || !range || loading}>
             Refrescar tabla
           </Button>
+          {accountId ? (
+            <Button type="link" onClick={() => setAccountId(undefined)}>
+              Usar todas las cuentas
+            </Button>
+          ) : null}
         </Space>
+        {productId && productCampaignAccountIds.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="Este producto no tiene campañas Meta con cuenta publicitaria"
+            description="Ve a Campañas Meta, asigna el producto y vincula cada campaña a su cuenta. Luego calcula de nuevo (puedes dejar la cuenta vacía)."
+          />
+        ) : null}
         {lastWarnings.length ? (
-          <Alert type="warning" showIcon style={{ marginTop: 12 }} message={lastWarnings.join(" ")} />
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message={lastWarnings.join(" ")}
+            action={
+              accountId ? (
+                <Button size="small" onClick={() => setAccountId(undefined)}>
+                  Quitar cuenta
+                </Button>
+              ) : undefined
+            }
+          />
         ) : null}
       </Card>
 
-      <Card title="Filas CPA experimental">
+      <Card title={byProductOnly ? "Filas CPA experimental (por producto)" : "Filas CPA experimental (por cuenta)"}>
+        {productId &&
+        productCampaignAccountIds.length === 0 &&
+        rows.some((r) => r.gastoPublicidad != null && Number(r.gastoPublicidad) > 0) ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Gasto publicitario en la tabla sin campañas del producto"
+            description="Esas cifras suelen ser de un cálculo anterior (cuando se usaba la facturación Meta de una cuenta sin campañas de este producto). Pulsa Calcular / actualizar para limpiar el rango o crea campañas en Campañas Meta."
+          />
+        ) : null}
         <Table
           rowKey="id"
           loading={loading}
           dataSource={rows}
           columns={columns}
           pagination={{ pageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 1600 }}
+          scroll={{ x: 1640 }}
+          summary={() =>
+            rangeTotals ? (
+              <Table.Summary fixed>
+                <Table.Summary.Row style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <Table.Summary.Cell index={0} colSpan={labelColSpan}>
+                    <Text strong>TOTAL</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 11, fontWeight: 400, marginTop: 2 }}>
+                      {rangeTotals.dias} día{rangeTotals.dias === 1 ? "" : "s"} en el rango
+                      {range
+                        ? ` · ${range[0].format("DD/MM/YYYY")} – ${range[1].format("DD/MM/YYYY")}`
+                        : ""}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right">
+                    <Text strong>{fmtMoney(rangeTotals.gastoPublicidad)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right">
+                    <Text strong>{fmtInteger(rangeTotals.conversaciones)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right">
+                    <Text strong>{fmtMoney(rangeTotals.totalFacturado)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">
+                    <Text strong>
+                      {rangeTotals.gananciaPromedio != null ? fmtMoney(rangeTotals.gananciaPromedio) : "—"}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={5} align="right">
+                    <Text strong>{fmtInteger(rangeTotals.ventas)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={6} align="right">
+                    <Text strong>
+                      {rangeTotals.ticketPromedioProducto != null
+                        ? fmtMoney(rangeTotals.ticketPromedioProducto)
+                        : "—"}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={7} align="right">
+                    <Text strong type={rangeTotals.cpaEsPerdida ? "danger" : undefined}>
+                      {rangeTotals.cpaEsPerdida
+                        ? "Pérdida"
+                        : rangeTotals.cpa != null
+                          ? fmtMoney(rangeTotals.cpa)
+                          : "—"}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={8} align="right">
+                    <Text strong>{fmtPercentRatio(rangeTotals.conversionRate)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={9} align="right">
+                    <Text strong>{fmtPercentPoints(rangeTotals.costoPublicitario)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={10} align="right">
+                    <Text strong>{fmtPercentPoints(rangeTotals.rentabilidad)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={11} align="right">
+                    <Text strong style={{ whiteSpace: "nowrap", display: "inline-block" }}>
+                      {rangeTotals.utilidadAproximada != null ? fmtMoney(rangeTotals.utilidadAproximada) : "—"}
+                    </Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              </Table.Summary>
+            ) : null
+          }
         />
       </Card>
     </Space>

@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { Alert, Button, Card, Col, Input, Modal, Row, Space, Typography, Upload, message } from "antd";
-import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Button, Card, Col, Input, Modal, Row, Space, Table, Tag, Typography, Upload, message } from "antd";
+import type { ColumnsType } from "antd/es/table";
+import { DeleteOutlined, InboxOutlined, UndoOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
-import type { ImportEndpoint, ImportResult } from "./api";
-import { importFile, wipeCpa, wipeImportedTables } from "./api";
+import dayjs from "dayjs";
+import type { ImportBatchRow, ImportEndpoint, ImportResult } from "./api";
+import { fetchImportBatches, importFile, undoImportBatch, wipeCpa, wipeImportedTables } from "./api";
 import { usePermission } from "./hooks/usePermission";
 
 const { Dragger } = Upload;
@@ -14,6 +16,12 @@ const STEPS: { key: ImportEndpoint; title: string; description: string }[] = [
   { key: "productos", title: "Productos", description: "Export de productos por pedido (Dropi)." },
   { key: "pedidos", title: "Pedidos", description: "Pedidos al final del flujo (tras cartera y productos)." },
 ];
+
+const KIND_LABELS: Record<ImportBatchRow["kind"], string> = {
+  CARTERA: "Cartera",
+  PRODUCTOS: "Productos",
+  PEDIDOS: "Pedidos",
+};
 
 export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
   const canImportDropi = usePermission("actionImportarDropi");
@@ -34,6 +42,25 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
   });
   const [wipePwd, setWipePwd] = useState("");
   const [wipeBusy, setWipeBusy] = useState<"imported" | "cpa" | null>(null);
+  const [batches, setBatches] = useState<ImportBatchRow[]>([]);
+  const [batchesLoading, setBatchesLoading] = useState(false);
+  const [undoingId, setUndoingId] = useState<string | null>(null);
+
+  const loadBatches = useCallback(async () => {
+    if (!canImportDropi) return;
+    setBatchesLoading(true);
+    try {
+      setBatches(await fetchImportBatches());
+    } catch {
+      setBatches([]);
+    } finally {
+      setBatchesLoading(false);
+    }
+  }, [canImportDropi]);
+
+  useEffect(() => {
+    void loadBatches();
+  }, [loadBatches]);
 
   const handleUpload = async (endpoint: ImportEndpoint, file: File) => {
     setLoading((p) => ({ ...p, [endpoint]: true }));
@@ -42,6 +69,7 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
     try {
       const result = await importFile(endpoint, file, (pct) => setProgress((p) => ({ ...p, [endpoint]: pct })));
       setResults((p) => ({ ...p, [endpoint]: result }));
+      void loadBatches();
       message.success(
         `${endpoint}: importados ${result.imported}` +
           (endpoint === "cartera" && typeof result.retirosUpserted === "number"
@@ -126,6 +154,94 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
     });
   };
 
+  const confirmUndoBatch = (row: ImportBatchRow) => {
+    Modal.confirm({
+      title: "¿Deshacer esta importación?",
+      content: (
+        <Paragraph style={{ marginBottom: 0 }}>
+          Se revertirán los cambios del archivo <strong>{row.fileName ?? "sin nombre"}</strong> (
+          {KIND_LABELS[row.kind]}, {row.imported} filas). Los pedidos nuevos de ese lote se eliminarán; los que ya
+          existían volverán a su estado anterior. Productos restaura las líneas que había antes del archivo.
+        </Paragraph>
+      ),
+      okText: "Sí, deshacer",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setUndoingId(row.id);
+        try {
+          const r = await undoImportBatch(row.id);
+          const parts = [
+            ...Object.entries(r.deleted).map(([k, n]) => `eliminados ${k}: ${n}`),
+            ...Object.entries(r.restored).map(([k, n]) => `restaurados ${k}: ${n}`),
+          ];
+          message.success(parts.length ? parts.join("; ") : "Importación deshecha.");
+          void loadBatches();
+        } catch (e: unknown) {
+          const msg =
+            (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+            "No se pudo deshacer.";
+          message.error(msg);
+        } finally {
+          setUndoingId(null);
+        }
+      },
+    });
+  };
+
+  const batchColumns: ColumnsType<ImportBatchRow> = [
+    {
+      title: "Fecha",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      width: 150,
+      render: (v: string) => dayjs(v).format("DD/MM/YYYY HH:mm"),
+    },
+    {
+      title: "Tipo",
+      dataIndex: "kind",
+      key: "kind",
+      width: 100,
+      render: (k: ImportBatchRow["kind"]) => KIND_LABELS[k],
+    },
+    {
+      title: "Archivo",
+      dataIndex: "fileName",
+      key: "fileName",
+      ellipsis: true,
+      render: (v: string | null) => v ?? "—",
+    },
+    {
+      title: "Filas",
+      dataIndex: "imported",
+      key: "imported",
+      width: 72,
+      align: "right",
+    },
+    {
+      title: "Estado",
+      key: "st",
+      width: 110,
+      render: (_, r) =>
+        r.undoneAt ? <Tag color="default">Deshecho</Tag> : <Tag color="success">Activo</Tag>,
+    },
+    {
+      title: "",
+      key: "act",
+      width: 120,
+      render: (_, r) =>
+        r.undoneAt ? null : (
+          <Button
+            size="small"
+            icon={<UndoOutlined />}
+            loading={undoingId === r.id}
+            onClick={() => confirmUndoBatch(r)}
+          >
+            Deshacer
+          </Button>
+        ),
+    },
+  ];
+
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       <Title level={3}>Importaciones</Title>
@@ -175,6 +291,31 @@ export function ImportWizardView({ canAdmin }: { canAdmin: boolean }) {
           </Col>
         ))}
       </Row>
+
+      {canImportDropi ? (
+        <Card
+          title="Historial de importaciones (deshacer)"
+          extra={
+            <Button size="small" onClick={() => void loadBatches()} loading={batchesLoading}>
+              Actualizar
+            </Button>
+          }
+        >
+          <Paragraph type="secondary" style={{ marginTop: 0 }}>
+            Cada subida de cartera, productos o pedidos queda registrada. Puedes deshacer un lote concreto si subiste el
+            archivo equivocado (otra tienda, archivo erróneo, etc.) sin borrar todo con la zona peligrosa.
+          </Paragraph>
+          <Table<ImportBatchRow>
+            size="small"
+            rowKey="id"
+            loading={batchesLoading}
+            dataSource={batches}
+            columns={batchColumns}
+            pagination={{ pageSize: 8, hideOnSinglePage: true }}
+            locale={{ emptyText: "Aún no hay importaciones registradas en esta empresa." }}
+          />
+        </Card>
+      ) : null}
 
       {canAdmin ? (
         <div className="import-wipe-zone">

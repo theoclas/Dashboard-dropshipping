@@ -47,6 +47,7 @@ model Company {
   advertisingAccounts        AdvertisingAccount[]
   cpaExperimentalRecords     CpaExperimentalRecord[]
   dropiWithdrawals           DropiWithdrawal[]
+  importBatches              ImportBatch[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -420,6 +421,32 @@ model OperationalExpense {
   @@index([companyId, fecha])
   @@index([advertisingAccountId])
   @@map("gastos_operacionales")
+}
+
+/// Registro de una importación Dropi (cartera / productos / pedidos) para poder deshacerla.
+model ImportBatch {
+  id        String          @id @default(cuid())
+  companyId String          @map("company_id")
+  kind      ImportBatchKind
+  fileName  String?         @map("file_name") @db.VarChar(255)
+  userId    String?         @map("user_id")
+  imported  Int             @default(0)
+  /// JSON con claves afectadas y snapshots para restaurar filas actualizadas.
+  payload   Json
+  undoneAt  DateTime?       @map("undone_at")
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, kind, createdAt])
+  @@map("import_batches")
+}
+
+enum ImportBatchKind {
+  CARTERA
+  PRODUCTOS
+  PEDIDOS
 }
 
 enum Role {

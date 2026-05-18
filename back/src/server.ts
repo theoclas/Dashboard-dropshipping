@@ -9,7 +9,7 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { z } from "zod";
-import { Prisma, Role, type Order } from "@prisma/client";
+import { ImportBatchKind, Prisma, Role, type Order } from "@prisma/client";
 import { prisma } from "./prisma";
 import {
   authRequired,
@@ -28,6 +28,7 @@ import { importMapeoEstadosExcel } from "./importMapeoEstadosExcel";
 import { importCpaExcel } from "./importCpaExcel";
 import { remapearPedidos } from "./remapearPedidos";
 import { wipeCpaForCompany, wipeImportedForCompany } from "./wipeImported";
+import { createImportBatch, listImportBatches, undoImportBatch } from "./importBatchService";
 import { listDropiWithdrawals, patchDropiWithdrawalNota } from "./dropiWithdrawalService";
 import {
   buildOrderOrderBy,
@@ -44,7 +45,11 @@ import {
 } from "./reportesLogistica";
 import { getDashboardMetrics } from "./dashboardMetrics";
 import { createCpaRecord, deleteCpaRecord, updateCpaRecord } from "./cpaRecordService";
-import { listCpaExperimental, rebuildCpaExperimentalRange } from "./cpaExperimentalService";
+import {
+  listCpaExperimental,
+  rebuildCpaExperimentalByProduct,
+  rebuildCpaExperimentalRange,
+} from "./cpaExperimentalService";
 import * as catalogProductService from "./catalogProductService";
 
 const app = express();
@@ -1097,7 +1102,15 @@ async function importPedidosHandler(req: express.Request, res: express.Response)
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const result = await importPedidosExcel(prisma, user.companyId, req.file.buffer);
-    return res.json(result);
+    const batch = await createImportBatch(prisma, {
+      companyId: user.companyId,
+      kind: ImportBatchKind.PEDIDOS,
+      fileName: req.file.originalname,
+      userId: user.userId,
+      imported: result.imported,
+      payload: result.undoPayload,
+    });
+    return res.json({ ...result, batchId: batch.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Sheet1")) {
@@ -1114,7 +1127,15 @@ async function importCarteraHandler(req: express.Request, res: express.Response)
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const result = await importCarteraExcel(prisma, user.companyId, req.file.buffer);
-    return res.json(result);
+    const batch = await createImportBatch(prisma, {
+      companyId: user.companyId,
+      kind: ImportBatchKind.CARTERA,
+      fileName: req.file.originalname,
+      userId: user.userId,
+      imported: result.imported,
+      payload: result.undoPayload,
+    });
+    return res.json({ ...result, batchId: batch.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("HISTORIAL DE CARTERA")) {
@@ -1189,7 +1210,15 @@ async function importProductosHandler(req: express.Request, res: express.Respons
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   try {
     const result = await importProductosExcel(prisma, user.companyId, req.file.buffer);
-    return res.json(result);
+    const batch = await createImportBatch(prisma, {
+      companyId: user.companyId,
+      kind: ImportBatchKind.PRODUCTOS,
+      fileName: req.file.originalname,
+      userId: user.userId,
+      imported: result.imported,
+      payload: result.undoPayload,
+    });
+    return res.json({ ...result, batchId: batch.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Sheet1")) {
@@ -1331,6 +1360,40 @@ app.post(
   return res.json(result);
 });
 
+app.get("/api/import/batches", authRequired, companyRequired, requirePermission("actionImportarDropi"), async (req, res) => {
+  const user = (req as express.Request & { user?: JwtPayload }).user!;
+  const rows = await listImportBatches(prisma, user.companyId);
+  return res.json(
+    rows.map((b) => ({
+      id: b.id,
+      kind: b.kind,
+      fileName: b.fileName,
+      imported: b.imported,
+      undoneAt: b.undoneAt,
+      createdAt: b.createdAt,
+    })),
+  );
+});
+
+app.post(
+  "/api/import/batches/:batchId/undo",
+  authRequired,
+  companyRequired,
+  requirePermission("actionImportarDropi"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const batchId = String(req.params.batchId);
+    try {
+      const result = await undoImportBatch(prisma, user.companyId, batchId);
+      return res.json(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes("no encontrado") ? 404 : 400;
+      return res.status(status).json({ message: msg });
+    }
+  },
+);
+
 app.post("/api/import/wipe-imported-tables", authRequired, companyRequired, requireRoles([Role.ADMIN]), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const schema = z.object({ password: z.string().min(1) });
@@ -1440,20 +1503,23 @@ app.post(
     const user = (req as express.Request & { user?: JwtPayload }).user!;
     const schema = z.object({
       catalogProductId: z.string().min(1),
-      advertisingAccountId: z.string().min(1),
+      advertisingAccountId: z.string().min(1).optional(),
       desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
     try {
-      const result = await rebuildCpaExperimentalRange(
-        user.companyId,
-        parsed.data.catalogProductId,
-        parsed.data.advertisingAccountId,
-        parsed.data.desde,
-        parsed.data.hasta,
-      );
+      const { catalogProductId, advertisingAccountId, desde, hasta } = parsed.data;
+      const result = advertisingAccountId
+        ? await rebuildCpaExperimentalRange(
+            user.companyId,
+            catalogProductId,
+            advertisingAccountId,
+            desde,
+            hasta,
+          )
+        : await rebuildCpaExperimentalByProduct(user.companyId, catalogProductId, desde, hasta);
       return res.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

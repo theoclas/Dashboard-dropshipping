@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import type { CarteraUndoPayload } from "./importBatchTypes";
 import { getExcelCell, parseDateTime, toNumber, toString } from "./excelImportHelpers";
 
 const BATCH_TX_OPTIONS = { maxWait: 60_000, timeout: 300_000 } as const;
@@ -34,7 +35,7 @@ export async function importCarteraExcel(
   prisma: PrismaClient,
   companyId: string,
   buffer: Buffer,
-): Promise<{ imported: number; retirosUpserted: number; errors: string[] }> {
+): Promise<{ imported: number; retirosUpserted: number; errors: string[]; undoPayload: CarteraUndoPayload }> {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName =
     wb.SheetNames.find((s) => s === "HISTORIAL DE CARTERA") || wb.SheetNames[0];
@@ -88,11 +89,14 @@ export async function importCarteraExcel(
   let imported = 0;
   let retirosUpserted = 0;
   let avisoTablaRetirosFaltante = false;
+  const walletLegacyIds: string[] = [];
+  const dropiMovementIds: string[] = [];
   for (let i = 0; i < registros.length; i += CHUNK) {
     const batch = registros.slice(i, i + CHUNK);
     await prisma.$transaction(
       async (tx) => {
         for (const r of batch) {
+          walletLegacyIds.push(String(r.id));
           await tx.walletMovement.upsert({
             where: {
               companyId_legacyId: { companyId, legacyId: r.id },
@@ -123,6 +127,7 @@ export async function importCarteraExcel(
 
           if (!avisoTablaRetirosFaltante && esDescripcionRetiroCartera(r.descripcion)) {
             try {
+              dropiMovementIds.push(String(r.id));
               await tx.dropiWithdrawal.upsert({
                 where: {
                   companyId_dropiMovementId: { companyId, dropiMovementId: r.id },
@@ -161,5 +166,10 @@ export async function importCarteraExcel(
     imported += batch.length;
   }
 
-  return { imported, retirosUpserted, errors };
+  return {
+    imported,
+    retirosUpserted,
+    errors,
+    undoPayload: { walletLegacyIds, dropiMovementIds },
+  };
 }
