@@ -312,8 +312,12 @@ export function OperationalExpensesPage() {
                     }
                     try {
                       const res = await importMetaBillingOperationalCsv(file);
+                      const skipped =
+                        res.expensesSkipped > 0
+                          ? `; omitidas (ya existían): ${res.expensesSkipped}`
+                          : "";
                       message.success(
-                        `Creadas ${res.expensesCreated} líneas de gasto; cuentas nuevas: ${res.accountsCreated}.`,
+                        `Creadas ${res.expensesCreated} líneas de gasto; cuentas nuevas: ${res.accountsCreated}${skipped}.`,
                       );
                       if (res.errors.length) message.warning(res.errors.slice(0, 5).join(" | "));
                       void load();

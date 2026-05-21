@@ -6,8 +6,54 @@ import { prisma } from "./prisma";
 export type ImportMetaBillingResult = {
   accountsCreated: number;
   expensesCreated: number;
+  expensesSkipped: number;
   errors: string[];
 };
+
+/** Clave estable para omitir duplicados en el mismo CSV o en reimportaciones. */
+export function billingImportDedupeKey(
+  metaId: string,
+  concepto: string,
+  fecha: Date,
+  amount: number,
+): string {
+  const day = fecha.toISOString().slice(0, 10);
+  return `${metaId}|${concepto}|${day}|${amount}`;
+}
+
+function expenseDateDayRange(fecha: Date): { gte: Date; lt: Date } {
+  const gte = new Date(fecha);
+  gte.setHours(0, 0, 0, 0);
+  const lt = new Date(gte);
+  lt.setDate(lt.getDate() + 1);
+  return { gte, lt };
+}
+
+async function operationalExpenseAlreadyExists(
+  companyId: string,
+  concepto: string,
+  fecha: Date,
+  amount: number,
+  metaId: string,
+): Promise<boolean> {
+  const byConcepto = await prisma.operationalExpense.findFirst({
+    where: { companyId, concepto },
+    select: { id: true },
+  });
+  if (byConcepto) return true;
+
+  const { gte, lt } = expenseDateDayRange(fecha);
+  const byRow = await prisma.operationalExpense.findFirst({
+    where: {
+      companyId,
+      cuentaPublicitaria: metaId,
+      fecha: { gte, lt },
+      monto: new Prisma.Decimal(amount),
+    },
+    select: { id: true },
+  });
+  return !!byRow;
+}
 
 function csvCell(row: Record<string, unknown>, ...aliases: string[]): unknown {
   const map = new Map<string, unknown>();
@@ -99,7 +145,7 @@ async function upsertExpenseFromBillingRow(
   fecha: Date,
   amount: number,
   concepto: string,
-): Promise<{ accountCreated: boolean }> {
+): Promise<{ accountCreated: boolean; created: boolean; skipped: boolean }> {
   let acc = await prisma.advertisingAccount.findUnique({
     where: { companyId_metaAccountId: { companyId, metaAccountId: metaId } },
   });
@@ -116,6 +162,10 @@ async function upsertExpenseFromBillingRow(
     });
   }
 
+  if (await operationalExpenseAlreadyExists(companyId, concepto, fecha, amount, metaId)) {
+    return { accountCreated: false, created: false, skipped: true };
+  }
+
   await prisma.operationalExpense.create({
     data: {
       companyId,
@@ -129,7 +179,7 @@ async function upsertExpenseFromBillingRow(
       createdByUserId,
     },
   });
-  return { accountCreated };
+  return { accountCreated, created: true, skipped: false };
 }
 
 /** Importa filas de facturación Meta (CSV) como gastos operacionales y crea cuentas publicitarias si faltan. */
@@ -141,6 +191,8 @@ export async function importMetaBillingOperationalCsv(
   const errors: string[] = [];
   let accountsCreated = 0;
   let expensesCreated = 0;
+  let expensesSkipped = 0;
+  const seenInFile = new Set<string>();
 
   const resumen = extractMetaBillingResumenContext(csvText);
   if (resumen) {
@@ -154,7 +206,7 @@ export async function importMetaBillingOperationalCsv(
       }) as Record<string, unknown>[];
     } catch (e) {
       errors.push(e instanceof Error ? e.message : "CSV inválido.");
-      return { accountsCreated, expensesCreated, errors };
+      return { accountsCreated, expensesCreated, expensesSkipped, errors };
     }
 
     for (let i = 0; i < rows.length; i++) {
@@ -177,9 +229,15 @@ export async function importMetaBillingOperationalCsv(
         csvCell(row, "Identificador de la transacción", "Transaction ID", "Transaction id", "ID") ?? "",
       ).trim();
       const concepto = txId ? `Facturación Meta ${txId}` : `Facturación Meta ${resumen.metaAccountId}`;
+      const dedupeKey = billingImportDedupeKey(resumen.metaAccountId, concepto, fecha, amount);
+      if (seenInFile.has(dedupeKey)) {
+        expensesSkipped += 1;
+        continue;
+      }
+      seenInFile.add(dedupeKey);
 
       try {
-        const { accountCreated } = await upsertExpenseFromBillingRow(
+        const { accountCreated, created, skipped } = await upsertExpenseFromBillingRow(
           companyId,
           createdByUserId,
           resumen.metaAccountId,
@@ -189,13 +247,14 @@ export async function importMetaBillingOperationalCsv(
           concepto,
         );
         if (accountCreated) accountsCreated += 1;
-        expensesCreated += 1;
+        if (skipped) expensesSkipped += 1;
+        else if (created) expensesCreated += 1;
       } catch (e) {
         errors.push(`Línea ${line}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    return { accountsCreated, expensesCreated, errors };
+    return { accountsCreated, expensesCreated, expensesSkipped, errors };
   }
 
   let rows: Record<string, unknown>[];
@@ -208,7 +267,7 @@ export async function importMetaBillingOperationalCsv(
     }) as Record<string, unknown>[];
   } catch (e) {
     errors.push(e instanceof Error ? e.message : "CSV inválido.");
-    return { accountsCreated, expensesCreated, errors };
+    return { accountsCreated, expensesCreated, expensesSkipped, errors };
   }
 
   for (let i = 0; i < rows.length; i++) {
@@ -241,8 +300,15 @@ export async function importMetaBillingOperationalCsv(
       String(csvCell(row, "Description", "Descripción", "Concept", "Campaign name", "Detalle") ?? "").trim() ||
       `Facturación Meta ${metaId}`;
 
+    const dedupeKey = billingImportDedupeKey(metaId, concepto, fecha, amount);
+    if (seenInFile.has(dedupeKey)) {
+      expensesSkipped += 1;
+      continue;
+    }
+    seenInFile.add(dedupeKey);
+
     try {
-      const { accountCreated } = await upsertExpenseFromBillingRow(
+      const { accountCreated, created, skipped } = await upsertExpenseFromBillingRow(
         companyId,
         createdByUserId,
         metaId,
@@ -252,11 +318,12 @@ export async function importMetaBillingOperationalCsv(
         concepto,
       );
       if (accountCreated) accountsCreated += 1;
-      expensesCreated += 1;
+      if (skipped) expensesSkipped += 1;
+      else if (created) expensesCreated += 1;
     } catch (e) {
       errors.push(`Línea ${line}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  return { accountsCreated, expensesCreated, errors };
+  return { accountsCreated, expensesCreated, expensesSkipped, errors };
 }

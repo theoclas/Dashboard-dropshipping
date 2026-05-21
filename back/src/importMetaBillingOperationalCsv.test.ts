@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  billingImportDedupeKey,
   extractMetaBillingResumenContext,
   parseMetaBillingMoney,
 } from "./importMetaBillingOperationalCsv";
@@ -17,6 +18,16 @@ test("parseMetaBillingMoney — miles con punto (COP)", () => {
   assert.equal(parseMetaBillingMoney("108.462"), 108462);
   assert.equal(parseMetaBillingMoney("1.341.410"), 1341410);
   assert.equal(parseMetaBillingMoney("21.696"), 21696);
+});
+
+test("billingImportDedupeKey — misma transacción produce la misma clave", () => {
+  const fecha = new Date("2026-05-18T12:00:00.000Z");
+  const concepto = "Facturación Meta 27367236209633945-27367236252967274";
+  const a = billingImportDedupeKey("27681534604769560", concepto, fecha, 337120);
+  const b = billingImportDedupeKey("27681534604769560", concepto, fecha, 337120);
+  assert.equal(a, b);
+  const c = billingImportDedupeKey("27681534604769560", concepto, new Date("2026-05-19T12:00:00.000Z"), 337120);
+  assert.notEqual(a, c);
 });
 
 test("extractMetaBillingResumenContext — CSV resumen facturación ES", () => {

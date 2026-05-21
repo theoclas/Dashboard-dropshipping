@@ -278,5 +278,6 @@ export type AdvertisingAccountOperationalExpensesResponse = {
 export type ImportMetaBillingResult = {
   accountsCreated: number;
   expensesCreated: number;
+  expensesSkipped: number;
   errors: string[];
 };
