@@ -1,11 +1,12 @@
 import { parse } from "csv-parse/sync";
 import { Prisma } from "@prisma/client";
-import { normalizeExcelHeaderKey, parseDate } from "./excelImportHelpers";
+import { normalizeExcelHeaderKey, parseDate, toMetricRecordDate } from "./excelImportHelpers";
 import { prisma } from "./prisma";
 
 export type ImportMetaBillingResult = {
   accountsCreated: number;
   expensesCreated: number;
+  expensesUpdated: number;
   expensesSkipped: number;
   errors: string[];
 };
@@ -17,33 +18,32 @@ export function billingImportDedupeKey(
   fecha: Date,
   amount: number,
 ): string {
-  const day = fecha.toISOString().slice(0, 10);
+  const day = toMetricRecordDate(fecha).toISOString().slice(0, 10);
   return `${metaId}|${concepto}|${day}|${amount}`;
 }
 
-function expenseDateDayRange(fecha: Date): { gte: Date; lt: Date } {
-  const gte = new Date(fecha);
-  gte.setHours(0, 0, 0, 0);
+function utcDayRange(fecha: Date): { gte: Date; lt: Date } {
+  const gte = toMetricRecordDate(fecha);
   const lt = new Date(gte);
-  lt.setDate(lt.getDate() + 1);
+  lt.setUTCDate(lt.getUTCDate() + 1);
   return { gte, lt };
 }
 
-async function operationalExpenseAlreadyExists(
+async function findExistingOperationalExpense(
   companyId: string,
   concepto: string,
   fecha: Date,
   amount: number,
   metaId: string,
-): Promise<boolean> {
+): Promise<{ id: string } | null> {
   const byConcepto = await prisma.operationalExpense.findFirst({
     where: { companyId, concepto },
     select: { id: true },
   });
-  if (byConcepto) return true;
+  if (byConcepto) return byConcepto;
 
-  const { gte, lt } = expenseDateDayRange(fecha);
-  const byRow = await prisma.operationalExpense.findFirst({
+  const { gte, lt } = utcDayRange(fecha);
+  return prisma.operationalExpense.findFirst({
     where: {
       companyId,
       cuentaPublicitaria: metaId,
@@ -52,7 +52,6 @@ async function operationalExpenseAlreadyExists(
     },
     select: { id: true },
   });
-  return !!byRow;
 }
 
 function csvCell(row: Record<string, unknown>, ...aliases: string[]): unknown {
@@ -145,7 +144,7 @@ async function upsertExpenseFromBillingRow(
   fecha: Date,
   amount: number,
   concepto: string,
-): Promise<{ accountCreated: boolean; created: boolean; skipped: boolean }> {
+): Promise<{ accountCreated: boolean; created: boolean; updated: boolean }> {
   let acc = await prisma.advertisingAccount.findUnique({
     where: { companyId_metaAccountId: { companyId, metaAccountId: metaId } },
   });
@@ -162,14 +161,27 @@ async function upsertExpenseFromBillingRow(
     });
   }
 
-  if (await operationalExpenseAlreadyExists(companyId, concepto, fecha, amount, metaId)) {
-    return { accountCreated: false, created: false, skipped: true };
+  const recordDate = toMetricRecordDate(fecha);
+  const existing = await findExistingOperationalExpense(companyId, concepto, recordDate, amount, metaId);
+
+  if (existing) {
+    await prisma.operationalExpense.update({
+      where: { id: existing.id },
+      data: {
+        fecha: recordDate,
+        monto: new Prisma.Decimal(amount),
+        concepto,
+        cuentaPublicitaria: metaId,
+        advertisingAccountId: acc.id,
+      },
+    });
+    return { accountCreated, created: false, updated: true };
   }
 
   await prisma.operationalExpense.create({
     data: {
       companyId,
-      fecha,
+      fecha: recordDate,
       monto: new Prisma.Decimal(amount),
       concepto,
       categoria: "OTRO",
@@ -179,7 +191,7 @@ async function upsertExpenseFromBillingRow(
       createdByUserId,
     },
   });
-  return { accountCreated, created: true, skipped: false };
+  return { accountCreated, created: true, updated: false };
 }
 
 /** Importa filas de facturación Meta (CSV) como gastos operacionales y crea cuentas publicitarias si faltan. */
@@ -191,6 +203,7 @@ export async function importMetaBillingOperationalCsv(
   const errors: string[] = [];
   let accountsCreated = 0;
   let expensesCreated = 0;
+  let expensesUpdated = 0;
   let expensesSkipped = 0;
   const seenInFile = new Set<string>();
 
@@ -206,14 +219,15 @@ export async function importMetaBillingOperationalCsv(
       }) as Record<string, unknown>[];
     } catch (e) {
       errors.push(e instanceof Error ? e.message : "CSV inválido.");
-      return { accountsCreated, expensesCreated, expensesSkipped, errors };
+      return { accountsCreated, expensesCreated, expensesUpdated, expensesSkipped, errors };
     }
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const line = i + 2;
       const dateRaw = csvCell(row, "Fecha", "Date", "Day", "Transaction date");
-      const fecha = dateRaw ? parseDate(dateRaw) : undefined;
+      const parsedFecha = dateRaw ? parseDate(dateRaw) : undefined;
+      const fecha = parsedFecha ? toMetricRecordDate(parsedFecha) : undefined;
       if (!fecha) {
         errors.push(`Línea ${line}: fecha inválida.`);
         continue;
@@ -237,7 +251,7 @@ export async function importMetaBillingOperationalCsv(
       seenInFile.add(dedupeKey);
 
       try {
-        const { accountCreated, created, skipped } = await upsertExpenseFromBillingRow(
+        const { accountCreated, created, updated } = await upsertExpenseFromBillingRow(
           companyId,
           createdByUserId,
           resumen.metaAccountId,
@@ -247,14 +261,14 @@ export async function importMetaBillingOperationalCsv(
           concepto,
         );
         if (accountCreated) accountsCreated += 1;
-        if (skipped) expensesSkipped += 1;
+        if (updated) expensesUpdated += 1;
         else if (created) expensesCreated += 1;
       } catch (e) {
         errors.push(`Línea ${line}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    return { accountsCreated, expensesCreated, expensesSkipped, errors };
+    return { accountsCreated, expensesCreated, expensesUpdated, expensesSkipped, errors };
   }
 
   let rows: Record<string, unknown>[];
@@ -267,7 +281,7 @@ export async function importMetaBillingOperationalCsv(
     }) as Record<string, unknown>[];
   } catch (e) {
     errors.push(e instanceof Error ? e.message : "CSV inválido.");
-    return { accountsCreated, expensesCreated, expensesSkipped, errors };
+    return { accountsCreated, expensesCreated, expensesUpdated, expensesSkipped, errors };
   }
 
   for (let i = 0; i < rows.length; i++) {
@@ -288,7 +302,8 @@ export async function importMetaBillingOperationalCsv(
     }
 
     const dateRaw = csvCell(row, "Date", "Fecha", "Day", "Transaction date");
-    const fecha = dateRaw ? parseDate(dateRaw) : undefined;
+    const parsedFecha = dateRaw ? parseDate(dateRaw) : undefined;
+    const fecha = parsedFecha ? toMetricRecordDate(parsedFecha) : undefined;
     if (!fecha) {
       errors.push(`Línea ${line}: fecha inválida.`);
       continue;
@@ -308,7 +323,7 @@ export async function importMetaBillingOperationalCsv(
     seenInFile.add(dedupeKey);
 
     try {
-      const { accountCreated, created, skipped } = await upsertExpenseFromBillingRow(
+      const { accountCreated, created, updated } = await upsertExpenseFromBillingRow(
         companyId,
         createdByUserId,
         metaId,
@@ -318,12 +333,12 @@ export async function importMetaBillingOperationalCsv(
         concepto,
       );
       if (accountCreated) accountsCreated += 1;
-      if (skipped) expensesSkipped += 1;
+      if (updated) expensesUpdated += 1;
       else if (created) expensesCreated += 1;
     } catch (e) {
       errors.push(`Línea ${line}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  return { accountsCreated, expensesCreated, expensesSkipped, errors };
+  return { accountsCreated, expensesCreated, expensesUpdated, expensesSkipped, errors };
 }

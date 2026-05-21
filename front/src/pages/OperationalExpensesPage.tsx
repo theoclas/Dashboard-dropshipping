@@ -30,6 +30,7 @@ import {
 } from "../api";
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { useAuth } from "../contexts/AuthContext";
+import { formatDateOnly } from "../utils/formatDateOnly";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccount, OperationalExpenseRow } from "../types";
 
@@ -186,15 +187,15 @@ export function OperationalExpensesPage() {
         title: "Fecha",
         dataIndex: "fecha",
         key: "fecha",
-        render: (v: string) => dayjs(v).format("YYYY-MM-DD"),
-        sorter: (a, b) => dayjs(a.fecha).valueOf() - dayjs(b.fecha).valueOf(),
+        render: (v: string) => formatDateOnly(v),
+        sorter: (a, b) => formatDateOnly(a.fecha).localeCompare(formatDateOnly(b.fecha)),
         defaultSortOrder: "descend",
         filterDropdown: (p) => <FechaRangeFilterDropdown {...p} />,
         onFilter: (value, record) => {
           const parts = String(value).split("|");
           if (parts.length !== 2 || !parts[0] || !parts[1]) return true;
           const [desde, hasta] = parts[0] <= parts[1] ? [parts[0], parts[1]] : [parts[1], parts[0]];
-          const d = dayjs(record.fecha).format("YYYY-MM-DD");
+          const d = formatDateOnly(record.fecha);
           return d >= desde && d <= hasta;
         },
       },
@@ -262,7 +263,7 @@ export function OperationalExpensesPage() {
                   onClick={() => {
                     confirmWipePasswordDelete({
                       title: "¿Eliminar este gasto?",
-                      description: `${dayjs(r.fecha).format("YYYY-MM-DD")} — ${r.concepto} — $${Number(r.monto).toLocaleString("es-CO")}`,
+                      description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${Number(r.monto).toLocaleString("es-CO")}`,
                       onDelete: async (password) => {
                         await deleteOperationalExpense(r.id, password);
                         message.success("Eliminado.");
@@ -317,12 +318,12 @@ export function OperationalExpensesPage() {
                     }
                     try {
                       const res = await importMetaBillingOperationalCsv(file);
-                      const skipped =
-                        res.expensesSkipped > 0
-                          ? `; omitidas (ya existían): ${res.expensesSkipped}`
-                          : "";
+                      const parts: string[] = [];
+                      if (res.expensesCreated > 0) parts.push(`${res.expensesCreated} nuevas`);
+                      if (res.expensesUpdated > 0) parts.push(`${res.expensesUpdated} actualizadas`);
+                      if (res.expensesSkipped > 0) parts.push(`${res.expensesSkipped} omitidas en el CSV`);
                       message.success(
-                        `Creadas ${res.expensesCreated} líneas de gasto; cuentas nuevas: ${res.accountsCreated}${skipped}.`,
+                        `Importación: ${parts.length ? parts.join(", ") : "sin cambios"}; cuentas nuevas: ${res.accountsCreated}. El estado Pagado no se modifica en filas existentes.`,
                       );
                       if (res.errors.length) message.warning(res.errors.slice(0, 5).join(" | "));
                       void load();

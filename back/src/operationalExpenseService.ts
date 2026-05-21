@@ -1,4 +1,5 @@
 import type { OperationalExpenseCategory, Prisma } from "@prisma/client";
+import { toMetricRecordDate } from "./excelImportHelpers";
 import { prisma } from "./prisma";
 
 function expenseFechaRangeFilter(desde: Date | null, hasta: Date | null): Prisma.DateTimeFilter | undefined {
@@ -88,7 +89,7 @@ export function createOperationalExpense(
   return prisma.operationalExpense.create({
     data: {
       companyId,
-      fecha: data.fecha,
+      fecha: toMetricRecordDate(data.fecha),
       monto: data.monto as Prisma.Decimal,
       concepto: data.concepto.trim(),
       categoria: data.categoria ?? null,
@@ -125,7 +126,7 @@ export async function updateOperationalExpense(
   return prisma.operationalExpense.update({
     where: { id },
     data: {
-      ...(data.fecha !== undefined ? { fecha: data.fecha } : {}),
+      ...(data.fecha !== undefined ? { fecha: toMetricRecordDate(data.fecha) } : {}),
       ...(data.monto !== undefined ? { monto: data.monto as Prisma.Decimal } : {}),
       ...(data.concepto !== undefined ? { concepto: data.concepto.trim() } : {}),
       ...(data.categoria !== undefined ? { categoria: data.categoria } : {}),

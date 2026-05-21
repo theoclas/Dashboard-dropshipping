@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { parseDate, toMetricRecordDate } from "./excelImportHelpers";
 import {
   billingImportDedupeKey,
   extractMetaBillingResumenContext,
@@ -18,6 +19,13 @@ test("parseMetaBillingMoney — miles con punto (COP)", () => {
   assert.equal(parseMetaBillingMoney("108.462"), 108462);
   assert.equal(parseMetaBillingMoney("1.341.410"), 1341410);
   assert.equal(parseMetaBillingMoney("21.696"), 21696);
+});
+
+test("toMetricRecordDate — 18/5/2026 del CSV Meta queda en día 18 UTC", () => {
+  const parsed = parseDate("18/5/2026");
+  assert.ok(parsed);
+  const stored = toMetricRecordDate(parsed);
+  assert.equal(stored.toISOString(), "2026-05-18T00:00:00.000Z");
 });
 
 test("billingImportDedupeKey — misma transacción produce la misma clave", () => {

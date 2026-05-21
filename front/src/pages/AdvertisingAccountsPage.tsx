@@ -16,7 +16,7 @@ import {
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import dayjs, { type Dayjs } from "dayjs";
+import type { Dayjs } from "dayjs";
 import {
   deleteOperationalExpense,
   fetchAdvertisingAccountOperationalExpenses,
@@ -25,6 +25,7 @@ import {
 } from "../api";
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { usePermission } from "../hooks/usePermission";
+import { formatDateOnly } from "../utils/formatDateOnly";
 import type { AdvertisingAccountWithStats, OperationalExpenseRow } from "../types";
 
 const { Title, Text } = Typography;
@@ -106,7 +107,7 @@ export function AdvertisingAccountsPage() {
       dataIndex: "fecha",
       key: "fecha",
       width: 120,
-      render: (v: string) => dayjs(v).format("YYYY-MM-DD"),
+      render: (v: string) => formatDateOnly(v),
     },
     { title: "Concepto", dataIndex: "concepto", key: "concepto", ellipsis: true },
     {
@@ -140,7 +141,7 @@ export function AdvertisingAccountsPage() {
                   e.stopPropagation();
                   confirmWipePasswordDelete({
                     title: "¿Eliminar este gasto?",
-                    description: `${dayjs(r.fecha).format("YYYY-MM-DD")} — ${r.concepto} — $${fmtMoney(r.monto)}`,
+                    description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${fmtMoney(r.monto)}`,
                     onDelete: async (password) => {
                       await deleteOperationalExpense(r.id, password);
                       message.success("Eliminado.");
