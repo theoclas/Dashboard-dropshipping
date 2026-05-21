@@ -1,5 +1,18 @@
 export type Role = "ADMIN" | "OPERADOR" | "LECTOR";
 
+export type OrdersTableColumnPin = "left" | "right";
+
+export type OrdersTableColumnEntry = {
+  key: string;
+  visible: boolean;
+  pin?: OrdersTableColumnPin;
+};
+
+export type OrdersTableConfig = {
+  version: 1;
+  columns: OrdersTableColumnEntry[];
+};
+
 export const OPERATOR_PERMISSION_KEYS = [
   "moduleDashboard",
   "moduleConfiguracion",
@@ -49,6 +62,8 @@ export type AuthUser = {
   operatorPerms?: Record<OperatorPermissionKey, boolean> | null;
   /** Preferencias de tarjetas del dashboard (`User.dashboard_config`). */
   dashboardConfig?: Record<string, boolean> | null;
+  /** Columnas del módulo Pedidos (`User.orders_table_config`). */
+  ordersTableConfig?: OrdersTableConfig | null;
   companySettings?: {
     id: string;
     name: string;

@@ -71,6 +71,18 @@ function snapshotToOrderUpdate(s: OrderSnapshot): Prisma.OrderUpdateInput {
     cartera: decOrNull(s.cartera),
     carteraAplicada: decOrNull(s.carteraAplicada),
     estadoCartera: s.estadoCartera,
+    tipoTienda: s.tipoTienda,
+    tienda: s.tienda,
+    vendedor: s.vendedor,
+    tipoEnvio: s.tipoEnvio,
+    emailCliente: s.emailCliente,
+    observacionDropi: s.observacionDropi,
+    tags: s.tags,
+    codigoPostal: s.codigoPostal,
+    idOrdenTienda: s.idOrdenTienda,
+    numeroPedidoTienda: s.numeroPedidoTienda,
+    usuarioGeneracionGuia: s.usuarioGeneracionGuia,
+    fechaGeneracionGuia: s.fechaGeneracionGuia ? new Date(s.fechaGeneracionGuia) : null,
   };
 }
 

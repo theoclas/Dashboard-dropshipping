@@ -19,6 +19,8 @@ model User {
   activeCompany              String?
   /// Visibilidad de tarjetas del dashboard (JSON: { "volume_totalOrders": true, ... }).
   dashboardConfig            Json?                @map("dashboard_config")
+  /// Columnas visibles/orden/fijado en módulo Pedidos (`OrdersTableConfig` v1).
+  ordersTableConfig          Json?                @map("orders_table_config")
   operationalExpensesCreated OperationalExpense[] @relation("OperationalExpenseCreatedBy")
 }
 
@@ -118,6 +120,19 @@ model Order {
   cartera                 Decimal?  @map("cartera") @db.Decimal(12, 2)
   carteraAplicada         Decimal?  @map("cartera_aplicada") @db.Decimal(12, 2)
   estadoCartera           String?   @map("estado_cartera") @db.VarChar(100)
+  /// Campos opcionales desde Excel Dropi (import pedidos).
+  tipoTienda              String?   @map("tipo_tienda") @db.VarChar(100)
+  tienda                  String?   @db.VarChar(255)
+  vendedor                String?   @db.VarChar(255)
+  tipoEnvio               String?   @map("tipo_envio") @db.VarChar(100)
+  emailCliente            String?   @map("email_cliente") @db.VarChar(255)
+  observacionDropi        String?   @map("observacion_dropi") @db.Text
+  tags                    String?   @db.Text
+  codigoPostal            String?   @map("codigo_postal") @db.VarChar(20)
+  idOrdenTienda           String?   @map("id_orden_tienda") @db.VarChar(100)
+  numeroPedidoTienda      String?   @map("numero_pedido_tienda") @db.VarChar(100)
+  usuarioGeneracionGuia   String?   @map("usuario_generacion_guia") @db.VarChar(255)
+  fechaGeneracionGuia     DateTime? @map("fecha_generacion_guia")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

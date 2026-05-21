@@ -47,6 +47,7 @@ import {
 import { getDashboardMetrics } from "./dashboardMetrics";
 import { createCpaRecord, deleteCpaRecord, updateCpaRecord } from "./cpaRecordService";
 import { listCpaExperimental, rebuildCpaExperimentalByProduct } from "./cpaExperimentalService";
+import { ordersTableConfigSchema } from "./ordersTableConfig";
 import * as catalogProductService from "./catalogProductService";
 
 const app = express();
@@ -223,6 +224,7 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     role: userPayload?.role,
     operatorPerms,
     dashboardConfig: user.dashboardConfig,
+    ordersTableConfig: user.ordersTableConfig,
     companySettings,
     companies: user.memberships.map((m) => ({
       companyId: m.companyId,
@@ -265,6 +267,24 @@ app.patch(
     data: { dashboardConfig: prev as Prisma.InputJsonValue },
   });
   return res.json({ dashboardConfig: prev });
+  },
+);
+
+app.patch(
+  "/api/auth/me/orders-table-config",
+  authRequired,
+  requirePermission("modulePedidos"),
+  async (req, res) => {
+    const userPayload = (req as express.Request & { user?: JwtPayload }).user!;
+    const parsed = ordersTableConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Payload inválido." });
+    }
+    await prisma.user.update({
+      where: { id: userPayload.userId },
+      data: { ordersTableConfig: parsed.data as Prisma.InputJsonValue },
+    });
+    return res.json({ ordersTableConfig: parsed.data });
   },
 );
 
@@ -680,7 +700,20 @@ function serializeOrder(o: Order) {
     estatus_original: o.estatusOriginal,
     ultimo_mov: o.ultimoMov,
     fecha_ult_mov: o.fechaUltMov?.toISOString() ?? null,
+    hora_ult_mov: o.horaUltMov != null ? Number(o.horaUltMov) : null,
     dias_desde_ult_mov: o.diasDesdeUltMov,
+    tipo_tienda: o.tipoTienda,
+    tienda: o.tienda,
+    vendedor: o.vendedor,
+    tipo_envio: o.tipoEnvio,
+    email_cliente: o.emailCliente,
+    observacion_dropi: o.observacionDropi,
+    tags: o.tags,
+    codigo_postal: o.codigoPostal,
+    id_orden_tienda: o.idOrdenTienda,
+    numero_pedido_tienda: o.numeroPedidoTienda,
+    usuario_generacion_guia: o.usuarioGeneracionGuia,
+    fecha_generacion_guia: o.fechaGeneracionGuia?.toISOString() ?? null,
     created_at: o.createdAt.toISOString(),
     updated_at: o.updatedAt.toISOString(),
   };
@@ -1595,6 +1628,13 @@ app.post("/api/orders/export", authRequired, companyRequired, requirePermission(
       notas_manuales: (o as Order & { notasManuales?: string | null }).notasManuales ?? null,
       estatus_original: o.estatusOriginal,
       ultimo_mov: o.ultimoMov,
+      tipo_tienda: o.tipoTienda,
+      tienda: o.tienda,
+      vendedor: o.vendedor,
+      tipo_envio: o.tipoEnvio,
+      email_cliente: o.emailCliente,
+      tags: o.tags,
+      codigo_postal: o.codigoPostal,
     }));
     const ws = XLSX.utils.json_to_sheet(flat);
     const wb = XLSX.utils.book_new();

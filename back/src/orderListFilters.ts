@@ -61,6 +61,19 @@ export const orderListQuerySchema = z.object({
   fecha_contains: zTrimmedOptional(),
   departamento: zTrimmedOptional(),
   direccion: zTrimmedOptional(),
+  cartera_aplicada: zTrimmedOptional(),
+  fecha_ult_mov: zTrimmedOptional(),
+  tipo_tienda: zTrimmedOptional(),
+  tienda: zTrimmedOptional(),
+  vendedor: zTrimmedOptional(),
+  tipo_envio: zTrimmedOptional(),
+  email_cliente: zTrimmedOptional(),
+  observacion_dropi: zTrimmedOptional(),
+  tags: zTrimmedOptional(),
+  codigo_postal: zTrimmedOptional(),
+  id_orden_tienda: zTrimmedOptional(),
+  numero_pedido_tienda: zTrimmedOptional(),
+  usuario_generacion_guia: zTrimmedOptional(),
   costo_proveedor: zTrimmedOptional(),
   costo_devolucion_estimado: zTrimmedOptional(),
   /** `true` / `1` / `ok`: cartera en OK; `false` / `0` / `no`: sin OK o vacío. */
@@ -123,6 +136,7 @@ const CAST_FILTER_CONFIG: { filterKey: keyof OrderListQueryParsed; column: Prism
   { filterKey: "costo_proveedor", column: Prisma.sql`pedidos.costo_proveedor` },
   { filterKey: "costo_devolucion_estimado", column: Prisma.sql`pedidos.costo_devolucion_estimado` },
   { filterKey: "dias_desde_ult_mov", column: Prisma.sql`pedidos.dias_desde_ult_mov` },
+  { filterKey: "cartera_aplicada", column: Prisma.sql`pedidos.cartera_aplicada` },
 ];
 
 /** Restringe por id cuando hay filtros que requieren CAST en SQL (como en Petho). */
@@ -238,6 +252,17 @@ export function buildPrismaOrderWhere(
   }
   addContains(and, "departamento", f.departamento);
   addContains(and, "direccion", f.direccion);
+  addContains(and, "tipoTienda", f.tipo_tienda);
+  addContains(and, "tienda", f.tienda);
+  addContains(and, "vendedor", f.vendedor);
+  addContains(and, "tipoEnvio", f.tipo_envio);
+  addContains(and, "emailCliente", f.email_cliente);
+  addContains(and, "observacionDropi", f.observacion_dropi);
+  addContains(and, "tags", f.tags);
+  addContains(and, "codigoPostal", f.codigo_postal);
+  addContains(and, "idOrdenTienda", f.id_orden_tienda);
+  addContains(and, "numeroPedidoTienda", f.numero_pedido_tienda);
+  addContains(and, "usuarioGeneracionGuia", f.usuario_generacion_guia);
 
   if (f.guia_blank) {
     and.push({
@@ -306,6 +331,7 @@ export function buildOrderOrderBy(f: OrderListQueryParsed): Prisma.OrderOrderByW
       case "costo_devolucion_estimado":
         return { costoDevolucionEstimado: dir };
       case "estado_cartera":
+      case "cartera_ok":
         return { estadoCartera: dir };
       case "dias_desde_ult_mov":
         return { diasDesdeUltMov: dir };
@@ -319,6 +345,24 @@ export function buildOrderOrderBy(f: OrderListQueryParsed): Prisma.OrderOrderByW
         return { estadoUnificado: dir };
       case "fecha_ult_mov":
         return { fechaUltMov: dir };
+      case "cartera_aplicada":
+        return { carteraAplicada: dir };
+      case "hora_ult_mov":
+        return { horaUltMov: dir };
+      case "tipo_tienda":
+        return { tipoTienda: dir };
+      case "tienda":
+        return { tienda: dir };
+      case "vendedor":
+        return { vendedor: dir };
+      case "tipo_envio":
+        return { tipoEnvio: dir };
+      case "email_cliente":
+        return { emailCliente: dir };
+      case "codigo_postal":
+        return { codigoPostal: dir };
+      case "fecha_generacion_guia":
+        return { fechaGeneracionGuia: dir };
       case "created_at":
         return { createdAt: dir };
       case "updated_at":

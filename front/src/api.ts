@@ -18,6 +18,7 @@ import type {
   ImportAdvertisingPreviewResponse,
   ImportMetaBillingResult,
   OperationalExpenseRow,
+  OrdersTableConfig,
   Role,
 } from "./types";
 
@@ -696,6 +697,16 @@ export async function patchDashboardConfig(dashboardConfig: Record<string, boole
   const { data } = await api.patch<{ dashboardConfig: Record<string, boolean> }>(
     "/auth/me/dashboard-config",
     dashboardConfig,
+  );
+  return data;
+}
+
+export async function patchOrdersTableConfig(
+  ordersTableConfig: OrdersTableConfig,
+): Promise<{ ordersTableConfig: OrdersTableConfig }> {
+  const { data } = await api.patch<{ ordersTableConfig: OrdersTableConfig }>(
+    "/auth/me/orders-table-config",
+    ordersTableConfig,
   );
   return data;
 }

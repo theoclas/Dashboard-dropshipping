@@ -8,78 +8,47 @@ import {
   Select,
   Space,
   Table,
-  Tag,
-  Tooltip,
   Typography,
   message,
 } from "antd";
 import {
-  CloseOutlined,
   DownloadOutlined,
-  EditOutlined,
   ReloadOutlined,
-  SaveOutlined,
-  SearchOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
-import type { ColumnsType } from "antd/es/table";
-import type { FilterDropdownProps } from "antd/es/table/interface";
 import { isAxiosError } from "axios";
-import { Link } from "react-router-dom";
 import {
   api,
   downloadOrdersExport,
   fetchCatalogProducts,
   fetchOrdersPage,
   fetchProductosDetalle,
+  patchOrdersTableConfig,
   remapearEstados,
   updateOrder,
 } from "../api";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
-import type { CatalogProduct } from "../types";
-import { dayjsFromYmdFilterString, fmtCalendarDateDdMmYyyy } from "../utils/calendarDateLocal";
+import { OrdersColumnsDrawer } from "../orders/OrdersColumnsDrawer";
+import {
+  createOrdersColumnDefs,
+  type OrdersColumnContext,
+} from "../orders/ordersColumnRegistry";
+import {
+  buildVisibleColumns,
+  DEFAULT_ORDERS_TABLE_CONFIG,
+  mergeOrdersTableConfig,
+} from "../orders/ordersTableConfig";
+import {
+  initialColumnFilters,
+  PEDIDO_COLUMN_FILTER_KEYS,
+  type Pedido,
+  type ProductoDetalle,
+} from "../orders/ordersTypes";
+import type { CatalogProduct, OrdersTableConfig } from "../types";
+import { dayjsFromYmdFilterString } from "../utils/calendarDateLocal";
 
 const { Title, Text } = Typography;
-
-/** Fila API (snake_case, alineada a Petho). */
-interface Pedido {
-  id: string;
-  id_dropi: string;
-  fecha: string | null;
-  cliente: string | null;
-  transportadora: string | null;
-  estado_operativo: string | null;
-  guia: string | null;
-  departamento: string | null;
-  ciudad: string | null;
-  direccion: string | null;
-  telefono: string | null;
-  notas: string | null;
-  venta: number | null;
-  ganancia_calc: number | null;
-  flete: number | null;
-  costo_devolucion_estimado: number | null;
-  costo_proveedor: number | null;
-  cartera: number | null;
-  cartera_aplicada: number | null;
-  estado_cartera: string | null;
-  estado_unificado: string | null;
-  estatus_original: string | null;
-  ultimo_mov: string | null;
-  fecha_ult_mov: string | null;
-  dias_desde_ult_mov: number | null;
-  notas_manuales: string | null;
-}
-
-interface ProductoDetalle {
-  id: number;
-  pedido_id_dropi: string;
-  producto_nombre: string | null;
-  cantidad: number | null;
-  precio_proveedor: number | null;
-  sku: string | null;
-  variacion: string | null;
-}
 
 function pedidoMapeoPrefillPath(p: Pedido): string {
   const q = new URLSearchParams();
@@ -101,70 +70,8 @@ function isPedidoCarteraOk(estado: string | null | undefined): boolean {
   return String(estado ?? "").trim().toUpperCase() === "OK";
 }
 
-const estadoColors: Record<string, string> = {
-  ENTREGADO: "green",
-  DEVOLUCION: "red",
-  DEVOLUCIÓN: "red",
-  "EN REPARTO": "blue",
-  NOVEDAD: "orange",
-  OFICINA: "purple",
-  "OFICINA 1": "volcano",
-  CANCELADO: "default",
-  "SIN MAPEAR": "gold",
-  DESPACHADA: "cyan",
-  "EN RUTA": "geekblue",
-};
-
-const PEDIDO_COLUMN_FILTER_KEYS = [
-  "id",
-  "id_dropi",
-  "estado_unificado",
-  "transportadora",
-  "ciudad",
-  "cliente",
-  "telefono",
-  "guia",
-  "notas_manuales",
-  "estado_operativo",
-  "notas",
-  "estatus_original",
-  "ultimo_mov",
-  "estado_cartera",
-  "venta",
-  "ganancia_calc",
-  "flete",
-  "cartera",
-  "dias_desde_ult_mov",
-  "fecha",
-] as const;
-
-type PedidoColumnFilterKey = (typeof PEDIDO_COLUMN_FILTER_KEYS)[number];
-
-const initialColumnFilters: Record<PedidoColumnFilterKey, string> = {
-  id: "",
-  id_dropi: "",
-  estado_unificado: "",
-  transportadora: "",
-  ciudad: "",
-  cliente: "",
-  telefono: "",
-  guia: "",
-  notas_manuales: "",
-  estado_operativo: "",
-  notas: "",
-  estatus_original: "",
-  ultimo_mov: "",
-  estado_cartera: "",
-  venta: "",
-  ganancia_calc: "",
-  flete: "",
-  cartera: "",
-  dias_desde_ult_mov: "",
-  fecha: "",
-};
-
 export function OrdersPage() {
-  const { user } = useAuth();
+  const { user, refresh: refreshAuth } = useAuth();
   const canEditPedidos = usePermission("actionPedidosEditar");
   const canExportPedidos = usePermission("actionPedidosExportar");
   const canRemapear = usePermission("actionMapeoEstadosCrud");
@@ -190,6 +97,12 @@ export function OrdersPage() {
   const [expandedProducts, setExpandedProducts] = useState<Record<string, ProductoDetalle[]>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [columnsDrawerOpen, setColumnsDrawerOpen] = useState(false);
+
+  const tableConfig = useMemo(
+    () => mergeOrdersTableConfig(user?.ordersTableConfig ?? null),
+    [user?.ordersTableConfig],
+  );
 
   const buildListParams = useCallback((): Record<string, unknown> => {
     const params: Record<string, unknown> = { sortField, sortOrder };
@@ -227,7 +140,7 @@ export function OrdersPage() {
         const list = await fetchCatalogProducts();
         setCatalogProducts(list.filter((p) => p.isActive));
       } catch {
-        /* opcional: sin productos de catálogo */
+        /* sin catálogo */
       }
     })();
   }, [activeCompanyId, user?.activeCompany]);
@@ -293,12 +206,12 @@ export function OrdersPage() {
     message.success("Pedido guardado.");
   }
 
-  const handleEdit = (record: Pedido) => {
+  const handleEdit = useCallback((record: Pedido) => {
     setEditingId(record.id);
     setEditData({ ...record });
-  };
+  }, []);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!editingId) return;
     try {
       const editableFields: (keyof Pedido)[] = [
@@ -328,12 +241,12 @@ export function OrdersPage() {
     } catch {
       message.error("Error al guardar");
     }
-  };
+  }, [editingId, editData, fetchData]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setEditingId(null);
     setEditData({});
-  };
+  }, []);
 
   const loadProducts = async (idDropi: string) => {
     if (expandedProducts[idDropi]) return;
@@ -360,364 +273,48 @@ export function OrdersPage() {
     return record[field];
   };
 
-  const getColumnSearchProps = (title: string, filterKey: PedidoColumnFilterKey) => ({
-    filterDropdown: ({
-      setSelectedKeys,
-      selectedKeys,
-      confirm,
-      clearFilters,
-    }: FilterDropdownProps) => (
-      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
-        <Input
-          placeholder={`Buscar ${title}`}
-          value={String(selectedKeys[0] ?? "")}
-          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => confirm()}
-          style={{ marginBottom: 8, display: "block" }}
-        />
-        <Space>
-          <Button type="primary" onClick={() => confirm()} icon={<SearchOutlined />} size="small" style={{ width: 90 }}>
-            Buscar
-          </Button>
-          <Button
-            onClick={() => {
-              clearFilters?.();
-              confirm();
-            }}
-            size="small"
-            style={{ width: 90 }}
-          >
-            Limpiar
-          </Button>
-        </Space>
-      </div>
-    ),
-    filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? "#1677ff" : undefined }} />,
-    filteredValue: filters[filterKey] ? [filters[filterKey]] : null,
-  });
+  const columnCtx: OrdersColumnContext = useMemo(
+    () => ({
+      filters: filters as OrdersColumnContext["filters"],
+      setFilters: setFilters as OrdersColumnContext["setFilters"],
+      setPage,
+      editingId,
+      editData,
+      setEditData,
+      userRole: user?.role,
+      canEditPedidos,
+      renderEditable,
+      pedidoMapeoPrefillPath,
+      isSinMapearUnificado,
+      isPedidoCarteraOk,
+      onSave: () => void handleSave(),
+      onCancel: handleCancel,
+      onEdit: handleEdit,
+    }),
+    [
+      filters,
+      editingId,
+      editData,
+      user?.role,
+      canEditPedidos,
+      handleSave,
+      handleCancel,
+      handleEdit,
+    ],
+  );
 
-  const columns: ColumnsType<Pedido> = [
-    {
-      title: "ID",
-      dataIndex: "id",
-      key: "id",
-      width: 88,
-      fixed: "left",
-      sorter: true,
-      ellipsis: true,
-      ...getColumnSearchProps("ID", "id"),
-    },
-    {
-      title: "ID Dropi",
-      dataIndex: "id_dropi",
-      key: "id_dropi",
-      width: 100,
-      fixed: "left",
-      sorter: true,
-      ...getColumnSearchProps("ID Dropi", "id_dropi"),
-    },
-    {
-      title: "Fecha",
-      dataIndex: "fecha",
-      key: "fecha",
-      width: 100,
-      sorter: true,
-      ...getColumnSearchProps("fecha (texto)", "fecha"),
-      render: (v: string | null) => fmtCalendarDateDdMmYyyy(v ?? undefined, "-"),
-    },
-    {
-      title: "Cliente",
-      dataIndex: "cliente",
-      key: "cliente",
-      width: 180,
-      sorter: true,
-      ...getColumnSearchProps("Cliente", "cliente"),
-      render: (_: unknown, r) => renderEditable("cliente", r),
-    },
-    {
-      title: "Teléfono",
-      dataIndex: "telefono",
-      key: "telefono",
-      width: 120,
-      sorter: true,
-      ...getColumnSearchProps("Teléfono", "telefono"),
-      render: (_: unknown, r) => renderEditable("telefono", r),
-    },
-    {
-      title: "Ciudad",
-      dataIndex: "ciudad",
-      key: "ciudad",
-      width: 130,
-      sorter: true,
-      ...getColumnSearchProps("Ciudad", "ciudad"),
-    },
-    {
-      title: "Mis Notas",
-      dataIndex: "notas_manuales",
-      key: "notas_manuales",
-      width: 200,
-      sorter: true,
-      ...getColumnSearchProps("Mis notas", "notas_manuales"),
-      ellipsis: { showTitle: false },
-      render: (v: string | null, r: Pedido) => {
-        if (editingId === r.id && user?.role !== "LECTOR") {
-          return (
-            <Input.TextArea
-              size="small"
-              value={(editData.notas_manuales as string) ?? ""}
-              onChange={(e) => setEditData({ ...editData, notas_manuales: e.target.value })}
-              rows={2}
-              placeholder="Escribe tus notas aquí..."
-            />
-          );
-        }
-        return (
-          <Tooltip title={v ?? ""}>
-            <span>{v || "-"}</span>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: "Transportadora",
-      dataIndex: "transportadora",
-      key: "transportadora",
-      width: 140,
-      sorter: true,
-      ...getColumnSearchProps("Transportadora", "transportadora"),
-    },
-    {
-      title: "Guía",
-      dataIndex: "guia",
-      key: "guia",
-      width: 140,
-      sorter: true,
-      ...getColumnSearchProps("Guía", "guia"),
-    },
-    {
-      title: "Operativo",
-      dataIndex: "estado_operativo",
-      key: "estado_operativo",
-      width: 130,
-      sorter: true,
-      ...getColumnSearchProps("Operativo", "estado_operativo"),
-      render: (v: string | null) => <Tag color={estadoColors[v ?? ""] || "default"}>{v || "-"}</Tag>,
-    },
-    {
-      title: "Venta",
-      dataIndex: "venta",
-      key: "venta",
-      width: 100,
-      align: "right",
-      sorter: true,
-      ...getColumnSearchProps("Venta", "venta"),
-      render: (v: number | null) => `$${Number(v ?? 0).toLocaleString()}`,
-    },
-    {
-      title: "Ganancia",
-      dataIndex: "ganancia_calc",
-      key: "ganancia_calc",
-      width: 100,
-      align: "right",
-      sorter: true,
-      ...getColumnSearchProps("Ganancia", "ganancia_calc"),
-      render: (v: number | null) => {
-        const num = Number(v ?? 0);
-        return (
-          <Text type={num >= 0 ? "success" : "danger"}>${num.toLocaleString()}</Text>
-        );
-      },
-    },
-    {
-      title: "Flete",
-      dataIndex: "flete",
-      key: "flete",
-      width: 90,
-      align: "right",
-      sorter: true,
-      ...getColumnSearchProps("Flete", "flete"),
-      render: (v: number | null) => `$${Number(v ?? 0).toLocaleString()}`,
-    },
-    {
-      title: "Cartera",
-      dataIndex: "cartera",
-      key: "cartera",
-      width: 100,
-      align: "right",
-      sorter: true,
-      ...getColumnSearchProps("Cartera", "cartera"),
-      render: (v: number | null) => {
-        const num = Number(v ?? 0);
-        return (
-          <Text type={num >= 0 ? "success" : "danger"}>${num.toLocaleString()}</Text>
-        );
-      },
-    },
-    {
-      title: "Cartera OK",
-      dataIndex: "estado_cartera",
-      key: "cartera_ok",
-      width: 108,
-      align: "center",
-      sorter: true,
-      filteredValue: filters.cartera_ok ? [filters.cartera_ok] : null,
-      filterDropdown: ({ confirm, clearFilters }) => (
-        <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
-          <Select
-            allowClear
-            placeholder="Filtrar"
-            style={{ width: 160, marginBottom: 8, display: "block" }}
-            value={filters.cartera_ok || undefined}
-            onChange={(v: "" | "ok" | "no" | undefined) => {
-              setFilters((prev) => ({ ...prev, cartera_ok: v ?? "" }));
-            }}
-            options={[
-              { value: "ok", label: "Sí — cartera OK" },
-              { value: "no", label: "No — pendiente u otro" },
-            ]}
-          />
-          <Space>
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => {
-                setPage(1);
-                confirm();
-              }}
-            >
-              Aplicar
-            </Button>
-            <Button
-              size="small"
-              onClick={() => {
-                setFilters((prev) => ({ ...prev, cartera_ok: "" }));
-                clearFilters?.();
-                setPage(1);
-                confirm();
-              }}
-            >
-              Limpiar
-            </Button>
-          </Space>
-        </div>
-      ),
-      filterIcon: (filtered: boolean) => (
-        <SearchOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
-      ),
-      render: (v: string | null) => {
-        if (isPedidoCarteraOk(v)) {
-          return <Tag color="success">OK</Tag>;
-        }
-        const raw = String(v ?? "").trim();
-        if (!raw) {
-          return <Tag color="warning">No</Tag>;
-        }
-        return (
-          <Tooltip title={raw}>
-            <Tag color="error">No</Tag>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: "Días últ. mov",
-      dataIndex: "dias_desde_ult_mov",
-      key: "dias_desde_ult_mov",
-      width: 90,
-      align: "center",
-      sorter: true,
-      ...getColumnSearchProps("Días últ. mov", "dias_desde_ult_mov"),
-      render: (v: number | null) => {
-        if (v !== 0 && !v) return "-";
-        return <Tag color={v > 5 ? "red" : v > 2 ? "orange" : "green"}>{v}</Tag>;
-      },
-    },
-    {
-      title: "Notas Dropi",
-      dataIndex: "notas",
-      key: "notas",
-      width: 200,
-      sorter: true,
-      ...getColumnSearchProps("Notas Dropi", "notas"),
-      ellipsis: { showTitle: false },
-      render: (v: string | null, r: Pedido) => {
-        if (editingId === r.id && user?.role !== "LECTOR") {
-          return (
-            <Input.TextArea
-              size="small"
-              value={(editData.notas as string) ?? ""}
-              onChange={(e) => setEditData({ ...editData, notas: e.target.value })}
-              rows={2}
-            />
-          );
-        }
-        return (
-          <Tooltip title={v ?? ""}>
-            <span>{v || "-"}</span>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: "Estado Dropi",
-      dataIndex: "estatus_original",
-      key: "estatus_original",
-      width: 140,
-      sorter: true,
-      ...getColumnSearchProps("Estado Dropi", "estatus_original"),
-      render: (v: string | null) => <Text type="secondary">{v || "-"}</Text>,
-    },
-    {
-      title: "Últ. Mov. Dropi",
-      dataIndex: "ultimo_mov",
-      key: "ultimo_mov",
-      width: 150,
-      sorter: true,
-      ...getColumnSearchProps("Últ. mov. Dropi", "ultimo_mov"),
-      ellipsis: { showTitle: false },
-      render: (v: string | null) => (
-        <Tooltip title={v ?? ""}>
-          <Text type="secondary">{v || "-"}</Text>
-        </Tooltip>
-      ),
-    },
-    {
-      title: "Estado Asignado",
-      dataIndex: "estado_unificado",
-      key: "estado_unificado",
-      width: 200,
-      sorter: true,
-      ...getColumnSearchProps("Estado asignado", "estado_unificado"),
-      render: (v: string | null, record: Pedido) => (
-        <Space size={6} wrap align="center">
-          <Tag color={estadoColors[v ?? ""] || "default"}>{v || "-"}</Tag>
-          {user?.role !== "LECTOR" && isSinMapearUnificado(v) ? (
-            <Tooltip title="Ir a Mapeo de estados con transportadora, estatus Dropi y último movimiento de esta fila. Indica el estado unificado y guarda; luego puedes sincronizar desde Pedidos.">
-              <Link to={pedidoMapeoPrefillPath(record)}>Mapear</Link>
-            </Tooltip>
-          ) : null}
-        </Space>
-      ),
-    },
-    {
-      title: "Acciones",
-      key: "acciones",
-      width: 100,
-      fixed: "right",
-      render: (_, record) => {
-        if (!canEditPedidos) return null;
-        if (editingId === record.id) {
-          return (
-            <Space size="small">
-              <Button size="small" type="primary" icon={<SaveOutlined />} onClick={() => void handleSave()} />
-              <Button size="small" icon={<CloseOutlined />} onClick={handleCancel} />
-            </Space>
-          );
-        }
-        return <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />;
-      },
-    },
-  ];
+  const columnDefs = useMemo(() => createOrdersColumnDefs(columnCtx), [columnCtx]);
+
+  const columns = useMemo(
+    () => buildVisibleColumns(tableConfig, columnDefs),
+    [tableConfig, columnDefs],
+  );
+
+  const handleSaveColumnsConfig = async (config: OrdersTableConfig) => {
+    await patchOrdersTableConfig(config);
+    await refreshAuth();
+    message.success("Configuración de columnas guardada");
+  };
 
   const selectedRows = data.filter((r) => selectedRowKeys.includes(r.id));
   const sumVenta = selectedRows.reduce((s, r) => s + Number(r.venta ?? 0), 0);
@@ -725,18 +322,22 @@ export function OrdersPage() {
   const sumFlete = selectedRows.reduce((s, r) => s + Number(r.flete ?? 0), 0);
   const sumCartera = selectedRows.reduce((s, r) => s + Number(r.cartera ?? 0), 0);
 
-  /** Índice de la columna «Venta» en `columns`. */
   const idxColVenta = columns.findIndex(
     (c) => typeof c === "object" && c !== null && "dataIndex" in c && c.dataIndex === "venta",
   );
-  /**
-   * Celdas extra a la izquierda que Ant Design añade antes de `columns`:
-   * expandir fila (+) y checkbox de selección. El summary debe usar el mismo offset.
-   */
   const tableLeadingExtraCols = 2;
   const summaryColSpanLabel = (idxColVenta >= 0 ? idxColVenta : 10) + tableLeadingExtraCols;
   const summaryColSpanTail =
     idxColVenta >= 0 ? Math.max(1, columns.length - idxColVenta - 4) : 7;
+
+  const scrollX = Math.max(
+    1200,
+    columns.reduce((s, c) => {
+      if (typeof c !== "object" || c === null) return s;
+      const w = c.width;
+      return s + (typeof w === "number" ? w : 120);
+    }, 0),
+  );
 
   return (
     <div>
@@ -790,6 +391,9 @@ export function OrdersPage() {
               setPage(1);
             }}
           />
+          <Button icon={<SettingOutlined />} onClick={() => setColumnsDrawerOpen(true)}>
+            Columnas
+          </Button>
           {canRemapear ? (
             <Button
               type="primary"
@@ -827,13 +431,20 @@ export function OrdersPage() {
         </Space>
       </div>
 
+      <OrdersColumnsDrawer
+        open={columnsDrawerOpen}
+        savedConfig={user?.ordersTableConfig ?? DEFAULT_ORDERS_TABLE_CONFIG}
+        onClose={() => setColumnsDrawerOpen(false)}
+        onSave={handleSaveColumnsConfig}
+      />
+
       <Table<Pedido>
         columns={columns}
         dataSource={data}
         rowKey="id"
         loading={loading}
         size="small"
-        scroll={{ x: 2000 }}
+        scroll={{ x: scrollX }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys),

@@ -107,6 +107,18 @@ type PedidoRowInput = {
   cartera?: number;
   cartera_aplicada?: number;
   estado_cartera?: string;
+  tipo_tienda?: string;
+  tienda?: string;
+  vendedor?: string;
+  tipo_envio?: string;
+  email_cliente?: string;
+  observacion_dropi?: string;
+  tags?: string;
+  codigo_postal?: string;
+  id_orden_tienda?: string;
+  numero_pedido_tienda?: string;
+  usuario_generacion_guia?: string;
+  fecha_generacion_guia?: Date;
 };
 
 function dec(n: number | undefined): Prisma.Decimal | null {
@@ -142,6 +154,18 @@ function orderToSnapshot(o: Order): OrderSnapshot {
     cartera: o.cartera?.toString() ?? null,
     carteraAplicada: o.carteraAplicada?.toString() ?? null,
     estadoCartera: o.estadoCartera,
+    tipoTienda: o.tipoTienda,
+    tienda: o.tienda,
+    vendedor: o.vendedor,
+    tipoEnvio: o.tipoEnvio,
+    emailCliente: o.emailCliente,
+    observacionDropi: o.observacionDropi,
+    tags: o.tags,
+    codigoPostal: o.codigoPostal,
+    idOrdenTienda: o.idOrdenTienda,
+    numeroPedidoTienda: o.numeroPedidoTienda,
+    usuarioGeneracionGuia: o.usuarioGeneracionGuia,
+    fechaGeneracionGuia: o.fechaGeneracionGuia?.toISOString() ?? null,
   };
 }
 
@@ -174,6 +198,18 @@ function mapUpsert(
     cartera: dec(p.cartera),
     carteraAplicada: dec(p.cartera_aplicada),
     estadoCartera: p.estado_cartera ?? null,
+    tipoTienda: p.tipo_tienda ?? null,
+    tienda: p.tienda ?? null,
+    vendedor: p.vendedor ?? null,
+    tipoEnvio: p.tipo_envio ?? null,
+    emailCliente: p.email_cliente ?? null,
+    observacionDropi: p.observacion_dropi ?? null,
+    tags: p.tags ?? null,
+    codigoPostal: p.codigo_postal ?? null,
+    idOrdenTienda: p.id_orden_tienda ?? null,
+    numeroPedidoTienda: p.numero_pedido_tienda ?? null,
+    usuarioGeneracionGuia: p.usuario_generacion_guia ?? null,
+    fechaGeneracionGuia: p.fecha_generacion_guia ?? null,
   };
   return {
     create: {
@@ -314,6 +350,24 @@ export async function importPedidosExcel(
         cartera,
         cartera_aplicada: carteraAplicada,
         estado_cartera: estadoCartera,
+        tipo_tienda: toString(getExcelCell(row, "TIPO DE TIENDA")),
+        tienda: toString(getExcelCell(row, "TIENDA")),
+        vendedor: toString(getExcelCell(row, "VENDEDOR")),
+        tipo_envio: toString(getExcelCell(row, "TIPO DE ENVIO", "TIPO DE ENVÍO")),
+        email_cliente: toString(getExcelCell(row, "EMAIL")),
+        observacion_dropi: toString(getExcelCell(row, "OBSERVACIÓN", "OBSERVACION")),
+        tags: toString(getExcelCell(row, "TAGS")),
+        codigo_postal: toString(getExcelCell(row, "CODIGO POSTAL", "CÓDIGO POSTAL")),
+        id_orden_tienda: toString(getExcelCell(row, "ID DE ORDEN DE TIENDA")),
+        numero_pedido_tienda: toString(
+          getExcelCell(row, "NUMERO DE PEDIDO DE TIENDA", "NÚMERO DE PEDIDO DE TIENDA"),
+        ),
+        usuario_generacion_guia: toString(
+          getExcelCell(row, "USUARIO GENERACION DE GUIA", "USUARIO GENERACIÓN DE GUIA"),
+        ),
+        fecha_generacion_guia: parseDate(
+          getExcelCell(row, "FECHA GENERACION DE GUIA", "FECHA GENERACIÓN DE GUIA"),
+        ),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

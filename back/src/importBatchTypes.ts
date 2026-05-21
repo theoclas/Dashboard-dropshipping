@@ -49,6 +49,18 @@ export type OrderSnapshot = {
   cartera: string | null;
   carteraAplicada: string | null;
   estadoCartera: string | null;
+  tipoTienda: string | null;
+  tienda: string | null;
+  vendedor: string | null;
+  tipoEnvio: string | null;
+  emailCliente: string | null;
+  observacionDropi: string | null;
+  tags: string | null;
+  codigoPostal: string | null;
+  idOrdenTienda: string | null;
+  numeroPedidoTienda: string | null;
+  usuarioGeneracionGuia: string | null;
+  fechaGeneracionGuia: string | null;
 };
 
 export type PedidosUndoPayload = {
