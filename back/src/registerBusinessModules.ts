@@ -12,6 +12,7 @@ import * as advertisingAccountService from "./advertisingAccountService";
 import * as operationalExpenseService from "./operationalExpenseService";
 import { importAdvertisingCampaignMetricsExcel } from "./importAdvertisingCampaignMetricsExcel";
 import { importMetaBillingOperationalCsv } from "./importMetaBillingOperationalCsv";
+import { assertWipePassword } from "./wipeImported";
 import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel, aggregateMetricRowsByCampaignAndDate } from "./metaCampaignExcelParse";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -637,6 +638,16 @@ export function registerBusinessModules(app: express.Application) {
     async (req, res) => {
       const u = user(req);
       const id = String(req.params.id);
+      const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Contraseña de confirmación requerida." });
+      }
+      try {
+        assertWipePassword(parsed.data.password);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Contraseña incorrecta";
+        return res.status(403).json({ message: msg });
+      }
       const ok = await operationalExpenseService.deleteOperationalExpense(u.companyId, id);
       if (!ok) return res.status(404).json({ message: "No encontrado." });
       return res.status(204).send();

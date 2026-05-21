@@ -28,6 +28,7 @@ import {
   patchOperationalExpense,
   postOperationalExpense,
 } from "../api";
+import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccount, OperationalExpenseRow } from "../types";
@@ -259,11 +260,15 @@ export function OperationalExpensesPage() {
                   danger
                   size="small"
                   onClick={() => {
-                    void (async () => {
-                      await deleteOperationalExpense(r.id);
-                      message.success("Eliminado.");
-                      void load();
-                    })();
+                    confirmWipePasswordDelete({
+                      title: "¿Eliminar este gasto?",
+                      description: `${dayjs(r.fecha).format("YYYY-MM-DD")} — ${r.concepto} — $${Number(r.monto).toLocaleString("es-CO")}`,
+                      onDelete: async (password) => {
+                        await deleteOperationalExpense(r.id, password);
+                        message.success("Eliminado.");
+                        void load();
+                      },
+                    });
                   }}
                 >
                   Borrar

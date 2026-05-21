@@ -603,8 +603,8 @@ export async function patchOperationalExpense(
   return data;
 }
 
-export async function deleteOperationalExpense(id: string): Promise<void> {
-  await api.delete(`/operational-expenses/${id}`);
+export async function deleteOperationalExpense(id: string, password: string): Promise<void> {
+  await api.delete(`/operational-expenses/${id}`, { data: { password } });
 }
 
 export async function importMetaBillingOperationalCsv(file: File): Promise<ImportMetaBillingResult> {

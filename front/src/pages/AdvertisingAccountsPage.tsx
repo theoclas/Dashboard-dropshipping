@@ -18,10 +18,12 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
 import {
+  deleteOperationalExpense,
   fetchAdvertisingAccountOperationalExpenses,
   fetchAdvertisingAccountsWithStats,
   postMetaCampaignAdvertisingAccount,
 } from "../api";
+import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccountWithStats, OperationalExpenseRow } from "../types";
 
@@ -36,6 +38,7 @@ export function AdvertisingAccountsPage() {
   const canSee = usePermission("moduleCuentasPublicitarias") || usePermission("moduleCampanasMeta");
   const canCrud =
     usePermission("actionCuentasPublicitariasCrud") || usePermission("actionCampanasMetaCrud");
+  const canDeleteExpense = usePermission("actionGastoOperacionalCrud");
 
   const [rows, setRows] = useState<AdvertisingAccountWithStats[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,6 +126,35 @@ export function AdvertisingAccountsPage() {
     },
     { title: "Categoría", dataIndex: "categoria", key: "cat", width: 130, render: (v) => v ?? "—" },
     { title: "Notas", dataIndex: "notas", key: "notas", ellipsis: true, render: (v) => v ?? "—" },
+    ...(canDeleteExpense
+      ? [
+          {
+            title: "",
+            key: "del",
+            width: 90,
+            render: (_: unknown, r: OperationalExpenseRow) => (
+              <Button
+                danger
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  confirmWipePasswordDelete({
+                    title: "¿Eliminar este gasto?",
+                    description: `${dayjs(r.fecha).format("YYYY-MM-DD")} — ${r.concepto} — $${fmtMoney(r.monto)}`,
+                    onDelete: async (password) => {
+                      await deleteOperationalExpense(r.id, password);
+                      message.success("Eliminado.");
+                      void loadDetail();
+                    },
+                  });
+                }}
+              >
+                Borrar
+              </Button>
+            ),
+          } as const,
+        ]
+      : []),
   ];
 
   if (!canSee) {
