@@ -26,6 +26,14 @@ import { useFirstAllowedAppPath, usePermission } from "../hooks/usePermission";
 
 const { Header, Sider, Content } = Layout;
 
+type AppMenuItem = NonNullable<MenuProps["items"]>[number];
+
+function pushMenuGroup(out: AppMenuItem[], label: string, children: AppMenuItem[]) {
+  const groupChildren = children.filter(Boolean) as AppMenuItem[];
+  if (groupChildren.length === 0) return;
+  out.push({ type: "group", label, children: groupChildren });
+}
+
 const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
@@ -80,130 +88,154 @@ export function AppShell() {
   const canGastoOp = usePermission("moduleGastoOperacional");
   const canConfig = usePermission("moduleConfiguracion");
 
-  const menuItems: MenuProps["items"] = useMemo(
-    () => [
-      ...(canDashboard
-        ? [{ key: "/app/dashboard", icon: <DashboardOutlined />, label: <Link to="/app/dashboard">Dashboard</Link> }]
-        : []),
-      ...(canPedidos
-        ? [{ key: "/app/pedidos", icon: <ShoppingOutlined />, label: <Link to="/app/pedidos">Pedidos</Link> }]
-        : []),
-      ...(canPedidos
-        ? [
-            {
-              key: "/app/productos",
-              icon: <InboxOutlined />,
-              label: <Link to="/app/productos">Productos</Link>,
-            },
-          ]
-        : []),
-      ...(canReportes
-        ? [{ key: "/app/reportes", icon: <LineChartOutlined />, label: <Link to="/app/reportes">Reportes</Link> }]
-        : []),
-      ...(canImportaciones
-        ? [
-            {
-              key: "/app/logistica",
-              icon: <TruckOutlined />,
-              label: <Link to="/app/logistica">Logística</Link>,
-            },
-            {
-              key: "/app/importar",
-              icon: <CloudUploadOutlined />,
-              label: <Link to="/app/importar">Importar</Link>,
-            },
-          ]
-        : []),
-      ...(canMapeo
-        ? [{ key: "/app/mapeo", icon: <SwapOutlined />, label: <Link to="/app/mapeo">Mapeo estados</Link> }]
-        : []),
-      ...(canCpa
-        ? [
-            { key: "/app/cpa", icon: <FileTextOutlined />, label: <Link to="/app/cpa">CPA</Link> },
-            {
-              key: "/app/cpa-experimental",
-              icon: <ExperimentOutlined />,
-              label: <Link to="/app/cpa-experimental">CPA experimental</Link>,
-            },
-          ]
-        : []),
-      ...(canCampanas
-        ? [
-            {
-              key: "/app/campanas-meta",
-              icon: <FundProjectionScreenOutlined />,
-              label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
-            },
-          ]
-        : []),
-      ...(canCuentas
-        ? [
-            {
-              key: "/app/cuentas-publicitarias",
-              icon: <BankOutlined />,
-              label: <Link to="/app/cuentas-publicitarias">Cuentas publicitarias</Link>,
-            },
-          ]
-        : []),
-      ...(canGastoOp
-        ? [
-            {
-              key: "/app/gasto-operacional",
-              icon: <DollarCircleOutlined />,
-              label: <Link to="/app/gasto-operacional">Gasto operacional</Link>,
-            },
-          ]
-        : []),
-      ...(canAdmin
-        ? [
-            {
-              key: "submenu-config",
-              icon: <SettingOutlined />,
-              label: "Configuración",
-              children: [
-                {
-                  key: "/app/admin/empresas",
-                  icon: <BankOutlined />,
-                  label: <Link to="/app/admin/empresas">Empresas</Link>,
-                },
-                {
-                  key: "/app/admin/usuarios",
-                  icon: <UserOutlined />,
-                  label: <Link to="/app/admin/usuarios">Usuarios</Link>,
-                },
-                {
-                  key: "/app/admin/configuracion",
-                  icon: <DashboardOutlined />,
-                  label: <Link to="/app/admin/configuracion">Configuraciones especiales</Link>,
-                },
-              ],
-            },
-          ]
-        : []),
-      ...(canConfig && !canAdmin
-        ? [
-            {
-              key: "/app/configuracion",
-              icon: <SettingOutlined />,
-              label: <Link to="/app/configuracion">Configuración</Link>,
-            },
-          ]
-        : []),
-    ],
-    [
-      canAdmin,
-      canDashboard,
-      canPedidos,
-      canReportes,
-      canImportaciones,
-      canMapeo,
-      canCpa,
-      canCampanas,
-      canCuentas,
-      canGastoOp,
-      canConfig,
-    ],
-  );
+  const menuItems: MenuProps["items"] = useMemo(() => {
+    const items: AppMenuItem[] = [];
+
+    if (canDashboard) {
+      items.push({
+        key: "/app/dashboard",
+        icon: <DashboardOutlined />,
+        label: <Link to="/app/dashboard">Dashboard</Link>,
+      });
+    }
+
+    pushMenuGroup(items, "Operación", [
+      canPedidos
+        ? {
+            key: "/app/pedidos",
+            icon: <ShoppingOutlined />,
+            label: <Link to="/app/pedidos">Pedidos</Link>,
+          }
+        : null,
+      canPedidos
+        ? {
+            key: "/app/productos",
+            icon: <InboxOutlined />,
+            label: <Link to="/app/productos">Productos</Link>,
+          }
+        : null,
+      canImportaciones
+        ? {
+            key: "/app/logistica",
+            icon: <TruckOutlined />,
+            label: <Link to="/app/logistica">Logística</Link>,
+          }
+        : null,
+    ]);
+
+    pushMenuGroup(items, "Datos", [
+      canImportaciones
+        ? {
+            key: "/app/importar",
+            icon: <CloudUploadOutlined />,
+            label: <Link to="/app/importar">Importar</Link>,
+          }
+        : null,
+      canMapeo
+        ? {
+            key: "/app/mapeo",
+            icon: <SwapOutlined />,
+            label: <Link to="/app/mapeo">Mapeo estados</Link>,
+          }
+        : null,
+    ]);
+
+    pushMenuGroup(items, "Marketing", [
+      canCampanas
+        ? {
+            key: "/app/campanas-meta",
+            icon: <FundProjectionScreenOutlined />,
+            label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
+          }
+        : null,
+      canCuentas
+        ? {
+            key: "/app/cuentas-publicitarias",
+            icon: <BankOutlined />,
+            label: <Link to="/app/cuentas-publicitarias">Cuentas publicitarias</Link>,
+          }
+        : null,
+      canCpa
+        ? {
+            key: "/app/cpa",
+            icon: <FileTextOutlined />,
+            label: <Link to="/app/cpa">CPA</Link>,
+          }
+        : null,
+      canCpa
+        ? {
+            key: "/app/cpa-experimental",
+            icon: <ExperimentOutlined />,
+            label: <Link to="/app/cpa-experimental">CPA experimental</Link>,
+          }
+        : null,
+    ]);
+
+    pushMenuGroup(items, "Finanzas", [
+      canGastoOp
+        ? {
+            key: "/app/gasto-operacional",
+            icon: <DollarCircleOutlined />,
+            label: <Link to="/app/gasto-operacional">Gasto operacional</Link>,
+          }
+        : null,
+    ]);
+
+    pushMenuGroup(items, "Análisis", [
+      canReportes
+        ? {
+            key: "/app/reportes",
+            icon: <LineChartOutlined />,
+            label: <Link to="/app/reportes">Reportes</Link>,
+          }
+        : null,
+    ]);
+
+    if (canAdmin) {
+      items.push({
+        key: "submenu-config",
+        icon: <SettingOutlined />,
+        label: "Configuración",
+        children: [
+          {
+            key: "/app/admin/empresas",
+            icon: <BankOutlined />,
+            label: <Link to="/app/admin/empresas">Empresas</Link>,
+          },
+          {
+            key: "/app/admin/usuarios",
+            icon: <UserOutlined />,
+            label: <Link to="/app/admin/usuarios">Usuarios</Link>,
+          },
+          {
+            key: "/app/admin/configuracion",
+            icon: <DashboardOutlined />,
+            label: <Link to="/app/admin/configuracion">Configuraciones especiales</Link>,
+          },
+        ],
+      });
+    } else if (canConfig) {
+      items.push({
+        key: "/app/configuracion",
+        icon: <SettingOutlined />,
+        label: <Link to="/app/configuracion">Configuración</Link>,
+      });
+    }
+
+    return items;
+  }, [
+    canAdmin,
+    canDashboard,
+    canPedidos,
+    canReportes,
+    canImportaciones,
+    canMapeo,
+    canCpa,
+    canCampanas,
+    canCuentas,
+    canGastoOp,
+    canConfig,
+  ]);
 
   return (
     <Layout style={{ minHeight: "100%" }}>
