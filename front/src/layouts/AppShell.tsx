@@ -28,10 +28,62 @@ const { Header, Sider, Content } = Layout;
 
 type AppMenuItem = NonNullable<MenuProps["items"]>[number];
 
-function pushMenuGroup(out: AppMenuItem[], label: string, children: AppMenuItem[]) {
-  const groupChildren = children.filter(Boolean) as AppMenuItem[];
-  if (groupChildren.length === 0) return;
-  out.push({ type: "group", label, children: groupChildren });
+const SUBMENU_OPERACION = "submenu-operacion";
+const SUBMENU_DATOS = "submenu-datos";
+const SUBMENU_MARKETING = "submenu-marketing";
+const SUBMENU_FINANZAS = "submenu-finanzas";
+const SUBMENU_ANALISIS = "submenu-analisis";
+const SUBMENU_CONFIG = "submenu-config";
+
+const MENU_OPEN_KEYS_STORAGE = "fersua_menu_open_keys";
+
+function pushSubMenu(out: AppMenuItem[], key: string, label: string, children: AppMenuItem[]) {
+  const subChildren = children.filter(Boolean) as AppMenuItem[];
+  if (subChildren.length === 0) return;
+  out.push({ key, label, className: "fs-menu-section", children: subChildren });
+}
+
+/** Submenús que deben abrirse según la ruta activa. */
+function openSubmenusForPath(pathname: string): string[] {
+  const keys: string[] = [];
+  if (pathname.startsWith("/app/admin") || pathname.startsWith("/app/configuracion")) {
+    keys.push(SUBMENU_CONFIG);
+  }
+  if (
+    pathname.startsWith("/app/pedidos") ||
+    pathname.startsWith("/app/productos") ||
+    pathname.startsWith("/app/logistica")
+  ) {
+    keys.push(SUBMENU_OPERACION);
+  }
+  if (pathname.startsWith("/app/importar") || pathname.startsWith("/app/mapeo")) {
+    keys.push(SUBMENU_DATOS);
+  }
+  if (
+    pathname.startsWith("/app/campanas-meta") ||
+    pathname.startsWith("/app/cuentas-publicitarias") ||
+    pathname.startsWith("/app/cpa")
+  ) {
+    keys.push(SUBMENU_MARKETING);
+  }
+  if (pathname.startsWith("/app/gasto-operacional")) {
+    keys.push(SUBMENU_FINANZAS);
+  }
+  if (pathname.startsWith("/app/reportes")) {
+    keys.push(SUBMENU_ANALISIS);
+  }
+  return keys;
+}
+
+function readStoredOpenKeys(): string[] | null {
+  try {
+    const raw = localStorage.getItem(MENU_OPEN_KEYS_STORAGE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === "string") : null;
+  } catch {
+    return null;
+  }
 }
 
 const pathToKey = (pathname: string): string => {
@@ -63,17 +115,33 @@ export function AppShell() {
   const { user, logout, refresh } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [companyId, setCompanyId] = useState(() => localStorage.getItem("fersua_company_id") ?? "");
-  const [configSubOpen, setConfigSubOpen] = useState(() => location.pathname.startsWith("/app/admin"));
-
-  useEffect(() => {
-    if (location.pathname.startsWith("/app/admin")) {
-      setConfigSubOpen(true);
-    } else {
-      setConfigSubOpen(false);
-    }
-  }, [location.pathname]);
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    const stored = readStoredOpenKeys();
+    if (stored) return stored;
+    return openSubmenusForPath(location.pathname);
+  });
 
   const selectedKey = pathToKey(location.pathname);
+
+  useEffect(() => {
+    const forPath = openSubmenusForPath(location.pathname);
+    if (forPath.length === 0) return;
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of forPath) next.add(k);
+      return [...next];
+    });
+  }, [location.pathname]);
+
+  const handleMenuOpenChange: MenuProps["onOpenChange"] = (keys) => {
+    const next = keys as string[];
+    setOpenKeys(next);
+    try {
+      localStorage.setItem(MENU_OPEN_KEYS_STORAGE, JSON.stringify(next));
+    } catch {
+      /* ignore quota */
+    }
+  };
 
   const homePath = useFirstAllowedAppPath();
   const canAdmin = user?.role === "ADMIN";
@@ -99,7 +167,7 @@ export function AppShell() {
       });
     }
 
-    pushMenuGroup(items, "Operación", [
+    pushSubMenu(items, SUBMENU_OPERACION, "Operación", [
       canPedidos
         ? {
             key: "/app/pedidos",
@@ -123,7 +191,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushMenuGroup(items, "Datos", [
+    pushSubMenu(items, SUBMENU_DATOS, "Datos", [
       canImportaciones
         ? {
             key: "/app/importar",
@@ -140,7 +208,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushMenuGroup(items, "Marketing", [
+    pushSubMenu(items, SUBMENU_MARKETING, "Marketing", [
       canCampanas
         ? {
             key: "/app/campanas-meta",
@@ -171,7 +239,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushMenuGroup(items, "Finanzas", [
+    pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [
       canGastoOp
         ? {
             key: "/app/gasto-operacional",
@@ -181,7 +249,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushMenuGroup(items, "Análisis", [
+    pushSubMenu(items, SUBMENU_ANALISIS, "Análisis", [
       canReportes
         ? {
             key: "/app/reportes",
@@ -193,7 +261,7 @@ export function AppShell() {
 
     if (canAdmin) {
       items.push({
-        key: "submenu-config",
+        key: SUBMENU_CONFIG,
         icon: <SettingOutlined />,
         label: "Configuración",
         children: [
@@ -279,8 +347,8 @@ export function AppShell() {
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
-          openKeys={configSubOpen ? ["submenu-config"] : []}
-          onOpenChange={(keys) => setConfigSubOpen(keys.includes("submenu-config"))}
+          openKeys={openKeys}
+          onOpenChange={handleMenuOpenChange}
           items={menuItems}
           style={{ borderInlineEnd: 0 }}
         />
