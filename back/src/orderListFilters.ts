@@ -75,6 +75,8 @@ export const orderListQuerySchema = z.object({
       if (s === "0" || s === "false" || s === "no") return false;
       return undefined;
     }),
+  /** Producto del catálogo (vínculos Dropi en Productos de pedidos). */
+  catalog_product_id: zTrimmedOptional(),
   /** `1` / `true`: solo pedidos sin número de guía (logística). */
   guia_blank: z
     .union([z.string(), z.number(), z.boolean()])
@@ -147,6 +149,40 @@ export async function narrowOrderIdsByCastFilters(
   return acc;
 }
 
+/** Pedidos cuyas líneas en `productos_detalle` coinciden con variantes vinculadas al producto de catálogo. */
+export async function externalOrderIdsForCatalogProduct(
+  prisma: PrismaClient,
+  companyId: string,
+  catalogProductId: string,
+): Promise<string[]> {
+  const product = await prisma.catalogProduct.findFirst({
+    where: { id: catalogProductId, companyId },
+    select: { id: true },
+  });
+  if (!product) return [];
+
+  const links = await prisma.catalogProductDropiLink.findMany({
+    where: { companyId, catalogProductId },
+    select: { productoId: true, sku: true, variacionId: true },
+  });
+  const validLinks = links.filter((l) => l.productoId != null && String(l.productoId).trim() !== "");
+  if (validLinks.length === 0) return [];
+
+  const orClause: Prisma.ProductDetailWhereInput[] = validLinks.map((l) => ({
+    companyId,
+    productoId: l.productoId!,
+    sku: l.sku,
+    variacionId: l.variacionId,
+  }));
+
+  const detailMatches = await prisma.productDetail.findMany({
+    where: { OR: orClause },
+    select: { pedidoIdDropi: true },
+    distinct: ["pedidoIdDropi"],
+  });
+  return detailMatches.map((r) => r.pedidoIdDropi).filter(Boolean);
+}
+
 function addContains(and: Prisma.OrderWhereInput[], field: string, val?: string) {
   const t = val?.trim();
   if (!t) return;
@@ -157,11 +193,16 @@ export function buildPrismaOrderWhere(
   companyId: string,
   f: OrderListQueryParsed,
   narrowedIds: string[] | undefined,
+  catalogProductExternalIds?: string[],
 ): Prisma.OrderWhereInput {
   const and: Prisma.OrderWhereInput[] = [{ companyId }];
 
   if (narrowedIds !== undefined) {
     and.push({ id: { in: narrowedIds } });
+  }
+
+  if (catalogProductExternalIds && catalogProductExternalIds.length > 0) {
+    and.push({ externalOrderId: { in: catalogProductExternalIds } });
   }
 
   if (f.startDate && f.endDate) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -28,6 +28,7 @@ import { Link } from "react-router-dom";
 import {
   api,
   downloadOrdersExport,
+  fetchCatalogProducts,
   fetchOrdersPage,
   fetchProductosDetalle,
   remapearEstados,
@@ -35,6 +36,7 @@ import {
 } from "../api";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
+import type { CatalogProduct } from "../types";
 import { dayjsFromYmdFilterString, fmtCalendarDateDdMmYyyy } from "../utils/calendarDateLocal";
 
 const { Title, Text } = Typography;
@@ -173,11 +175,13 @@ export function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
   const [filters, setFilters] = useState({
     ...initialColumnFilters,
     startDate: "",
     endDate: "",
     cartera_ok: "" as "" | "ok" | "no",
+    catalog_product_id: "",
   });
   const [sortField, setSortField] = useState<string>("id");
   const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
@@ -202,8 +206,31 @@ export function OrdersPage() {
     }
     if (filters.cartera_ok === "ok") params.cartera_ok = true;
     else if (filters.cartera_ok === "no") params.cartera_ok = false;
+    if (filters.catalog_product_id.trim()) {
+      params.catalog_product_id = filters.catalog_product_id.trim();
+    }
     return params;
   }, [filters, sortField, sortOrder]);
+
+  const productFilterOptions = useMemo(
+    () =>
+      catalogProducts.map((p) => ({
+        value: p.id,
+        label: `${p.name}${p.sku ? ` (${p.sku})` : ""}`,
+      })),
+    [catalogProducts],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await fetchCatalogProducts();
+        setCatalogProducts(list.filter((p) => p.isActive));
+      } catch {
+        /* opcional: sin productos de catálogo */
+      }
+    })();
+  }, [activeCompanyId, user?.activeCompany]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -727,6 +754,19 @@ export function OrdersPage() {
           📋 Pedidos
         </Title>
         <Space wrap>
+          <Select
+            showSearch
+            allowClear
+            placeholder="Producto (catálogo)"
+            optionFilterProp="label"
+            style={{ minWidth: 220 }}
+            options={productFilterOptions}
+            value={filters.catalog_product_id || undefined}
+            onChange={(v) => {
+              setFilters((prev) => ({ ...prev, catalog_product_id: v ?? "" }));
+              setPage(1);
+            }}
+          />
           <DatePicker.RangePicker
             placeholder={["Desde", "Hasta"]}
             format="DD/MM/YYYY"

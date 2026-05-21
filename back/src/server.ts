@@ -33,6 +33,7 @@ import { listDropiWithdrawals, patchDropiWithdrawalNota } from "./dropiWithdrawa
 import {
   buildOrderOrderBy,
   buildPrismaOrderWhere,
+  externalOrderIdsForCatalogProduct,
   narrowOrderIdsByCastFilters,
   orderExportBodySchema,
   flattenParams,
@@ -701,7 +702,19 @@ app.get("/api/orders", authRequired, companyRequired, requirePermission("moduleP
       return res.json({ data: [], total: 0, page: f.page, limit: f.limit });
     }
 
-    const where = buildPrismaOrderWhere(user.companyId, f, narrowed);
+    let catalogProductExternalIds: string[] | undefined;
+    if (f.catalog_product_id) {
+      catalogProductExternalIds = await externalOrderIdsForCatalogProduct(
+        prisma,
+        user.companyId,
+        f.catalog_product_id,
+      );
+      if (catalogProductExternalIds.length === 0) {
+        return res.json({ data: [], total: 0, page: f.page, limit: f.limit });
+      }
+    }
+
+    const where = buildPrismaOrderWhere(user.companyId, f, narrowed, catalogProductExternalIds);
     const orderBy = buildOrderOrderBy(f);
 
     const [orders, total] = await Promise.all([
@@ -1535,7 +1548,26 @@ app.post("/api/orders/export", authRequired, companyRequired, requirePermission(
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       return res.send(buf);
     }
-    const where = buildPrismaOrderWhere(user.companyId, f, narrowed);
+
+    let catalogProductExternalIds: string[] | undefined;
+    if (f.catalog_product_id) {
+      catalogProductExternalIds = await externalOrderIdsForCatalogProduct(
+        prisma,
+        user.companyId,
+        f.catalog_product_id,
+      );
+      if (catalogProductExternalIds.length === 0) {
+        const ws = XLSX.utils.json_to_sheet([]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+        res.setHeader("Content-Disposition", 'attachment; filename="pedidos.xlsx"');
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return res.send(buf);
+      }
+    }
+
+    const where = buildPrismaOrderWhere(user.companyId, f, narrowed, catalogProductExternalIds);
     const orderBy = buildOrderOrderBy(f);
     const orders = await prisma.order.findMany({
       where,
