@@ -14,6 +14,7 @@ export type PermissionMenuModuleId =
   | "campanasMeta"
   | "cuentasPublicitarias"
   | "gastoOperacional"
+  | "salidasCartera"
   | "configuracion";
 
 export type ModuleActionBinding = {
@@ -154,6 +155,14 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
       },
     ],
     accessIncludes: ["Ver cuentas publicitarias"],
+  },
+  {
+    id: "salidasCartera",
+    label: "Salidas cartera",
+    moduleKeys: ["moduleImportaciones"],
+    actions: [{ key: "actionImportarDropi", sharedWithLabels: ["Importar", "Logística"] }],
+    sharedWithLabels: ["Importar", "Logística"],
+    accessIncludes: ["Consultar salidas de cartera Dropi clasificadas por pedido, retiro o tarjeta"],
   },
   {
     id: "gastoOperacional",

@@ -30,6 +30,8 @@ import { remapearPedidos } from "./remapearPedidos";
 import { wipeCpaForCompany, wipeImportedForCompany } from "./wipeImported";
 import { createImportBatch, listImportBatches, undoImportBatch } from "./importBatchService";
 import { listDropiWithdrawals, patchDropiWithdrawalNota } from "./dropiWithdrawalService";
+import { listCarteraSalidas } from "./walletSalidaService";
+import type { CarteraSalidaCategoria } from "./carteraSalidaClassification";
 import {
   buildOrderOrderBy,
   buildPrismaOrderWhere,
@@ -1216,6 +1218,20 @@ app.get("/api/dropi-retiros", authRequired, companyRequired, requirePermission("
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rows = await listDropiWithdrawals(user.companyId);
   return res.json(rows);
+});
+
+const CARTERA_SALIDA_CATEGORIAS = ["pedido", "retiro", "recarga_tarjeta", "otro"] as const;
+
+app.get("/api/cartera-salidas", authRequired, companyRequired, requirePermission("moduleImportaciones"), async (req, res) => {
+  const user = (req as express.Request & { user?: JwtPayload }).user!;
+  const rawCat = String(req.query.categoria ?? "");
+  const categoria = (CARTERA_SALIDA_CATEGORIAS as readonly string[]).includes(rawCat)
+    ? (rawCat as CarteraSalidaCategoria)
+    : undefined;
+  const desde = typeof req.query.desde === "string" ? req.query.desde : undefined;
+  const hasta = typeof req.query.hasta === "string" ? req.query.hasta : undefined;
+  const result = await listCarteraSalidas(user.companyId, { desde, hasta, categoria });
+  return res.json(result);
 });
 
 app.patch(

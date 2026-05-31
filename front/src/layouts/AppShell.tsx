@@ -18,6 +18,7 @@ import {
   TruckOutlined,
   BankOutlined,
   SettingOutlined,
+  ExportOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
@@ -66,7 +67,7 @@ function openSubmenusForPath(pathname: string): string[] {
   ) {
     keys.push(SUBMENU_MARKETING);
   }
-  if (pathname.startsWith("/app/gasto-operacional")) {
+  if (pathname.startsWith("/app/gasto-operacional") || pathname.startsWith("/app/salidas-cartera")) {
     keys.push(SUBMENU_FINANZAS);
   }
   if (pathname.startsWith("/app/reportes")) {
@@ -90,6 +91,7 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
+  if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
   if (pathname.startsWith("/app/pedidos")) return "/app/pedidos";
   if (pathname.startsWith("/app/productos")) return "/app/productos";
   if (pathname.startsWith("/app/logistica")) return "/app/logistica";
@@ -240,6 +242,13 @@ export function AppShell() {
     ]);
 
     pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [
+      canImportaciones
+        ? {
+            key: "/app/salidas-cartera",
+            icon: <ExportOutlined />,
+            label: <Link to="/app/salidas-cartera">Salidas cartera</Link>,
+          }
+        : null,
       canGastoOp
         ? {
             key: "/app/gasto-operacional",

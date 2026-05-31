@@ -282,3 +282,32 @@ export type ImportMetaBillingResult = {
   expensesSkipped: number;
   errors: string[];
 };
+
+export type CarteraSalidaCategoria = "pedido" | "retiro" | "recarga_tarjeta" | "otro";
+
+export type CarteraSalidaRow = {
+  movementId: string;
+  fecha: string | null;
+  monto: number | null;
+  montoPrevio: number | null;
+  descripcion: string | null;
+  conceptoRetiro: string | null;
+  numeroGuia: string | null;
+  categoria: CarteraSalidaCategoria;
+  ordenId: string | null;
+  pedido: {
+    externalOrderId: string;
+    estadoUnificado: string | null;
+    estadoOperativo: string | null;
+    fecha: string | null;
+  } | null;
+};
+
+export type CarteraSalidasResponse = {
+  items: CarteraSalidaRow[];
+  summary: {
+    totalMonto: number;
+    count: number;
+    byCategoria: Record<CarteraSalidaCategoria, { count: number; totalMonto: number }>;
+  };
+};

@@ -13,6 +13,8 @@ import type {
   CpaRecordRow,
   CpaExperimentalRecordRow,
   CpaExperimentalRebuildResult,
+  CarteraSalidaCategoria,
+  CarteraSalidasResponse,
   DropiWithdrawalRow,
   ImportAdvertisingCampaignMetricsResult,
   ImportAdvertisingPreviewResponse,
@@ -216,6 +218,15 @@ export async function fetchDropiWithdrawals(): Promise<DropiWithdrawalRow[]> {
 
 export async function patchDropiWithdrawalNota(id: string, notaAdicional: string | null): Promise<DropiWithdrawalRow> {
   const { data } = await api.patch<DropiWithdrawalRow>(`/dropi-retiros/${id}`, { notaAdicional });
+  return data;
+}
+
+export async function fetchCarteraSalidas(params?: {
+  desde?: string;
+  hasta?: string;
+  categoria?: CarteraSalidaCategoria;
+}): Promise<CarteraSalidasResponse> {
+  const { data } = await api.get<CarteraSalidasResponse>("/cartera-salidas", { params });
   return data;
 }
 
