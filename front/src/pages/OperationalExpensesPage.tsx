@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
+  Col,
   DatePicker,
   Form,
   Input,
   InputNumber,
   Modal,
+  Row,
   Select,
   Space,
   Switch,
@@ -17,22 +19,26 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { FilterDropdownProps } from "antd/es/table/interface";
-import { PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { PlusOutlined, UploadOutlined, ApiOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { Link } from "react-router-dom";
 import {
   deleteOperationalExpense,
+  fetchMetaAdsAppOptions,
+  fetchMetaAdsSystemUserOptions,
   fetchMetaCampaignAdvertisingAccounts,
   fetchOperationalExpenses,
+  importMetaBillingApi,
   importMetaBillingOperationalCsv,
   patchOperationalExpense,
   postOperationalExpense,
+  previewMetaBillingApiImport,
 } from "../api";
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { useAuth } from "../contexts/AuthContext";
 import { formatDateOnly } from "../utils/formatDateOnly";
 import { usePermission } from "../hooks/usePermission";
-import type { AdvertisingAccount, OperationalExpenseRow } from "../types";
+import type { AdvertisingAccount, MetaAdsAppOption, MetaAdsSystemUserOption, MetaBillingApiImportResult, OperationalExpenseRow } from "../types";
 
 const { Title, Text } = Typography;
 
@@ -154,6 +160,19 @@ export function OperationalExpensesPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [form] = Form.useForm();
 
+  const [apiAccountId, setApiAccountId] = useState<string | undefined>();
+  const [metaAdsAppId, setMetaAdsAppId] = useState<string | undefined>();
+  const [metaAdsSystemUserId, setMetaAdsSystemUserId] = useState<string | undefined>();
+  const [metaAppOptions, setMetaAppOptions] = useState<MetaAdsAppOption[]>([]);
+  const [metaSystemUserOptions, setMetaSystemUserOptions] = useState<MetaAdsSystemUserOption[]>([]);
+  const [apiRange, setApiRange] = useState<[Dayjs, Dayjs] | null>(() => [
+    dayjs().subtract(7, "day"),
+    dayjs(),
+  ]);
+  const [apiPreview, setApiPreview] = useState<MetaBillingApiImportResult | null>(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiImporting, setApiImporting] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -171,6 +190,110 @@ export function OperationalExpensesPage() {
   useEffect(() => {
     if (canModule && enabled) void load();
   }, [canModule, enabled, load]);
+
+  const loadMetaApps = useCallback(async () => {
+    if (!canImport) return;
+    try {
+      const list = await fetchMetaAdsAppOptions();
+      setMetaAppOptions(list);
+      setMetaAdsAppId((prev) => prev ?? list[0]?.id);
+    } catch {
+      setMetaAppOptions([]);
+    }
+  }, [canImport]);
+
+  const loadMetaSystemUsers = useCallback(async (appId?: string) => {
+    if (!canImport) return;
+    try {
+      const list = await fetchMetaAdsSystemUserOptions(appId);
+      setMetaSystemUserOptions(list);
+      setMetaAdsSystemUserId((prev) => {
+        if (prev && list.some((u) => u.id === prev)) return prev;
+        return list.find((u) => u.isDefault)?.id ?? list[0]?.id;
+      });
+    } catch {
+      setMetaSystemUserOptions([]);
+    }
+  }, [canImport]);
+
+  useEffect(() => {
+    if (canModule && enabled && canImport) void loadMetaApps();
+  }, [canModule, enabled, canImport, loadMetaApps]);
+
+  useEffect(() => {
+    if (canModule && enabled && canImport) void loadMetaSystemUsers(metaAdsAppId);
+  }, [canModule, enabled, canImport, metaAdsAppId, loadMetaSystemUsers]);
+
+  useEffect(() => {
+    if (accounts.length && !apiAccountId) setApiAccountId(accounts[0]?.id);
+  }, [accounts, apiAccountId]);
+
+  const apiBody = useCallback(() => {
+    if (!apiAccountId || !apiRange) return null;
+    return {
+      advertisingAccountId: apiAccountId,
+      metaAdsAppId: metaAdsAppId ?? null,
+      metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+      since: apiRange[0].format("YYYY-MM-DD"),
+      until: apiRange[1].format("YYYY-MM-DD"),
+    };
+  }, [apiAccountId, apiRange, metaAdsAppId, metaAdsSystemUserId]);
+
+  const runApiPreview = useCallback(async () => {
+    const body = apiBody();
+    if (!body) {
+      message.warning("Selecciona cuenta y rango de fechas.");
+      return;
+    }
+    setApiLoading(true);
+    try {
+      const res = await previewMetaBillingApiImport(body);
+      setApiPreview(res);
+      if (res.billingEventsMatched === 0) {
+        message.warning("Sin cargos de facturación con monto en el rango.");
+      } else {
+        message.success(`${res.billingEventsMatched} cargo(s) listos para importar.`);
+      }
+      if (res.errors.length) message.warning(res.errors.slice(0, 3).join(" | "));
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "response" in e
+        ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      message.error(msg ?? "No se pudo consultar la API de Meta.");
+      setApiPreview(null);
+    } finally {
+      setApiLoading(false);
+    }
+  }, [apiBody]);
+
+  const runApiImport = useCallback(async () => {
+    const body = apiBody();
+    if (!body) {
+      message.warning("Selecciona cuenta y rango de fechas.");
+      return;
+    }
+    setApiImporting(true);
+    try {
+      const res = await importMetaBillingApi(body);
+      setApiPreview(res);
+      const parts: string[] = [];
+      if (res.expensesCreated > 0) parts.push(`${res.expensesCreated} nuevas`);
+      if (res.expensesUpdated > 0) parts.push(`${res.expensesUpdated} actualizadas`);
+      if (res.expensesSkipped > 0) parts.push(`${res.expensesSkipped} omitidas`);
+      message.success(
+        `API Meta: ${parts.length ? parts.join(", ") : "sin cambios"} (${res.metaAccountId}). El estado Pagado no se modifica en filas existentes.`,
+      );
+      if (res.errors.length) message.warning(res.errors.slice(0, 5).join(" | "));
+      void load();
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "response" in e
+        ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      message.error(msg ?? "Error al importar desde API Meta.");
+    } finally {
+      setApiImporting(false);
+    }
+  }, [apiBody, load]);
 
   const metaFilters = useMemo(() => {
     const ids = new Set<string>();
@@ -342,6 +465,143 @@ export function OperationalExpensesPage() {
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setManualModalOpen(true)}>
                   Nuevo gasto
                 </Button>
+              ) : null}
+            </Space>
+          </Card>
+
+          <Card title="Importar actividad de pago (API Meta)">
+            <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+              <Text type="secondary">
+                Consulta <em>/act_&lt;cuenta&gt;/activities</em> por cuenta publicitaria (mismo token que Campañas Meta).
+                Importa cargos de facturación como gastos operacionales. Si el gasto ya existe (mismo concepto o misma
+                cuenta/fecha/monto), solo actualiza fecha, monto y cuenta; no cambia el estado Pagado.
+              </Text>
+              <Row gutter={[16, 16]}>
+                <Col xs={24} md={12}>
+                  <Text strong style={{ display: "block", marginBottom: 6 }}>
+                    Cuenta publicitaria
+                  </Text>
+                  <Select
+                    style={{ width: "100%" }}
+                    placeholder="Selecciona cuenta"
+                    value={apiAccountId}
+                    onChange={(v) => {
+                      setApiAccountId(v);
+                      setApiPreview(null);
+                    }}
+                    options={accounts.map((a) => ({
+                      value: a.id,
+                      label: `${a.metaAccountId}${a.businessName ? ` — ${a.businessName}` : ""}`,
+                    }))}
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text strong style={{ display: "block", marginBottom: 6 }}>
+                    Rango de fechas
+                  </Text>
+                  <DatePicker.RangePicker
+                    style={{ width: "100%" }}
+                    format="DD/MM/YYYY"
+                    value={apiRange}
+                    onChange={(v) => {
+                      setApiRange(v as [Dayjs, Dayjs] | null);
+                      setApiPreview(null);
+                    }}
+                    allowClear={false}
+                    disabledDate={(current) => Boolean(current && current > dayjs().endOf("day"))}
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text strong style={{ display: "block", marginBottom: 6 }}>
+                    App Meta
+                  </Text>
+                  <Select
+                    allowClear={metaAppOptions.length === 0}
+                    style={{ width: "100%" }}
+                    value={metaAdsAppId}
+                    onChange={(v) => {
+                      setMetaAdsAppId(v);
+                      setMetaAdsSystemUserId(undefined);
+                      setApiPreview(null);
+                    }}
+                    options={metaAppOptions.map((a) => ({
+                      value: a.id,
+                      label: a.metaAppId ? `${a.name} (${a.metaAppId})` : a.name,
+                    }))}
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text strong style={{ display: "block", marginBottom: 6 }}>
+                    Usuario del sistema
+                  </Text>
+                  <Select
+                    allowClear
+                    style={{ width: "100%" }}
+                    value={metaAdsSystemUserId}
+                    onChange={(v) => {
+                      setMetaAdsSystemUserId(v);
+                      setApiPreview(null);
+                    }}
+                    options={metaSystemUserOptions.map((u) => ({
+                      value: u.id,
+                      label: `${u.name}${u.isDefault ? " (defecto)" : ""}`,
+                    }))}
+                  />
+                </Col>
+              </Row>
+              <Space wrap>
+                <Button
+                  icon={<ApiOutlined />}
+                  loading={apiLoading}
+                  disabled={!canImport || !apiAccountId}
+                  onClick={() => void runApiPreview()}
+                >
+                  Vista previa
+                </Button>
+                <Button
+                  type="primary"
+                  loading={apiImporting}
+                  disabled={!canImport || !apiAccountId || !apiPreview?.billingEventsMatched}
+                  onClick={() => void runApiImport()}
+                >
+                  Importar cargos
+                </Button>
+              </Space>
+              {apiPreview ? (
+                <div>
+                  <Text type="secondary">
+                    Cuenta {apiPreview.metaAccountId} · {apiPreview.since} → {apiPreview.until} ·{" "}
+                    {apiPreview.billingEventsMatched} cargo(s) · {apiPreview.pagesFetched} página(s) API
+                  </Text>
+                  {apiPreview.preview && apiPreview.preview.length > 0 ? (
+                    <Table
+                      size="small"
+                      style={{ marginTop: 12 }}
+                      rowKey={(r, i) => `${r.concepto}-${i}`}
+                      pagination={{ pageSize: 8 }}
+                      dataSource={apiPreview.preview}
+                      columns={[
+                        {
+                          title: "Fecha",
+                          dataIndex: "eventTime",
+                          render: (v: string | null) => (v ? formatDateOnly(v) : "—"),
+                        },
+                        { title: "Concepto", dataIndex: "concepto" },
+                        {
+                          title: "Monto",
+                          dataIndex: "amount",
+                          align: "right" as const,
+                          render: (v: number | null) => (v != null ? v.toFixed(2) : "—"),
+                        },
+                        {
+                          title: "Tipo",
+                          dataIndex: "translatedEventType",
+                          render: (v: string | null, r) => v ?? r.eventType,
+                        },
+                      ]}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </Space>
           </Card>

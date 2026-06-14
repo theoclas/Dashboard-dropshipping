@@ -16,6 +16,10 @@ import {
   importAdvertisingCampaignMetrics,
 } from "./importAdvertisingCampaignMetrics";
 import { importMetaBillingOperationalCsv } from "./importMetaBillingOperationalCsv";
+import {
+  importMetaBillingApiToOperationalExpenses,
+  previewMetaBillingApiImport,
+} from "./metaBillingOperationalImport";
 import { assertWipePassword } from "./wipeImported";
 import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel } from "./metaCampaignExcelParse";
 import {
@@ -775,6 +779,54 @@ export function registerBusinessModules(app: express.Application) {
       const text = file.buffer.toString("utf8");
       const result = await importMetaBillingOperationalCsv(u.companyId, text, u.userId);
       return res.json(result);
+    },
+  );
+
+  const metaBillingApiBodySchema = z.object({
+    advertisingAccountId: z.string().min(1),
+    metaAdsAppId: z.string().min(1).optional().nullable(),
+    metaAdsSystemUserId: z.string().min(1).optional().nullable(),
+    since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  });
+
+  app.post(
+    "/api/operational-expenses/preview-meta-billing-api",
+    authRequired,
+    companyRequired,
+    requireOperationalExpenseEnabled,
+    requirePermission("actionImportMetaBillingOperacional"),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = metaBillingApiBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      try {
+        const result = await previewMetaBillingApiImport(u.companyId, parsed.data);
+        return res.json(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return res.status(400).json({ message: msg });
+      }
+    },
+  );
+
+  app.post(
+    "/api/operational-expenses/import-meta-billing-api",
+    authRequired,
+    companyRequired,
+    requireOperationalExpenseEnabled,
+    requirePermission("actionImportMetaBillingOperacional"),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = metaBillingApiBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      try {
+        const result = await importMetaBillingApiToOperationalExpenses(u.companyId, u.userId, parsed.data);
+        return res.json(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return res.status(400).json({ message: msg });
+      }
     },
   );
 

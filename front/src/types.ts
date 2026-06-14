@@ -319,6 +319,26 @@ export type ImportMetaBillingResult = {
   errors: string[];
 };
 
+export type MetaBillingApiPreviewRow = {
+  eventTime: string | null;
+  eventType: string;
+  translatedEventType: string | null;
+  amount: number | null;
+  currency: string | null;
+  concepto: string;
+  transactionId: string | null;
+};
+
+export type MetaBillingApiImportResult = ImportMetaBillingResult & {
+  activitiesFetched: number;
+  billingEventsMatched: number;
+  pagesFetched: number;
+  since: string;
+  until: string;
+  metaAccountId: string;
+  preview?: MetaBillingApiPreviewRow[];
+};
+
 export type CarteraSalidaCategoria = "pedido" | "retiro" | "recarga_tarjeta" | "otro";
 
 export type CarteraSalidaRow = {

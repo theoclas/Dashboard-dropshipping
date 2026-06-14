@@ -20,6 +20,7 @@ import type {
   ImportAdvertisingCampaignMetricsResult,
   ImportAdvertisingPreviewResponse,
   ImportMetaBillingResult,
+  MetaBillingApiImportResult,
   MetaAdsApp,
   MetaAdsAppOption,
   MetaAdsSystemUser,
@@ -761,6 +762,32 @@ export async function importMetaBillingOperationalCsv(file: File): Promise<Impor
   const fd = new FormData();
   fd.append("file", file);
   const { data } = await api.post<ImportMetaBillingResult>("/operational-expenses/import-meta-billing-csv", fd, {
+    timeout: 300_000,
+  });
+  return data;
+}
+
+export async function previewMetaBillingApiImport(body: {
+  advertisingAccountId: string;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+  since?: string | null;
+  until?: string | null;
+}): Promise<MetaBillingApiImportResult> {
+  const { data } = await api.post<MetaBillingApiImportResult>("/operational-expenses/preview-meta-billing-api", body, {
+    timeout: 300_000,
+  });
+  return data;
+}
+
+export async function importMetaBillingApi(body: {
+  advertisingAccountId: string;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+  since?: string | null;
+  until?: string | null;
+}): Promise<MetaBillingApiImportResult> {
+  const { data } = await api.post<MetaBillingApiImportResult>("/operational-expenses/import-meta-billing-api", body, {
     timeout: 300_000,
   });
   return data;
