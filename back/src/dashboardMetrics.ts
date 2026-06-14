@@ -1,5 +1,9 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { getMetaAdvertisingSpendSummary, type MetaSpendByProductRow } from "./metaCampaignSpend";
+import {
+  queryEntregaEstadoByProduct,
+  type EntregaEstadoByProductRow,
+} from "./dashboardEntregaByProduct";
 
 function parseYmd(s: string | undefined): Date | null {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -115,8 +119,10 @@ export type DashboardMetricsPayload = {
   pedidosPendientesPct: number;
   entregados: number;
   entregadosPct: number;
+  entregadosByProduct: EntregaEstadoByProductRow[];
   devoluciones: number;
   devolucionesPct: number;
+  devolucionesByProduct: EntregaEstadoByProductRow[];
   enProceso: number;
   enProcesoPct: number;
   totalVentas: number;
@@ -238,7 +244,7 @@ SELECT
 
   const finParams: unknown[] = hasRange ? [companyId, start, end, companyId, start, end, companyId, start, end] : [companyId, companyId, companyId];
 
-  const [aggRows, productRows, finRows, cpaSpend, cpaAvgRow, opExpenseAgg, retirosAgg, metaSpend] =
+  const [aggRows, productRows, finRows, cpaSpend, cpaAvgRow, opExpenseAgg, retirosAgg, metaSpend, entregadosByProductRaw, devolucionesByProductRaw] =
     await Promise.all([
     prisma.$queryRawUnsafe<AggRow[]>(aggSql, ...aggParams),
     prisma.$queryRawUnsafe<{ productos_vendidos: unknown }[]>(productSql, ...aggParams),
@@ -260,6 +266,8 @@ SELECT
     }),
     aggregateRetirosDropiSafe(prisma, companyId, Boolean(hasRange && start && end), start, end),
     getMetaAdvertisingSpendSummary(prisma, companyId, opts),
+    queryEntregaEstadoByProduct(prisma, companyId, "entregado", opts, 1),
+    queryEntregaEstadoByProduct(prisma, companyId, "devolucion", opts, 1),
   ]);
 
   const a = aggRows[0];
@@ -295,6 +303,17 @@ SELECT
 
   const safeDiv = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
 
+  const applyProductPct = (rows: EntregaEstadoByProductRow[], total: number): EntregaEstadoByProductRow[] => {
+    const den = total > 0 ? total : 1;
+    return rows.map((r) => ({
+      ...r,
+      pct: Math.round((r.pedidos / den) * 1000) / 10,
+    }));
+  };
+
+  const entregadosByProduct = applyProductPct(entregadosByProductRaw, entregados);
+  const devolucionesByProduct = applyProductPct(devolucionesByProductRaw, devoluciones);
+
   return {
     companyId,
     desde: opts.desde && opts.hasta ? opts.desde : null,
@@ -309,8 +328,10 @@ SELECT
     pedidosPendientesPct: safeDiv(enProceso, totalOrders),
     entregados,
     entregadosPct: safeDiv(entregados, totalOrders),
+    entregadosByProduct,
     devoluciones,
     devolucionesPct: safeDiv(devoluciones, totalOrders),
+    devolucionesByProduct,
     enProceso,
     enProcesoPct: safeDiv(enProceso, totalOrders),
     totalVentas,

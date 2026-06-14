@@ -61,8 +61,22 @@ export type DashboardMetrics = {
   pedidosPendientesPct: number;
   entregados: number;
   entregadosPct: number;
+  entregadosByProduct: Array<{
+    productKey: string;
+    productName: string;
+    pedidos: number;
+    unidades: number;
+    pct: number;
+  }>;
   devoluciones: number;
   devolucionesPct: number;
+  devolucionesByProduct: Array<{
+    productKey: string;
+    productName: string;
+    pedidos: number;
+    unidades: number;
+    pct: number;
+  }>;
   enProceso: number;
   enProcesoPct: number;
   totalVentas: number;
@@ -174,6 +188,7 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
+  const [entregaDetailOpen, setEntregaDetailOpen] = useState<"entregados" | "devoluciones" | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -333,6 +348,15 @@ export function DashboardPage() {
                   ? "…"
                   : `${fmtInteger(data?.entregados ?? 0)} (${fmtPercent(data?.entregadosPct ?? 0)})`
               }
+              active={entregaDetailOpen === "entregados"}
+              onClick={() =>
+                setEntregaDetailOpen((prev) => (prev === "entregados" ? null : "entregados"))
+              }
+              hint={
+                <Tooltip title="Pedidos entregados en el rango. Clic para ver desglose por producto.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
             />
           </Col>
           ) : null}
@@ -345,6 +369,15 @@ export function DashboardPage() {
                 loading
                   ? "…"
                   : `${fmtInteger(data?.devoluciones ?? 0)} (${fmtPercent(data?.devolucionesPct ?? 0)})`
+              }
+              active={entregaDetailOpen === "devoluciones"}
+              onClick={() =>
+                setEntregaDetailOpen((prev) => (prev === "devoluciones" ? null : "devoluciones"))
+              }
+              hint={
+                <Tooltip title="Pedidos devueltos en el rango. Clic para ver desglose por producto.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
               }
             />
           </Col>
@@ -363,6 +396,142 @@ export function DashboardPage() {
           </Col>
           ) : null}
         </Row>
+        {entregaDetailOpen === "entregados" && isDashboardCardVisible(dashCfg, "card_entregados") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Entregados por producto"
+            extra={
+              <Link to="/app/productos" style={{ fontSize: 13 }}>
+                Productos
+              </Link>
+            }
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Pedidos entregados en el rango, agrupados por producto de catálogo (o nombre Dropi si no hay vínculo).
+              El % es sobre el total de entregados ({fmtInteger(data?.entregados ?? 0)}).
+            </Text>
+            <Table
+              size="small"
+              rowKey="productKey"
+              loading={loading}
+              pagination={false}
+              locale={{ emptyText: "Sin entregados con líneas de producto en este rango." }}
+              dataSource={data?.entregadosByProduct ?? []}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                {
+                  title: "Pedidos",
+                  dataIndex: "pedidos",
+                  key: "pedidos",
+                  align: "right",
+                  width: 100,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "%",
+                  dataIndex: "pct",
+                  key: "pct",
+                  align: "right",
+                  width: 80,
+                  render: (v: number) => fmtPercent(v),
+                },
+                {
+                  title: "Unidades",
+                  dataIndex: "unidades",
+                  key: "unidades",
+                  align: "right",
+                  width: 100,
+                  render: (v: number) => fmtInteger(v),
+                },
+              ]}
+              summary={() =>
+                (data?.entregadosByProduct?.length ?? 0) > 0 ? (
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0}>
+                      <Text strong>Total entregados</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={1} align="right">
+                      <Text strong>{fmtInteger(data?.entregados ?? 0)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} align="right">
+                      <Text strong>{fmtPercent(100)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={3} />
+                  </Table.Summary.Row>
+                ) : null
+              }
+            />
+          </Card>
+        ) : null}
+        {entregaDetailOpen === "devoluciones" && isDashboardCardVisible(dashCfg, "card_devoluciones") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Devoluciones por producto"
+            extra={
+              <Link to="/app/productos" style={{ fontSize: 13 }}>
+                Productos
+              </Link>
+            }
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Pedidos devueltos en el rango, agrupados por producto. El % es sobre el total de devoluciones (
+              {fmtInteger(data?.devoluciones ?? 0)}).
+            </Text>
+            <Table
+              size="small"
+              rowKey="productKey"
+              loading={loading}
+              pagination={false}
+              locale={{ emptyText: "Sin devoluciones con líneas de producto en este rango." }}
+              dataSource={data?.devolucionesByProduct ?? []}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                {
+                  title: "Pedidos",
+                  dataIndex: "pedidos",
+                  key: "pedidos",
+                  align: "right",
+                  width: 100,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "%",
+                  dataIndex: "pct",
+                  key: "pct",
+                  align: "right",
+                  width: 80,
+                  render: (v: number) => fmtPercent(v),
+                },
+                {
+                  title: "Unidades",
+                  dataIndex: "unidades",
+                  key: "unidades",
+                  align: "right",
+                  width: 100,
+                  render: (v: number) => fmtInteger(v),
+                },
+              ]}
+              summary={() =>
+                (data?.devolucionesByProduct?.length ?? 0) > 0 ? (
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0}>
+                      <Text strong>Total devoluciones</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={1} align="right">
+                      <Text strong>{fmtInteger(data?.devoluciones ?? 0)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} align="right">
+                      <Text strong>{fmtPercent(100)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={3} />
+                  </Table.Summary.Row>
+                ) : null
+              }
+            />
+          </Card>
+        ) : null}
       </div>
 
       <div>
