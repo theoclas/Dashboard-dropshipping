@@ -19,6 +19,7 @@ export const OPERATOR_PERMISSION_KEYS = [
   "modulePedidos",
   "moduleReportes",
   "moduleImportaciones",
+  "moduleSalidasCartera",
   "moduleMapeo",
   "moduleCpa",
   "moduleCatalogoProductos",

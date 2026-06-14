@@ -1227,7 +1227,7 @@ app.get("/api/dropi-retiros", authRequired, companyRequired, requirePermission("
 
 const CARTERA_SALIDA_CATEGORIAS = ["pedido", "retiro", "recarga_tarjeta", "otro"] as const;
 
-app.get("/api/cartera-salidas", authRequired, companyRequired, requirePermission("moduleImportaciones"), async (req, res) => {
+app.get("/api/cartera-salidas", authRequired, companyRequired, requirePermission("moduleSalidasCartera"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rawCat = String(req.query.categoria ?? "");
   const categoria = (CARTERA_SALIDA_CATEGORIAS as readonly string[]).includes(rawCat)

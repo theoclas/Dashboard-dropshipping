@@ -6,6 +6,7 @@ const ROUTE_BY_PERMISSION: { perm: OperatorPermissionKey; path: string }[] = [
   { perm: "modulePedidos", path: "/app/pedidos" },
   { perm: "moduleReportes", path: "/app/reportes" },
   { perm: "moduleImportaciones", path: "/app/importar" },
+  { perm: "moduleSalidasCartera", path: "/app/salidas-cartera" },
   { perm: "moduleMapeo", path: "/app/mapeo" },
   { perm: "moduleCpa", path: "/app/cpa-experimental" },
   { perm: "moduleCampanasMeta", path: "/app/campanas-meta" },

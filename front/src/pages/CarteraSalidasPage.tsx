@@ -43,7 +43,7 @@ function fmtMoney(n: number): string {
 
 export function CarteraSalidasPage() {
   const { token } = theme.useToken();
-  const canSee = usePermission("moduleImportaciones");
+  const canSee = usePermission("moduleSalidasCartera");
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<CarteraSalidaRow[]>([]);
   const [summary, setSummary] = useState({

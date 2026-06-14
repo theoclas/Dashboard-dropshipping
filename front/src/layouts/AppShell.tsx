@@ -162,6 +162,7 @@ export function AppShell() {
   const canPedidos = usePermission("modulePedidos");
   const canReportes = usePermission("moduleReportes");
   const canImportaciones = usePermission("moduleImportaciones");
+  const canSalidasCartera = usePermission("moduleSalidasCartera");
   const canMapeo = usePermission("moduleMapeo");
   const canCpa = usePermission("moduleCpa");
   const canCampanas = usePermission("moduleCampanasMeta");
@@ -254,7 +255,7 @@ export function AppShell() {
     ]);
 
     pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [
-      canImportaciones
+      canSalidasCartera
         ? {
             key: "/app/salidas-cartera",
             icon: <ExportOutlined />,

@@ -137,7 +137,7 @@ export function AppRoutes() {
         <Route
           path="salidas-cartera"
           element={
-            <Perm perm="moduleImportaciones">
+            <Perm perm="moduleSalidasCartera">
               <CarteraSalidasPage />
             </Perm>
           }

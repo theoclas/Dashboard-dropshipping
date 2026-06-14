@@ -8,6 +8,7 @@ export const OPERATOR_PERMISSION_LABELS: Record<OperatorPermissionKey, string> =
   modulePedidos: "Pedidos y productos de pedidos",
   moduleReportes: "Reportes",
   moduleImportaciones: "Importar",
+  moduleSalidasCartera: "Salidas cartera",
   moduleMapeo: "Mapeo de estados",
   moduleCpa: "CPA",
   moduleCatalogoProductos: "Catálogo de productos",

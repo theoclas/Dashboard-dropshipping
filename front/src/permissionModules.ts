@@ -159,9 +159,8 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
   {
     id: "salidasCartera",
     label: "Salidas cartera",
-    moduleKeys: ["moduleImportaciones"],
-    actions: [{ key: "actionImportarDropi", sharedWithLabels: ["Importar", "Logística"] }],
-    sharedWithLabels: ["Importar", "Logística"],
+    moduleKeys: ["moduleSalidasCartera"],
+    actions: [],
     accessIncludes: ["Consultar salidas de cartera Dropi clasificadas por pedido, retiro o tarjeta"],
   },
   {
@@ -189,6 +188,7 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
 const MODULE_KEY_LABELS: Partial<Record<OperatorPermissionKey, string>> = {
   modulePedidos: "Acceso a pedidos",
   moduleCatalogoProductos: "Acceso a catálogo de productos",
+  moduleSalidasCartera: "Acceso a salidas de cartera",
 };
 
 export function moduleKeyLabel(key: OperatorPermissionKey): string {

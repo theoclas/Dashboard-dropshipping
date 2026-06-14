@@ -21,6 +21,18 @@ test("mergeOperatorPermissions LECTOR con override desactiva módulos", () => {
   assert.equal(perms.modulePedidos, true);
 });
 
+test("mergeOperatorPermissions — salidas cartera hereda importar si no está en JSON legacy", () => {
+  const on = mergeOperatorPermissions(Role.LECTOR, { moduleImportaciones: true });
+  assert.equal(on.moduleSalidasCartera, true);
+  const off = mergeOperatorPermissions(Role.LECTOR, { moduleImportaciones: false });
+  assert.equal(off.moduleSalidasCartera, false);
+  const explicit = mergeOperatorPermissions(Role.LECTOR, {
+    moduleImportaciones: true,
+    moduleSalidasCartera: false,
+  });
+  assert.equal(explicit.moduleSalidasCartera, false);
+});
+
 test("requirePermission rechaza sin permiso en JWT", () => {
   const mw = requirePermission("moduleDashboard");
   const req = {

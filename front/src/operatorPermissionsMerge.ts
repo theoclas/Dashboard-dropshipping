@@ -22,6 +22,7 @@ function defaultLectorPermissions(): Record<OperatorPermissionKey, boolean> {
   r.modulePedidos = true;
   r.moduleReportes = true;
   r.moduleImportaciones = false;
+  r.moduleSalidasCartera = false;
   r.moduleMapeo = true;
   r.moduleCpa = true;
   r.moduleCatalogoProductos = true;
@@ -52,5 +53,9 @@ export function mergeOperatorPermissions(
 ): Record<OperatorPermissionKey, boolean> {
   const base = role === "LECTOR" ? defaultLectorPermissions() : defaultOperatorPermissions();
   const overrides = parseJsonOverrides(stored);
-  return { ...base, ...overrides };
+  const merged = { ...base, ...overrides };
+  if (!Object.prototype.hasOwnProperty.call(overrides, "moduleSalidasCartera")) {
+    merged.moduleSalidasCartera = merged.moduleImportaciones;
+  }
+  return merged;
 }
