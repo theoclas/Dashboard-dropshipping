@@ -57,6 +57,7 @@ export type DashboardMetrics = {
   sinMapear: number;
   pedidosCancelados: number;
   pedidosCanceladosPct: number;
+  pedidosEnviados: number;
   pedidosPendientes: number;
   pedidosPendientesPct: number;
   entregados: number;
@@ -64,18 +65,24 @@ export type DashboardMetrics = {
   entregadosByProduct: Array<{
     productKey: string;
     productName: string;
+    pedidosEnviados: number;
     pedidos: number;
+    pendientes: number;
     unidades: number;
     pct: number;
+    pctPendientes: number;
   }>;
   devoluciones: number;
   devolucionesPct: number;
   devolucionesByProduct: Array<{
     productKey: string;
     productName: string;
+    pedidosEnviados: number;
     pedidos: number;
+    pendientes: number;
     unidades: number;
     pct: number;
+    pctPendientes: number;
   }>;
   enProceso: number;
   enProcesoPct: number;
@@ -408,8 +415,8 @@ export function DashboardPage() {
             }
           >
             <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
-              Pedidos entregados en el rango, agrupados por producto de catálogo (o nombre Dropi si no hay vínculo).
-              El % es sobre el total de entregados ({fmtInteger(data?.entregados ?? 0)}).
+              Por producto: enviados (sin cancelados), entregados, pendientes y el % de cada uno sobre los enviados de
+              ese producto.
             </Text>
             <Table
               size="small"
@@ -421,19 +428,43 @@ export function DashboardPage() {
               columns={[
                 { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
                 {
-                  title: "Pedidos",
-                  dataIndex: "pedidos",
-                  key: "pedidos",
+                  title: "Enviados",
+                  dataIndex: "pedidosEnviados",
+                  key: "enviados",
                   align: "right",
-                  width: 100,
+                  width: 90,
                   render: (v: number) => fmtInteger(v),
                 },
                 {
-                  title: "%",
+                  title: "Entregados",
+                  dataIndex: "pedidos",
+                  key: "pedidos",
+                  align: "right",
+                  width: 95,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "Pendientes",
+                  dataIndex: "pendientes",
+                  key: "pendientes",
+                  align: "right",
+                  width: 95,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "% entreg.",
                   dataIndex: "pct",
                   key: "pct",
                   align: "right",
-                  width: 80,
+                  width: 85,
+                  render: (v: number) => fmtPercent(v),
+                },
+                {
+                  title: "% pend.",
+                  dataIndex: "pctPendientes",
+                  key: "pctPend",
+                  align: "right",
+                  width: 85,
                   render: (v: number) => fmtPercent(v),
                 },
                 {
@@ -441,7 +472,7 @@ export function DashboardPage() {
                   dataIndex: "unidades",
                   key: "unidades",
                   align: "right",
-                  width: 100,
+                  width: 85,
                   render: (v: number) => fmtInteger(v),
                 },
               ]}
@@ -449,15 +480,36 @@ export function DashboardPage() {
                 (data?.entregadosByProduct?.length ?? 0) > 0 ? (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0}>
-                      <Text strong>Total entregados</Text>
+                      <Text strong>Total general</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={1} align="right">
-                      <Text strong>{fmtInteger(data?.entregados ?? 0)}</Text>
+                      <Text strong>{fmtInteger(data?.pedidosEnviados ?? 0)}</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={2} align="right">
-                      <Text strong>{fmtPercent(100)}</Text>
+                      <Text strong>{fmtInteger(data?.entregados ?? 0)}</Text>
                     </Table.Summary.Cell>
-                    <Table.Summary.Cell index={3} />
+                    <Table.Summary.Cell index={3} align="right">
+                      <Text strong>{fmtInteger(data?.enProceso ?? 0)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={4} align="right">
+                      <Text strong>
+                        {fmtPercent(
+                          (data?.pedidosEnviados ?? 0) > 0
+                            ? ((data?.entregados ?? 0) / (data?.pedidosEnviados ?? 1)) * 100
+                            : 0,
+                        )}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={5} align="right">
+                      <Text strong>
+                        {fmtPercent(
+                          (data?.pedidosEnviados ?? 0) > 0
+                            ? ((data?.enProceso ?? 0) / (data?.pedidosEnviados ?? 1)) * 100
+                            : 0,
+                        )}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={6} />
                   </Table.Summary.Row>
                 ) : null
               }
@@ -476,8 +528,8 @@ export function DashboardPage() {
             }
           >
             <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
-              Pedidos devueltos en el rango, agrupados por producto. El % es sobre el total de devoluciones (
-              {fmtInteger(data?.devoluciones ?? 0)}).
+              Por producto: enviados (sin cancelados), devueltos, pendientes y el % de cada uno sobre los enviados de
+              ese producto.
             </Text>
             <Table
               size="small"
@@ -489,19 +541,43 @@ export function DashboardPage() {
               columns={[
                 { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
                 {
-                  title: "Pedidos",
-                  dataIndex: "pedidos",
-                  key: "pedidos",
+                  title: "Enviados",
+                  dataIndex: "pedidosEnviados",
+                  key: "enviados",
                   align: "right",
-                  width: 100,
+                  width: 90,
                   render: (v: number) => fmtInteger(v),
                 },
                 {
-                  title: "%",
+                  title: "Devueltos",
+                  dataIndex: "pedidos",
+                  key: "pedidos",
+                  align: "right",
+                  width: 95,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "Pendientes",
+                  dataIndex: "pendientes",
+                  key: "pendientes",
+                  align: "right",
+                  width: 95,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "% devol.",
                   dataIndex: "pct",
                   key: "pct",
                   align: "right",
-                  width: 80,
+                  width: 85,
+                  render: (v: number) => fmtPercent(v),
+                },
+                {
+                  title: "% pend.",
+                  dataIndex: "pctPendientes",
+                  key: "pctPend",
+                  align: "right",
+                  width: 85,
                   render: (v: number) => fmtPercent(v),
                 },
                 {
@@ -509,7 +585,7 @@ export function DashboardPage() {
                   dataIndex: "unidades",
                   key: "unidades",
                   align: "right",
-                  width: 100,
+                  width: 85,
                   render: (v: number) => fmtInteger(v),
                 },
               ]}
@@ -517,15 +593,36 @@ export function DashboardPage() {
                 (data?.devolucionesByProduct?.length ?? 0) > 0 ? (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0}>
-                      <Text strong>Total devoluciones</Text>
+                      <Text strong>Total general</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={1} align="right">
-                      <Text strong>{fmtInteger(data?.devoluciones ?? 0)}</Text>
+                      <Text strong>{fmtInteger(data?.pedidosEnviados ?? 0)}</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={2} align="right">
-                      <Text strong>{fmtPercent(100)}</Text>
+                      <Text strong>{fmtInteger(data?.devoluciones ?? 0)}</Text>
                     </Table.Summary.Cell>
-                    <Table.Summary.Cell index={3} />
+                    <Table.Summary.Cell index={3} align="right">
+                      <Text strong>{fmtInteger(data?.enProceso ?? 0)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={4} align="right">
+                      <Text strong>
+                        {fmtPercent(
+                          (data?.pedidosEnviados ?? 0) > 0
+                            ? ((data?.devoluciones ?? 0) / (data?.pedidosEnviados ?? 1)) * 100
+                            : 0,
+                        )}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={5} align="right">
+                      <Text strong>
+                        {fmtPercent(
+                          (data?.pedidosEnviados ?? 0) > 0
+                            ? ((data?.enProceso ?? 0) / (data?.pedidosEnviados ?? 1)) * 100
+                            : 0,
+                        )}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={6} />
                   </Table.Summary.Row>
                 ) : null
               }

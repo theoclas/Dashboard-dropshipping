@@ -25,13 +25,22 @@ END)`;
 export type EntregaEstadoByProductRow = {
   productKey: string;
   productName: string;
+  /** Pedidos del producto sin cancelar/rechazar (base del %). */
+  pedidosEnviados: number;
+  /** Entregados o devueltos del producto, según la tabla. */
   pedidos: number;
+  /** Pedidos del producto aún en tránsito (sin entregar ni devolver). */
+  pendientes: number;
   unidades: number;
+  /** pedidos / pedidosEnviados del mismo producto. */
   pct: number;
+  /** pendientes / pedidosEnviados del mismo producto. */
+  pctPendientes: number;
 };
 
 type LineRow = {
   pedido_id_dropi: string;
+  bucket: string;
   producto_id: string | null;
   sku: string | null;
   variacion_id: string | null;
@@ -51,17 +60,24 @@ function parseDateRange(desde?: string, hasta?: string): { start: Date; end: Dat
   };
 }
 
-export async function queryEntregaEstadoByProduct(
+function pctOf(n: number, d: number): number {
+  const den = d > 0 ? d : 1;
+  return Math.round((n / den) * 1000) / 10;
+}
+
+export async function queryEntregaByProductBreakdown(
   prisma: PrismaClient,
   companyId: string,
-  bucket: "entregado" | "devolucion",
   opts: { desde?: string; hasta?: string },
-  totalPedidosEstado: number,
-): Promise<EntregaEstadoByProductRow[]> {
+): Promise<{
+  entregadosByProduct: EntregaEstadoByProductRow[];
+  devolucionesByProduct: EntregaEstadoByProductRow[];
+}> {
   const dr = parseDateRange(opts.desde, opts.hasta);
   const sql = `
 SELECT
   TRIM(p.id_dropi) AS pedido_id_dropi,
+  (${SQL_ENTREGA_BUCKET}) AS bucket,
   pd.producto_id,
   pd.sku,
   pd.variacion_id,
@@ -72,15 +88,16 @@ FROM pedidos p
 INNER JOIN productos_detalle pd
   ON pd.companyId = p.companyId AND pd.pedido_id_dropi = p.id_dropi
 WHERE p.companyId = ?
-  AND (${SQL_ENTREGA_BUCKET}) = ?
   ${dr ? "AND p.fecha >= ? AND p.fecha <= ?" : ""}
 `;
 
-  const args: unknown[] = [companyId, bucket];
+  const args: unknown[] = [companyId];
   if (dr) args.push(dr.start, dr.end);
 
   const lines = await prisma.$queryRawUnsafe<LineRow[]>(sql, ...args);
-  if (lines.length === 0) return [];
+  if (lines.length === 0) {
+    return { entregadosByProduct: [], devolucionesByProduct: [] };
+  }
 
   const variantKeys = lines.map((l) =>
     dropiVariantKey({
@@ -92,11 +109,21 @@ WHERE p.companyId = ?
   );
   const catalogByKey = await mapVariantKeysToCatalogLinks(companyId, variantKeys);
 
-  type Acc = { productName: string; pedidos: Set<string>; unidades: number };
+  type Acc = {
+    productName: string;
+    enviados: Set<string>;
+    entregados: Set<string>;
+    devoluciones: Set<string>;
+    pendientes: Set<string>;
+    unidadesEntregadas: number;
+    unidadesDevueltas: number;
+    unidadesPendientes: number;
+  };
   const byProduct = new Map<string, Acc>();
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
+    const bucket = l.bucket;
     const vKey = variantKeys[i];
     const catalog = catalogByKey.get(vKey);
     const productKey = catalog?.catalogProductId ?? `dropi:${vKey}`;
@@ -108,22 +135,74 @@ WHERE p.companyId = ?
 
     let acc = byProduct.get(productKey);
     if (!acc) {
-      acc = { productName, pedidos: new Set(), unidades: 0 };
+      acc = {
+        productName,
+        enviados: new Set(),
+        entregados: new Set(),
+        devoluciones: new Set(),
+        pendientes: new Set(),
+        unidadesEntregadas: 0,
+        unidadesDevueltas: 0,
+        unidadesPendientes: 0,
+      };
       byProduct.set(productKey, acc);
     }
-    acc.pedidos.add(l.pedido_id_dropi);
-    acc.unidades += Number(l.cantidad ?? 1) || 1;
+
+    const pedidoId = l.pedido_id_dropi;
+    const qty = Number(l.cantidad ?? 1) || 1;
+
+    if (bucket !== "cancelado" && bucket !== "rechazado") {
+      acc.enviados.add(pedidoId);
+    }
+    if (bucket === "entregado") {
+      acc.entregados.add(pedidoId);
+      acc.unidadesEntregadas += qty;
+    }
+    if (bucket === "devolucion") {
+      acc.devoluciones.add(pedidoId);
+      acc.unidadesDevueltas += qty;
+    }
+    if (bucket === "transito") {
+      acc.pendientes.add(pedidoId);
+      acc.unidadesPendientes += qty;
+    }
   }
 
-  const den = totalPedidosEstado > 0 ? totalPedidosEstado : 1;
+  const entregadosByProduct: EntregaEstadoByProductRow[] = [];
+  const devolucionesByProduct: EntregaEstadoByProductRow[] = [];
 
-  return [...byProduct.entries()]
-    .map(([productKey, acc]) => ({
-      productKey,
-      productName: acc.productName,
-      pedidos: acc.pedidos.size,
-      unidades: acc.unidades,
-      pct: Math.round((acc.pedidos.size / den) * 1000) / 10,
-    }))
-    .sort((a, b) => b.pedidos - a.pedidos);
+  for (const [productKey, acc] of byProduct.entries()) {
+    const enviados = acc.enviados.size;
+
+    if (acc.entregados.size > 0) {
+      entregadosByProduct.push({
+        productKey,
+        productName: acc.productName,
+        pedidosEnviados: enviados,
+        pedidos: acc.entregados.size,
+        pendientes: acc.pendientes.size,
+        unidades: acc.unidadesEntregadas,
+        pct: pctOf(acc.entregados.size, enviados),
+        pctPendientes: pctOf(acc.pendientes.size, enviados),
+      });
+    }
+
+    if (acc.devoluciones.size > 0) {
+      devolucionesByProduct.push({
+        productKey,
+        productName: acc.productName,
+        pedidosEnviados: enviados,
+        pedidos: acc.devoluciones.size,
+        pendientes: acc.pendientes.size,
+        unidades: acc.unidadesDevueltas,
+        pct: pctOf(acc.devoluciones.size, enviados),
+        pctPendientes: pctOf(acc.pendientes.size, enviados),
+      });
+    }
+  }
+
+  entregadosByProduct.sort((a, b) => b.pedidos - a.pedidos);
+  devolucionesByProduct.sort((a, b) => b.pedidos - a.pedidos);
+
+  return { entregadosByProduct, devolucionesByProduct };
 }
