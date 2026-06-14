@@ -458,6 +458,57 @@ model ImportBatch {
   @@map("import_batches")
 }
 
+/// App de Meta Developers (catálogo global, gestión solo ADMIN).
+model MetaAdsApp {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(255)
+  metaAppId String?  @map("meta_app_id") @db.VarChar(32)
+  notes     String?  @db.Text
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userAccess MetaAdsSystemUserAppAccess[]
+
+  @@index([isActive])
+  @@map("meta_ads_apps")
+}
+
+/// Usuario del sistema Meta (sin token; tokens por app en el join).
+model MetaAdsSystemUser {
+  id               String   @id @default(cuid())
+  name             String   @db.VarChar(128)
+  metaSystemUserId String?  @map("meta_system_user_id") @db.VarChar(32)
+  notes            String?  @db.Text
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  appAccess MetaAdsSystemUserAppAccess[]
+
+  @@index([isActive])
+  @@map("meta_ads_system_users")
+}
+
+/// Acceso usuario + app con token propio (N:M).
+model MetaAdsSystemUserAppAccess {
+  id             String    @id @default(cuid())
+  systemUserId   String    @map("system_user_id")
+  appId          String    @map("app_id")
+  accessToken    String    @map("access_token") @db.Text
+  tokenExpiresAt DateTime? @map("token_expires_at")
+  isDefault      Boolean   @default(false) @map("is_default")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  systemUser MetaAdsSystemUser @relation(fields: [systemUserId], references: [id], onDelete: Cascade)
+  app        MetaAdsApp         @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([systemUserId, appId])
+  @@index([isDefault])
+  @@map("meta_ads_system_user_app_access")
+}
+
 enum ImportBatchKind {
   CARTERA
   PRODUCTOS

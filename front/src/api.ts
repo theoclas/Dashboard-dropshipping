@@ -19,6 +19,10 @@ import type {
   ImportAdvertisingCampaignMetricsResult,
   ImportAdvertisingPreviewResponse,
   ImportMetaBillingResult,
+  MetaAdsApp,
+  MetaAdsAppOption,
+  MetaAdsSystemUser,
+  MetaAdsSystemUserOption,
   OperationalExpenseRow,
   OrdersTableConfig,
   Role,
@@ -545,8 +549,132 @@ export async function importAdvertisingCampaignMetrics(
   return data;
 }
 
+export async function previewMetaApiCampaignImport(
+  productId: string,
+  options: {
+    advertisingAccountId: string;
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+  },
+): Promise<ImportAdvertisingPreviewResponse> {
+  const { data } = await api.post<ImportAdvertisingPreviewResponse>(
+    `/catalog-products/${productId}/advertising-campaigns/import/meta-api/preview`,
+    options,
+    { timeout: 120_000 },
+  );
+  return data;
+}
+
+export async function importMetaApiCampaignMetrics(
+  productId: string,
+  options: {
+    advertisingAccountId: string;
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+    useShopifySessions?: boolean;
+    shopifySessionsByCampaignId?: Record<string, number>;
+    applyAdvertisingAccount?: boolean;
+    allowedCampaignIds?: string[];
+  },
+): Promise<ImportAdvertisingCampaignMetricsResult> {
+  const { data } = await api.post<ImportAdvertisingCampaignMetricsResult>(
+    `/catalog-products/${productId}/advertising-campaigns/import/meta-api`,
+    options,
+    { timeout: 300_000 },
+  );
+  return data;
+}
+
 export async function fetchMetaCampaignAdvertisingAccounts(): Promise<AdvertisingAccount[]> {
   const { data } = await api.get<AdvertisingAccount[]>("/meta-campaign/advertising-accounts");
+  return data;
+}
+
+export async function fetchMetaAdsApps(): Promise<MetaAdsApp[]> {
+  const { data } = await api.get<MetaAdsApp[]>("/admin/meta-ads-apps");
+  return data;
+}
+
+export async function createMetaAdsApp(body: {
+  name: string;
+  metaAppId?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}): Promise<MetaAdsApp> {
+  const { data } = await api.post<MetaAdsApp>("/admin/meta-ads-apps", body);
+  return data;
+}
+
+export async function updateMetaAdsApp(
+  id: string,
+  body: {
+    name?: string;
+    metaAppId?: string | null;
+    notes?: string | null;
+    isActive?: boolean;
+  },
+): Promise<MetaAdsApp> {
+  const { data } = await api.patch<MetaAdsApp>(`/admin/meta-ads-apps/${id}`, body);
+  return data;
+}
+
+export async function deleteMetaAdsApp(id: string): Promise<void> {
+  await api.delete(`/admin/meta-ads-apps/${id}`);
+}
+
+export async function fetchMetaAdsAppOptions(): Promise<MetaAdsAppOption[]> {
+  const { data } = await api.get<MetaAdsAppOption[]>("/meta-ads-apps/options");
+  return data;
+}
+
+export async function fetchMetaAdsSystemUsers(): Promise<MetaAdsSystemUser[]> {
+  const { data } = await api.get<MetaAdsSystemUser[]>("/admin/meta-ads-system-users");
+  return data;
+}
+
+export async function createMetaAdsSystemUser(body: {
+  name: string;
+  metaSystemUserId?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+  appAccess: Array<{
+    appId: string;
+    accessToken: string;
+    tokenExpiresAt?: string | null;
+    isDefault?: boolean;
+  }>;
+}): Promise<MetaAdsSystemUser> {
+  const { data } = await api.post<MetaAdsSystemUser>("/admin/meta-ads-system-users", body);
+  return data;
+}
+
+export async function updateMetaAdsSystemUser(
+  id: string,
+  body: {
+    name?: string;
+    metaSystemUserId?: string | null;
+    notes?: string | null;
+    isActive?: boolean;
+    appAccess?: Array<{
+      appId: string;
+      accessToken?: string;
+      tokenExpiresAt?: string | null;
+      isDefault?: boolean;
+    }>;
+  },
+): Promise<MetaAdsSystemUser> {
+  const { data } = await api.patch<MetaAdsSystemUser>(`/admin/meta-ads-system-users/${id}`, body);
+  return data;
+}
+
+export async function deleteMetaAdsSystemUser(id: string): Promise<void> {
+  await api.delete(`/admin/meta-ads-system-users/${id}`);
+}
+
+export async function fetchMetaAdsSystemUserOptions(appId?: string): Promise<MetaAdsSystemUserOption[]> {
+  const { data } = await api.get<MetaAdsSystemUserOption[]>("/meta-ads-system-users/options", {
+    params: appId ? { appId } : undefined,
+  });
   return data;
 }
 

@@ -21,6 +21,10 @@ import {
 import type { JwtPayload } from "./types";
 import { mergeOperatorPermissions } from "./operatorPermissions";
 import { registerBusinessModules } from "./registerBusinessModules";
+import {
+  registerAdminMetaAdsRoutes,
+  registerMetaAdsOptionsRoutes,
+} from "./registerAdminMetaAdsRoutes";
 import { importProductosExcel } from "./importProductosExcel";
 import { importPedidosExcel } from "./importPedidosExcel";
 import { importCarteraExcel } from "./importCarteraExcel";
@@ -1765,6 +1769,8 @@ app.get(
   }
 });
 
+registerAdminMetaAdsRoutes(app);
+registerMetaAdsOptionsRoutes(app);
 registerBusinessModules(app);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

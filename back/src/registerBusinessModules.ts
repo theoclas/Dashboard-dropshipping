@@ -11,9 +11,17 @@ import * as advertisingCampaignMetricService from "./advertisingCampaignMetricSe
 import * as advertisingAccountService from "./advertisingAccountService";
 import * as operationalExpenseService from "./operationalExpenseService";
 import { importAdvertisingCampaignMetricsExcel } from "./importAdvertisingCampaignMetricsExcel";
+import {
+  buildImportPreviewPayload,
+  importAdvertisingCampaignMetrics,
+} from "./importAdvertisingCampaignMetrics";
 import { importMetaBillingOperationalCsv } from "./importMetaBillingOperationalCsv";
 import { assertWipePassword } from "./wipeImported";
-import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel, aggregateMetricRowsByCampaignAndDate } from "./metaCampaignExcelParse";
+import { normalizeCampaignMapKey, parseMetaCampaignMetricsExcel } from "./metaCampaignExcelParse";
+import {
+  fetchMetaApiParsedRowsForAccount,
+  previewMetaApiCampaignImport,
+} from "./metaApiCampaignImport";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -57,6 +65,16 @@ const importOptionsSchema = z.object({
   applyAdvertisingAccount: z.boolean().optional().default(false),
   advertisingAccountId: z.string().nullable().optional(),
   /** IDs de campaña Meta (se normalizan en servidor). Si se omite, se importan todas las del archivo. */
+  allowedCampaignIds: z.array(z.string().min(1)).min(1).max(500).optional(),
+});
+
+const metaApiImportOptionsSchema = z.object({
+  advertisingAccountId: z.string().min(1),
+  metaAdsAppId: z.string().min(1).optional().nullable(),
+  metaAdsSystemUserId: z.string().min(1).optional().nullable(),
+  useShopifySessions: z.boolean().optional().default(false),
+  shopifySessionsByCampaignId: z.record(z.string(), z.coerce.number()).optional().default({}),
+  applyAdvertisingAccount: z.boolean().optional().default(true),
   allowedCampaignIds: z.array(z.string().min(1)).min(1).max(500).optional(),
 });
 
@@ -358,31 +376,113 @@ export function registerBusinessModules(app: express.Application) {
       const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer, {
         sourceFilename: file.originalname,
       });
-      const aggregated = aggregateMetricRowsByCampaignAndDate(rows);
-      const labelByKey = new Map<string, string>();
-      for (const r of aggregated) {
-        const k = normalizeCampaignMapKey(r.externalCampaignId.trim());
-        if (!labelByKey.has(k) && r.displayName?.trim()) labelByKey.set(k, r.displayName.trim());
-      }
-      const uniqueCampaignIds = [...new Set(aggregated.map((r) => normalizeCampaignMapKey(r.externalCampaignId.trim())))].sort(
-        (a, b) => a.localeCompare(b, "es"),
-      );
-      const campaignDisplayNames = Object.fromEntries(labelByKey);
-      const rowCountByCampaign = new Map<string, number>();
-      for (const r of aggregated) {
-        const k = normalizeCampaignMapKey(r.externalCampaignId.trim());
-        rowCountByCampaign.set(k, (rowCountByCampaign.get(k) ?? 0) + 1);
-      }
-      const campaignAggregatedRowCounts = Object.fromEntries(rowCountByCampaign);
-      const sampleRows = aggregated.slice(0, 50).map(({ rawRow: _omit, ...rest }) => rest);
+      const payload = buildImportPreviewPayload(rows, errors, { source: "file" });
       return res.json({
-        sampleRows,
-        totalRows: aggregated.length,
-        errors,
-        uniqueCampaignIds,
-        campaignDisplayNames,
-        campaignAggregatedRowCounts,
+        ...payload,
+        sampleRows: payload.sampleRows.map((r) => ({
+          ...r,
+          recordDate: r.recordDate instanceof Date ? r.recordDate.toISOString() : String(r.recordDate),
+        })),
       });
+    },
+  );
+
+  app.post(
+    "/api/catalog-products/:productId/advertising-campaigns/import/meta-api/preview",
+    authRequired,
+    companyRequired,
+    requirePermission("moduleCampanasMeta"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const p = await catalogProductService.getCatalogProduct(u.companyId, productId);
+      if (!p) return res.status(404).json({ message: "Producto no encontrado." });
+
+      const parsed = metaApiImportOptionsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido: se requiere advertisingAccountId." });
+
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, parsed.data.advertisingAccountId);
+      if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
+
+      try {
+        const preview = await previewMetaApiCampaignImport(
+          u.companyId,
+          parsed.data.advertisingAccountId,
+          {
+            metaAdsAppId: parsed.data.metaAdsAppId,
+            metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+          },
+        );
+        return res.json({
+          ...preview,
+          sampleRows: preview.sampleRows.map((r) => ({
+            ...r,
+            recordDate: r.recordDate instanceof Date ? r.recordDate.toISOString() : String(r.recordDate),
+          })),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error al consultar Meta API.";
+        return res.status(502).json({ message: msg });
+      }
+    },
+  );
+
+  app.post(
+    "/api/catalog-products/:productId/advertising-campaigns/import/meta-api",
+    authRequired,
+    companyRequired,
+    requirePermission("actionImportarAdvertisingCampaigns"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const p = await catalogProductService.getCatalogProduct(u.companyId, productId);
+      if (!p) return res.status(404).json({ message: "Producto no encontrado." });
+
+      const parsed = metaApiImportOptionsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido: se requiere advertisingAccountId." });
+
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, parsed.data.advertisingAccountId);
+      if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
+
+      const shopifyMap = normalizeShopifySessionsMap(parsed.data.shopifySessionsByCampaignId);
+      const normalizedAllowedIds =
+        parsed.data.allowedCampaignIds != null
+          ? [
+              ...new Set(
+                parsed.data.allowedCampaignIds.map((id) => normalizeCampaignMapKey(id)).filter((k) => k.length > 0),
+              ),
+            ]
+          : [];
+
+      try {
+        const { parsedRows, errors: fetchErrors } = await fetchMetaApiParsedRowsForAccount(
+          u.companyId,
+          parsed.data.advertisingAccountId,
+          {
+            metaAdsAppId: parsed.data.metaAdsAppId,
+            metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+          },
+        );
+
+        const result = await importAdvertisingCampaignMetrics(
+          u.companyId,
+          productId,
+          parsedRows,
+          {
+            useShopifySessions: parsed.data.useShopifySessions,
+            shopifySessionsByCampaignId: shopifyMap,
+            applyAdvertisingAccount: parsed.data.applyAdvertisingAccount,
+            advertisingAccountId: parsed.data.applyAdvertisingAccount ? parsed.data.advertisingAccountId : null,
+            ...(normalizedAllowedIds.length > 0 ? { allowedCampaignIds: normalizedAllowedIds } : {}),
+          },
+          fetchErrors,
+        );
+
+        return res.json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error al importar desde Meta API.";
+        return res.status(502).json({ message: msg });
+      }
     },
   );
 

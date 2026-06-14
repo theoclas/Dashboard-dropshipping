@@ -10,13 +10,16 @@ import {
   ExperimentOutlined,
   FundProjectionScreenOutlined,
   InboxOutlined,
+  KeyOutlined,
   LineChartOutlined,
   LogoutOutlined,
   ShoppingOutlined,
   SwapOutlined,
   UserOutlined,
   TruckOutlined,
+  ApiOutlined,
   BankOutlined,
+  AppstoreOutlined,
   SettingOutlined,
   ExportOutlined,
 } from "@ant-design/icons";
@@ -35,6 +38,7 @@ const SUBMENU_MARKETING = "submenu-marketing";
 const SUBMENU_FINANZAS = "submenu-finanzas";
 const SUBMENU_ANALISIS = "submenu-analisis";
 const SUBMENU_CONFIG = "submenu-config";
+const SUBMENU_META_ADS = "submenu-meta-ads";
 
 const MENU_OPEN_KEYS_STORAGE = "fersua_menu_open_keys";
 
@@ -49,6 +53,9 @@ function openSubmenusForPath(pathname: string): string[] {
   const keys: string[] = [];
   if (pathname.startsWith("/app/admin") || pathname.startsWith("/app/configuracion")) {
     keys.push(SUBMENU_CONFIG);
+  }
+  if (pathname.includes("/app/admin/meta-ads")) {
+    keys.push(SUBMENU_META_ADS);
   }
   if (
     pathname.startsWith("/app/pedidos") ||
@@ -103,6 +110,8 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/cpa")) return "/app/cpa";
   if (pathname.startsWith("/app/admin/empresas")) return "/app/admin/empresas";
   if (pathname.startsWith("/app/admin/usuarios")) return "/app/admin/usuarios";
+  if (pathname.startsWith("/app/admin/meta-ads-apps")) return "/app/admin/meta-ads-apps";
+  if (pathname.startsWith("/app/admin/meta-ads-usuarios")) return "/app/admin/meta-ads-usuarios";
   if (pathname.startsWith("/app/admin/configuracion")) return "/app/admin/configuracion";
   if (pathname.startsWith("/app/admin")) return "/app/admin/empresas";
   if (pathname.startsWith("/app/empresas")) return "/app/admin/empresas";
@@ -283,6 +292,23 @@ export function AppShell() {
             key: "/app/admin/usuarios",
             icon: <UserOutlined />,
             label: <Link to="/app/admin/usuarios">Usuarios</Link>,
+          },
+          {
+            key: SUBMENU_META_ADS,
+            icon: <ApiOutlined />,
+            label: "Configuración Meta Ads",
+            children: [
+              {
+                key: "/app/admin/meta-ads-apps",
+                icon: <AppstoreOutlined />,
+                label: <Link to="/app/admin/meta-ads-apps">Apps Meta</Link>,
+              },
+              {
+                key: "/app/admin/meta-ads-usuarios",
+                icon: <KeyOutlined />,
+                label: <Link to="/app/admin/meta-ads-usuarios">Usuarios Meta Ads</Link>,
+              },
+            ],
           },
           {
             key: "/app/admin/configuracion",

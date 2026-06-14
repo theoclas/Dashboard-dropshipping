@@ -233,6 +233,11 @@ export type ImportAdvertisingPreviewResponse = {
   campaignDisplayNames: Record<string, string>;
   /** Filas agregadas (campaña + día) por ID de campaña normalizado. */
   campaignAggregatedRowCounts?: Record<string, number>;
+  /** Fecha consultada (API Meta). */
+  reportDate?: string;
+  source?: "file" | "meta-api";
+  pagesFetched?: number;
+  metaAccountId?: string;
 };
 
 export type ImportAdvertisingCampaignMetricsResult = {
@@ -310,4 +315,49 @@ export type CarteraSalidasResponse = {
     count: number;
     byCategoria: Record<CarteraSalidaCategoria, { count: number; totalMonto: number }>;
   };
+};
+
+export type MetaAdsApp = {
+  id: string;
+  name: string;
+  metaAppId: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MetaAdsAppOption = {
+  id: string;
+  name: string;
+  metaAppId: string | null;
+};
+
+export type MetaAdsAppAccess = {
+  appId: string;
+  appName: string;
+  metaAppId: string | null;
+  tokenMasked: string | null;
+  hasToken: boolean;
+  tokenExpiresAt: string | null;
+  isDefault: boolean;
+};
+
+export type MetaAdsSystemUser = {
+  id: string;
+  name: string;
+  metaSystemUserId: string | null;
+  notes: string | null;
+  isActive: boolean;
+  apps: MetaAdsAppAccess[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MetaAdsSystemUserOption = {
+  id: string;
+  name: string;
+  metaSystemUserId: string | null;
+  isDefault: boolean;
+  tokenMasked: string | null;
 };

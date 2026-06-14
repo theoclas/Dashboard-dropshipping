@@ -13,6 +13,7 @@ import {
   Select,
   Space,
   Spin,
+  Segmented,
   Table,
   Typography,
   Upload,
@@ -32,11 +33,15 @@ import {
   fetchAdvertisingMetrics,
   fetchCatalogProducts,
   fetchMetaCampaignAdvertisingAccounts,
+  fetchMetaAdsAppOptions,
+  fetchMetaAdsSystemUserOptions,
   importAdvertisingCampaignMetrics,
+  importMetaApiCampaignMetrics,
   patchAdvertisingCampaign,
   patchAdvertisingMetric,
   postMetaCampaignAdvertisingAccount,
   previewAdvertisingCampaignImport,
+  previewMetaApiCampaignImport,
 } from "../api";
 import { usePermission } from "../hooks/usePermission";
 import type {
@@ -45,6 +50,8 @@ import type {
   AdvertisingCampaignRow,
   CatalogProduct,
   ImportAdvertisingPreviewResponse,
+  MetaAdsAppOption,
+  MetaAdsSystemUserOption,
 } from "../types";
 
 const { Title, Text } = Typography;
@@ -101,8 +108,13 @@ export function CampaignsPage() {
   const [loading, setLoading] = useState(false);
 
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importSource, setImportSource] = useState<"file" | "meta-api">("file");
   const [useShopify, setUseShopify] = useState(false);
   const [importAccountId, setImportAccountId] = useState<string | undefined>();
+  const [metaAdsAppId, setMetaAdsAppId] = useState<string | undefined>();
+  const [metaAdsSystemUserId, setMetaAdsSystemUserId] = useState<string | undefined>();
+  const [metaAppOptions, setMetaAppOptions] = useState<MetaAdsAppOption[]>([]);
+  const [metaSystemUserOptions, setMetaSystemUserOptions] = useState<MetaAdsSystemUserOption[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [importAccountCreateOpen, setImportAccountCreateOpen] = useState(false);
@@ -151,6 +163,27 @@ export function CampaignsPage() {
     }
   }, []);
 
+  const loadMetaApps = useCallback(async () => {
+    try {
+      const list = await fetchMetaAdsAppOptions();
+      setMetaAppOptions(list);
+      setMetaAdsAppId((prev) => prev ?? list[0]?.id);
+    } catch {
+      setMetaAppOptions([]);
+    }
+  }, []);
+
+  const loadMetaSystemUsers = useCallback(async (appId?: string) => {
+    try {
+      const list = await fetchMetaAdsSystemUserOptions(appId);
+      setMetaSystemUserOptions(list);
+      const def = list.find((u) => u.isDefault) ?? list[0];
+      setMetaAdsSystemUserId((prev) => (prev && list.some((u) => u.id === prev) ? prev : def?.id));
+    } catch {
+      setMetaSystemUserOptions([]);
+    }
+  }, []);
+
   const loadCampaigns = useCallback(async (pid: string) => {
     setLoading(true);
     try {
@@ -180,6 +213,15 @@ export function CampaignsPage() {
   useEffect(() => {
     if (canModule) void loadAccounts();
   }, [canModule, loadAccounts]);
+
+  useEffect(() => {
+    if (canModule) void loadMetaApps();
+  }, [canModule, loadMetaApps]);
+
+  useEffect(() => {
+    if (!canModule) return;
+    void loadMetaSystemUsers(metaAdsAppId);
+  }, [canModule, metaAdsAppId, loadMetaSystemUsers]);
 
   useEffect(() => {
     if (productId) void loadCampaigns(productId);
@@ -237,7 +279,34 @@ export function CampaignsPage() {
     }
   }, [productId, importFile, mergeShopifyPreview]);
 
+  const fetchMetaApiPreview = useCallback(async (): Promise<boolean> => {
+    if (!productId || !importAccountId) return false;
+    setImportPreviewLoading(true);
+    setImportPreviewError(null);
+    try {
+      const res = await previewMetaApiCampaignImport(productId, {
+        advertisingAccountId: importAccountId,
+        metaAdsAppId: metaAdsAppId ?? null,
+        metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+      });
+      setImportPreview(res);
+      mergeShopifyPreview(res);
+      return true;
+    } catch (e) {
+      setImportPreview(null);
+      const msg =
+        isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
+          ? String((e.response.data as { message?: string }).message)
+          : "No se pudo consultar Meta API. Revisa el token en .env y la cuenta publicitaria.";
+      setImportPreviewError(msg);
+      return false;
+    } finally {
+      setImportPreviewLoading(false);
+    }
+  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, mergeShopifyPreview]);
+
   useEffect(() => {
+    if (importSource !== "file") return;
     if (!importFile) {
       setImportPreview(null);
       setImportPreviewError(null);
@@ -255,7 +324,18 @@ export function CampaignsPage() {
       return;
     }
     void fetchImportPreview();
-  }, [importFile, productId, fetchImportPreview]);
+  }, [importFile, productId, importSource, fetchImportPreview]);
+
+  useEffect(() => {
+    if (importSource !== "meta-api") return;
+    setImportPreview(null);
+    setImportPreviewError(null);
+    setImportPreviewLoading(false);
+    setShopifyCampaignIds([]);
+    setCampaignDisplayNames({});
+    setShopifySessionsInput({});
+    setImportSelectedCampaignIds([]);
+  }, [importSource, importAccountId, productId]);
 
   const importPreviewColumns: ColumnsType<ImportAdvertisingPreviewResponse["sampleRows"][number]> = useMemo(
     () => [
@@ -386,13 +466,17 @@ export function CampaignsPage() {
   }, [importPreview, importSelectedCampaignIds]);
 
   const importPreviewReady = useMemo(() => {
-    if (!importFile || !productId) return true;
+    if (!productId) return false;
+    if (importSource === "file" && !importFile) return true;
+    if (importSource === "meta-api" && !importAccountId) return false;
     if (importPreviewLoading || importPreviewError) return false;
     if (!importPreview) return false;
     if (importPreview.uniqueCampaignIds.length > 1 && importSelectedCampaignIds.length === 0) return false;
     return true;
   }, [
+    importSource,
     importFile,
+    importAccountId,
     productId,
     importPreviewLoading,
     importPreviewError,
@@ -401,12 +485,25 @@ export function CampaignsPage() {
   ]);
 
   const handleRefreshImportPreview = async () => {
-    if (!productId || !importFile) {
-      message.warning("Selecciona producto y archivo (Excel o CSV).");
+    if (!productId) {
+      message.warning("Selecciona producto del catálogo.");
       return;
     }
-    const ok = await fetchImportPreview();
-    if (ok) message.success("Vista previa actualizada.");
+    if (importSource === "file") {
+      if (!importFile) {
+        message.warning("Selecciona producto y archivo (Excel o CSV).");
+        return;
+      }
+      const ok = await fetchImportPreview();
+      if (ok) message.success("Vista previa actualizada.");
+      return;
+    }
+    if (!importAccountId) {
+      message.warning("Selecciona cuenta publicitaria para consultar Meta API.");
+      return;
+    }
+    const ok = await fetchMetaApiPreview();
+    if (ok) message.success("Vista previa desde Meta API actualizada.");
   };
 
   const clearImportForm = useCallback((notify: boolean) => {
@@ -428,29 +525,43 @@ export function CampaignsPage() {
   }, []);
 
   const handleImport = async () => {
-    if (!productId || !importFile) {
-      message.warning("Selecciona producto y archivo.");
+    if (!productId) {
+      message.warning("Selecciona producto del catálogo.");
       return;
     }
     const previewIds = importPreview?.uniqueCampaignIds ?? [];
     if (previewIds.length > 1 && importSelectedCampaignIds.length === 0) {
-      message.warning("Marca al menos una campaña del archivo para importar a este producto.");
+      message.warning("Marca al menos una campaña para importar a este producto.");
       return;
     }
     let shopifyMap: Record<string, number> = {};
     if (useShopify) {
       shopifyMap = buildShopifySessionsMapFromInputs(shopifySessionsInput);
     }
+    const allowedOpts =
+      previewIds.length > 1
+        ? { allowedCampaignIds: importSelectedCampaignIds.map((id) => normalizeMetaCampaignKey(id)) }
+        : {};
+
     try {
-      const res = await importAdvertisingCampaignMetrics(productId, importFile, {
-        useShopifySessions: useShopify,
-        shopifySessionsByCampaignId: shopifyMap,
-        applyAdvertisingAccount: !!importAccountId,
-        advertisingAccountId: importAccountId ?? null,
-        ...(previewIds.length > 1
-          ? { allowedCampaignIds: importSelectedCampaignIds.map((id) => normalizeMetaCampaignKey(id)) }
-          : {}),
-      });
+      const res =
+        importSource === "meta-api"
+          ? await importMetaApiCampaignMetrics(productId, {
+              advertisingAccountId: importAccountId!,
+              metaAdsAppId: metaAdsAppId ?? null,
+              metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+              useShopifySessions: useShopify,
+              shopifySessionsByCampaignId: shopifyMap,
+              applyAdvertisingAccount: true,
+              ...allowedOpts,
+            })
+          : await importAdvertisingCampaignMetrics(productId, importFile!, {
+              useShopifySessions: useShopify,
+              shopifySessionsByCampaignId: shopifyMap,
+              applyAdvertisingAccount: !!importAccountId,
+              advertisingAccountId: importAccountId ?? null,
+              ...allowedOpts,
+            });
       message.success(
         `Importación: ${res.imported} campañas nuevas, ${res.campaignsUpdated} actualizadas; métricas +${res.metricsCreated} / ~${res.metricsUpdated} actualizadas.`,
       );
@@ -458,8 +569,12 @@ export function CampaignsPage() {
       void loadCampaigns(productId);
       if (selectedCampaign) void loadMetrics(selectedCampaign.id);
       clearImportForm(false);
-    } catch {
-      message.error("Error al importar.");
+    } catch (e) {
+      const msg =
+        isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
+          ? String((e.response.data as { message?: string }).message)
+          : "Error al importar.";
+      message.error(msg);
     }
   };
 
@@ -805,8 +920,18 @@ export function CampaignsPage() {
         </Col>
       </Row>
 
-      <Card title="Importar métricas (Excel / CSV Meta)">
+      <Card title="Importar métricas (Excel / CSV Meta o API)">
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Segmented
+            value={importSource}
+            onChange={(v) => setImportSource(v as "file" | "meta-api")}
+            options={[
+              { label: "Archivo Excel / CSV", value: "file" },
+              { label: "API Meta (ayer)", value: "meta-api" },
+            ]}
+          />
+
+          {importSource === "file" ? (
           <Space wrap align="start">
             <Upload
               key={importUploadKey}
@@ -824,8 +949,21 @@ export function CampaignsPage() {
               Aplicar sesiones Shopify manuales (editable en la vista previa)
             </Checkbox>
           </Space>
+          ) : (
+            <>
+            <Alert
+              type="info"
+              showIcon
+              message="Consulta el día anterior desde Meta Insights API"
+              description="Selecciona producto del catálogo y cuenta publicitaria (desde Cuentas publicitarias). Pulsa «Traer desde API» para ver la vista previa antes de importar."
+            />
+            <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
+              Aplicar sesiones Shopify manuales (editable en la vista previa)
+            </Checkbox>
+            </>
+          )}
 
-          {importFile && !productId ? (
+          {importSource === "file" && importFile && !productId ? (
             <Alert
               type="info"
               showIcon
@@ -833,13 +971,26 @@ export function CampaignsPage() {
             />
           ) : null}
 
-          {importFile && productId ? (
+          {importSource === "meta-api" && !productId ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Selecciona el producto del catálogo (arriba) para importar métricas desde la API."
+            />
+          ) : null}
+
+          {importSource === "meta-api" && productId && !importAccountId ? (
+            <Alert type="warning" showIcon message="Selecciona una cuenta publicitaria para consultar Meta API." />
+          ) : null}
+
+          {(importSource === "file" && importFile && productId) ||
+          (importSource === "meta-api" && productId && importAccountId && (importPreview || importPreviewLoading || importPreviewError)) ? (
             <div style={{ width: "100%" }}>
               <Text strong style={{ display: "block", marginBottom: 8 }}>
                 Vista previa del import
               </Text>
               {importPreviewLoading ? (
-                <Spin tip="Analizando archivo…" />
+                <Spin tip={importSource === "meta-api" ? "Consultando Meta API…" : "Analizando archivo…"} />
               ) : importPreviewError ? (
                 <Alert
                   type="error"
@@ -854,8 +1005,21 @@ export function CampaignsPage() {
               ) : importPreview ? (
                 <>
                   <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
-                    <strong>{importPreview.totalRows}</strong> fila(s) en el archivo (agrupadas por campaña y día si hay
+                    <strong>{importPreview.totalRows}</strong> fila(s)
+                    {importPreview.source === "meta-api" ? " desde Meta API" : " en el archivo"} (agrupadas por campaña y día si hay
                     varios anuncios).
+                    {importPreview.reportDate ? (
+                      <>
+                        {" "}
+                        Fecha consultada: <strong>{importPreview.reportDate}</strong>.
+                      </>
+                    ) : null}
+                    {importPreview.metaAccountId ? (
+                      <>
+                        {" "}
+                        Cuenta Meta: <strong>{importPreview.metaAccountId}</strong>.
+                      </>
+                    ) : null}
                     {importPreview.uniqueCampaignIds.length > 1 ? (
                       <>
                         {" "}
@@ -944,11 +1108,12 @@ export function CampaignsPage() {
 
           <div style={{ maxWidth: 560 }}>
             <Text strong style={{ display: "block", marginBottom: 6 }}>
-              Cuenta publicitaria en este import
+              Cuenta publicitaria {importSource === "meta-api" ? "(requerida para API)" : "en este import"}
             </Text>
             <Text type="secondary" style={{ display: "block", marginBottom: 10 }}>
-              Si eliges una cuenta, se vinculará a las campañas tocadas por este import. Déjalo vacío si no quieres
-              cambiar la cuenta en las campañas.
+              {importSource === "meta-api"
+                ? "Se consultan los insights de esta cuenta en Meta. Las campañas importadas quedarán vinculadas a ella."
+                : "Si eliges una cuenta, se vinculará a las campañas tocadas por este import. Déjalo vacío si no quieres cambiar la cuenta en las campañas."}
             </Text>
             {accountsError ? (
               <Alert
@@ -967,7 +1132,7 @@ export function CampaignsPage() {
               allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="Selecciona cuenta Meta (opcional)"
+              placeholder={importSource === "meta-api" ? "Selecciona cuenta Meta" : "Selecciona cuenta Meta (opcional)"}
               style={{ width: "100%", maxWidth: 480 }}
               options={accountOptions}
               value={importAccountId}
@@ -975,6 +1140,47 @@ export function CampaignsPage() {
               loading={accountsLoading}
               notFoundContent={accountsLoading ? "Cargando…" : "Sin cuentas"}
             />
+            {importSource === "meta-api" ? (
+              <div style={{ maxWidth: 560, marginTop: 12 }}>
+                <Text strong style={{ display: "block", marginBottom: 6 }}>
+                  App Meta
+                </Text>
+                <Select
+                  allowClear={metaAppOptions.length === 0}
+                  placeholder={metaAppOptions.length ? "Selecciona app Meta" : "Sin apps — crea una en Administración"}
+                  style={{ width: "100%", maxWidth: 480, marginBottom: 12 }}
+                  value={metaAdsAppId}
+                  onChange={(v) => {
+                    setMetaAdsAppId(v);
+                    setMetaAdsSystemUserId(undefined);
+                  }}
+                  options={metaAppOptions.map((a) => ({
+                    value: a.id,
+                    label: a.metaAppId ? `${a.name} (${a.metaAppId})` : a.name,
+                  }))}
+                />
+                <Text strong style={{ display: "block", marginBottom: 6 }}>
+                  Usuario del sistema (token)
+                </Text>
+                <Select
+                  allowClear
+                  placeholder="Por defecto o .env"
+                  style={{ width: "100%", maxWidth: 480 }}
+                  value={metaAdsSystemUserId}
+                  onChange={setMetaAdsSystemUserId}
+                  disabled={!metaAdsAppId && metaAppOptions.length > 0}
+                  options={metaSystemUserOptions.map((u) => ({
+                    value: u.id,
+                    label: `${u.name}${u.isDefault ? " (defecto)" : ""} ${u.tokenMasked ?? ""}`,
+                  }))}
+                />
+                <Text type="secondary" style={{ display: "block", marginTop: 6, fontSize: 12 }}>
+                  Gestiona apps en{" "}
+                  <Link to="/app/admin/meta-ads-apps">Administración → Apps Meta</Link> y tokens en{" "}
+                  <Link to="/app/admin/meta-ads-usuarios">Usuarios Meta Ads</Link>.
+                </Text>
+              </div>
+            ) : null}
             {canAccounts ? (
               importAccountCreateOpen ? (
                 <Space direction="vertical" size="small" style={{ width: "100%", marginTop: 12 }}>
@@ -1019,17 +1225,41 @@ export function CampaignsPage() {
             <Button
               icon={<ClearOutlined />}
               onClick={() => clearImportForm(true)}
-              disabled={!importFile && !importAccountId && !useShopify}
+              disabled={
+                importSource === "file"
+                  ? !importFile && !importAccountId && !useShopify
+                  : !importAccountId && !importPreview
+              }
             >
               Limpiar import
             </Button>
+            {importSource === "meta-api" ? (
+              <Button
+                type="default"
+                onClick={() => void handleRefreshImportPreview()}
+                disabled={!productId || !importAccountId || importPreviewLoading}
+                loading={importPreviewLoading}
+              >
+                Traer desde API
+              </Button>
+            ) : (
+              <Button
+                onClick={() => void handleRefreshImportPreview()}
+                disabled={!productId || !importFile || importPreviewLoading}
+              >
+                Actualizar vista previa
+              </Button>
+            )}
             <Button
-              onClick={() => void handleRefreshImportPreview()}
-              disabled={!productId || !importFile || importPreviewLoading}
+              type="primary"
+              onClick={handleImport}
+              disabled={
+                !canImport ||
+                !productId ||
+                !importPreviewReady ||
+                (importSource === "file" ? !importFile : !importAccountId)
+              }
             >
-              Actualizar vista previa
-            </Button>
-            <Button type="primary" onClick={handleImport} disabled={!canImport || !productId || !importFile || !importPreviewReady}>
               Importar
             </Button>
           </Space>
