@@ -310,15 +310,11 @@ export function LogisticsPage() {
     let enviados = 0;
     let transito = 0;
     let devoluciones = 0;
-    let cancelados = 0;
-    let rechazados = 0;
     let entregados = 0;
     for (const r of rows) {
       enviados += r.enviados;
       transito += r.transito;
       devoluciones += r.devoluciones;
-      cancelados += r.cancelados;
-      rechazados += r.rechazados;
       entregados += r.entregados;
     }
     const den = enviados > 0 ? enviados : 1;
@@ -328,8 +324,6 @@ export function LogisticsPage() {
       pctTransito: (transito / den) * 100,
       devoluciones,
       pctDevoluciones: (devoluciones / den) * 100,
-      cancelados,
-      rechazados,
       entregados,
       pctEntregados: (entregados / den) * 100,
     };
@@ -363,7 +357,10 @@ export function LogisticsPage() {
       dataIndex: 'enviados',
       key: 'enviados',
       sorter: (a, b) => a.enviados - b.enviados,
-      onHeaderCell: () => ({ style: { textAlign: 'right' } }),
+      onHeaderCell: () => ({
+        style: { textAlign: 'right' },
+        title: 'Pedidos en tránsito, entregados o devueltos (sin cancelados ni rechazados)',
+      }),
       onCell: () => ({ style: { textAlign: 'right', color: 'rgba(255,255,255,0.65)' } }),
     },
     {
@@ -387,27 +384,6 @@ export function LogisticsPage() {
           {r.devoluciones} ({r.pctDevoluciones}%)
         </Text>
       ),
-      onHeaderCell: () => ({ style: { textAlign: 'right' } }),
-      onCell: () => ({ style: { textAlign: 'right' } }),
-    },
-    {
-      title: 'CANCELADOS',
-      key: 'cancelados',
-      sorter: (a, b) => a.cancelados + a.rechazados - (b.cancelados + b.rechazados),
-      render: (_, r) => {
-        const total = r.cancelados + r.rechazados;
-        const hint =
-          r.rechazados > 0
-            ? `Cancelados: ${r.cancelados.toLocaleString('es-CO')} · Rechazados: ${r.rechazados.toLocaleString('es-CO')}`
-            : `Cancelados: ${r.cancelados.toLocaleString('es-CO')}`;
-        return (
-          <Tooltip title={hint}>
-            <Text style={{ color: 'rgba(255,255,255,0.65)', cursor: 'default' }}>
-              {total.toLocaleString('es-CO')}
-            </Text>
-          </Tooltip>
-        );
-      },
       onHeaderCell: () => ({ style: { textAlign: 'right' } }),
       onCell: () => ({ style: { textAlign: 'right' } }),
     },
@@ -523,21 +499,6 @@ export function LogisticsPage() {
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={4} align="right">
-                      <Tooltip
-                        title={
-                          efectividadTotales.rechazados > 0
-                            ? `Cancelados: ${efectividadTotales.cancelados.toLocaleString('es-CO')} · Rechazados: ${efectividadTotales.rechazados.toLocaleString('es-CO')}`
-                            : `Cancelados: ${efectividadTotales.cancelados.toLocaleString('es-CO')}`
-                        }
-                      >
-                        <Text strong style={{ color: 'rgba(255,255,255,0.85)', cursor: 'default' }}>
-                          {(efectividadTotales.cancelados + efectividadTotales.rechazados).toLocaleString(
-                            'es-CO',
-                          )}
-                        </Text>
-                      </Tooltip>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={5} align="right">
                       <div
                         style={{
                           background: 'rgba(16, 185, 129, 0.12)',

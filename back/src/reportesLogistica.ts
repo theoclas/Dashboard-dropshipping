@@ -9,6 +9,9 @@ const BUCKET_CASE = `(CASE
   ELSE 'transito'
 END)`;
 
+/** Enviados = entregados + devoluciones + tránsito/pendientes; excluye cancelados y rechazados. */
+const SQL_ENVIADOS_ACTIVOS = `SUM(CASE WHEN (${BUCKET_CASE}) NOT IN ('cancelado','rechazado') THEN 1 ELSE 0 END)`;
+
 export type EfectividadTransportadoraRow = {
   empresa: string;
   enviados: number;
@@ -92,7 +95,7 @@ export async function queryEfectividadTransportadoras(
 
   const sql = `
 SELECT TRIM(p.transportadora) AS empresa,
-  COUNT(*) AS enviados,
+  ${SQL_ENVIADOS_ACTIVOS} AS enviados,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'transito' THEN 1 ELSE 0 END) AS transito,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'devolucion' THEN 1 ELSE 0 END) AS devoluciones,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'cancelado' THEN 1 ELSE 0 END) AS cancelados,
@@ -216,7 +219,7 @@ WHERE p.companyId = ?
     const sqlDet = `
 SELECT TRIM(${geoCol}) AS loc,
   TRIM(p.transportadora) AS empresa,
-  COUNT(*) AS enviados,
+  ${SQL_ENVIADOS_ACTIVOS} AS enviados,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'entregado' THEN 1 ELSE 0 END) AS entregados,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'devolucion' THEN 1 ELSE 0 END) AS devoluciones
 FROM pedidos p
@@ -249,7 +252,7 @@ GROUP BY TRIM(${geoCol}), TRIM(p.transportadora)
   }
 
   const sqlTop = `
-SELECT TRIM(${geoCol}) AS loc, COUNT(*) AS vol
+SELECT TRIM(${geoCol}) AS loc, ${SQL_ENVIADOS_ACTIVOS} AS vol
 FROM pedidos p
 ${baseWhere}
 GROUP BY TRIM(${geoCol})
@@ -268,7 +271,7 @@ LIMIT ${top}
   const sqlDet = `
 SELECT TRIM(${geoCol}) AS loc,
   TRIM(p.transportadora) AS empresa,
-  COUNT(*) AS enviados,
+  ${SQL_ENVIADOS_ACTIVOS} AS enviados,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'entregado' THEN 1 ELSE 0 END) AS entregados,
   SUM(CASE WHEN (${BUCKET_CASE}) = 'devolucion' THEN 1 ELSE 0 END) AS devoluciones
 FROM pedidos p
