@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { getMetaAdvertisingSpendSummary, type MetaSpendByProductRow } from "./metaCampaignSpend";
+import { computeCpaExperimentalTotals } from "./cpaExperimentalTotals";
 import {
   queryEntregaByProductBreakdown,
   type EntregaEstadoByProductRow,
@@ -10,12 +11,15 @@ function parseYmd(s: string | undefined): Date | null {
   return new Date(`${s}T12:00:00.000Z`);
 }
 
-function cpaDateWhere(desde?: string, hasta?: string): Prisma.CpaRecordWhereInput {
+function cpaExperimentalDateWhere(
+  desde?: string,
+  hasta?: string,
+): Prisma.CpaExperimentalRecordWhereInput {
   const d0 = parseYmd(desde);
   const h0 = parseYmd(hasta);
   if (!d0 || !h0) return {};
   const start = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate(), 0, 0, 0, 0));
-  const end = new Date(Date.UTC(h0.getUTCFullYear(), h0.getUTCMonth(), h0.getUTCDate(), 23, 59, 59, 999));
+  const end = new Date(Date.UTC(h0.getUTCFullYear(), h0.getUTCMonth(), h0.getUTCDate(), 0, 0, 0, 0));
   return { fecha: { gte: start, lte: end } };
 }
 
@@ -131,8 +135,10 @@ export type DashboardMetricsPayload = {
   gananciaTotal: number;
   gananciaEstimada: number;
   gananciaProyectada: number;
-  cpaPromedio: number;
+  cpaPromedio: number | null;
   totalCpaSpend: number;
+  /** Ventas atribuidas en registros CPA experimental del rango. */
+  cpaExperimentalVentas: number;
   /** Suma de «Importe gastado» en métricas Meta importadas (Campañas Meta) en el rango. */
   gastoPublicitarioMeta: number;
   gastoPublicitarioMetaByProduct: MetaSpendByProductRow[];
@@ -246,18 +252,20 @@ SELECT
 
   const finParams: unknown[] = hasRange ? [companyId, start, end, companyId, start, end, companyId, start, end] : [companyId, companyId, companyId];
 
-  const [aggRows, productRows, finRows, cpaSpend, cpaAvgRow, opExpenseAgg, retirosAgg, metaSpend, entregaByProduct] =
+  const [aggRows, productRows, finRows, cpaExperimentalRows, opExpenseAgg, retirosAgg, metaSpend, entregaByProduct] =
     await Promise.all([
     prisma.$queryRawUnsafe<AggRow[]>(aggSql, ...aggParams),
     prisma.$queryRawUnsafe<{ productos_vendidos: unknown }[]>(productSql, ...aggParams),
     prisma.$queryRawUnsafe<FinRow[]>(finSql, ...finParams),
-    prisma.cpaRecord.aggregate({
-      _sum: { gastoPublicidad: true },
-      where: { companyId, ...cpaDateWhere(opts.desde, opts.hasta) },
-    }),
-    prisma.cpaRecord.aggregate({
-      _avg: { cpa: true },
-      where: { companyId, ...cpaDateWhere(opts.desde, opts.hasta) },
+    prisma.cpaExperimentalRecord.findMany({
+      where: { companyId, ...cpaExperimentalDateWhere(opts.desde, opts.hasta) },
+      select: {
+        gastoPublicidad: true,
+        conversaciones: true,
+        totalFacturado: true,
+        gananciaPromedio: true,
+        ventas: true,
+      },
     }),
     prisma.operationalExpense.aggregate({
       _sum: { monto: true },
@@ -296,8 +304,10 @@ SELECT
 
   const productosVendidos = productRows[0] ? num(productRows[0].productos_vendidos) : 0;
 
-  const totalCpaSpend = Number(cpaSpend._sum.gastoPublicidad ?? 0);
-  const cpaAvg = cpaAvgRow._avg.cpa != null ? Number(cpaAvgRow._avg.cpa) : 0;
+  const cpaExperimentalTotals = computeCpaExperimentalTotals(cpaExperimentalRows);
+  const totalCpaSpend = cpaExperimentalTotals?.gastoPublicidad ?? 0;
+  const cpaAvg = cpaExperimentalTotals?.cpa ?? null;
+  const cpaExperimentalVentas = cpaExperimentalTotals?.ventas ?? 0;
   const gastoOperacional = Number(opExpenseAgg._sum.monto ?? 0);
   const retirosDropiTotal = Number(retirosAgg._sum.monto ?? 0);
   const retirosDropiCount = retirosAgg._count.id;
@@ -334,6 +344,7 @@ SELECT
     gananciaProyectada,
     cpaPromedio: cpaAvg,
     totalCpaSpend,
+    cpaExperimentalVentas,
     gastoPublicitarioMeta: metaSpend.total,
     gastoPublicitarioMetaByProduct: metaSpend.byProduct,
     gastoOperacional,

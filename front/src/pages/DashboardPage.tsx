@@ -90,8 +90,9 @@ export type DashboardMetrics = {
   gananciaTotal: number;
   gananciaEstimada: number;
   gananciaProyectada: number;
-  cpaPromedio: number;
+  cpaPromedio: number | null;
   totalCpaSpend: number;
+  cpaExperimentalVentas: number;
   gastoPublicitarioMeta: number;
   gastoPublicitarioMetaByProduct: Array<{
     productId: string;
@@ -690,10 +691,16 @@ export function DashboardPage() {
             <MetricCard
               icon={<BarChartOutlined />}
               label="CPA promedio"
-              value={loading ? "…" : `$${fmtMoney(data?.cpaPromedio ?? 0)}`}
+              value={
+                loading
+                  ? "…"
+                  : data?.cpaPromedio != null
+                    ? `$${fmtMoney(data.cpaPromedio)}`
+                    : "—"
+              }
               hint={
                 <Tooltip
-                  title={`Promedio del campo CPA en registros importados. Gasto CPA en el rango: $${fmtMoney(data?.totalCpaSpend ?? 0)}.`}
+                  title={`CPA experimental del rango: gasto publicitario ÷ ventas atribuidas (${fmtInteger(data?.cpaExperimentalVentas ?? 0)} ventas). Gasto CPA experimental: $${fmtMoney(data?.totalCpaSpend ?? 0)}. Calcula primero en CPA experimental.`}
                 >
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
