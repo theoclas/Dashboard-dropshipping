@@ -27,6 +27,7 @@ import dayjs from "dayjs";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import { fmtApiDateIsoYmd, dayjsYesterday } from "../utils/calendarDateLocal";
+import { metaApiAccountAccessHint } from "../utils/metaApiErrorHint";
 import {
   deleteAdvertisingCampaign,
   deleteAdvertisingMetric,
@@ -1000,6 +1001,7 @@ export function CampaignsPage() {
                   type="error"
                   showIcon
                   message={importPreviewError}
+                  description={metaApiAccountAccessHint(importPreviewError) ?? undefined}
                   action={
                     <Button size="small" onClick={() => void fetchImportPreview()}>
                       Reintentar

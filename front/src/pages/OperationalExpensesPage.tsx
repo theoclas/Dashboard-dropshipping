@@ -37,6 +37,7 @@ import {
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { useAuth } from "../contexts/AuthContext";
 import { formatDateOnly } from "../utils/formatDateOnly";
+import { metaApiAccountAccessHint } from "../utils/metaApiErrorHint";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccount, MetaAdsAppOption, MetaAdsSystemUserOption, MetaBillingApiImportResult, OperationalExpenseRow } from "../types";
 
@@ -259,7 +260,19 @@ export function OperationalExpensesPage() {
       const msg = e && typeof e === "object" && "response" in e
         ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
         : null;
-      message.error(msg ?? "No se pudo consultar la API de Meta.");
+      const text = msg ?? "No se pudo consultar la API de Meta.";
+      const hint = metaApiAccountAccessHint(text);
+      message.error(
+        hint ? (
+          <div>
+            <div>{text}</div>
+            <div style={{ marginTop: 8, fontSize: 13, fontWeight: 400 }}>{hint}</div>
+          </div>
+        ) : (
+          text
+        ),
+        8,
+      );
       setApiPreview(null);
     } finally {
       setApiLoading(false);
@@ -289,7 +302,19 @@ export function OperationalExpensesPage() {
       const msg = e && typeof e === "object" && "response" in e
         ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
         : null;
-      message.error(msg ?? "Error al importar desde API Meta.");
+      const text = msg ?? "Error al importar desde API Meta.";
+      const hint = metaApiAccountAccessHint(text);
+      message.error(
+        hint ? (
+          <div>
+            <div>{text}</div>
+            <div style={{ marginTop: 8, fontSize: 13, fontWeight: 400 }}>{hint}</div>
+          </div>
+        ) : (
+          text
+        ),
+        8,
+      );
     } finally {
       setApiImporting(false);
     }
