@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Alert,
   Button,
@@ -21,7 +21,7 @@ import { fetchCpaResumen } from "../api";
 import { usePermission } from "../hooks/usePermission";
 import { fmtCpaDisplay } from "../utils/cpaDisplay";
 import { fmtInteger, fmtMoney } from "../utils/format";
-import type { CpaResumenRow } from "../types";
+import type { CpaResumenRow, CpaResumenRowKind } from "../types";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -34,8 +34,31 @@ function colTitle(short: string, full: string) {
   );
 }
 
-function rowKey(r: CpaResumenRow, idx?: number): string {
-  return `${r.kind}-${r.meses}-${r.semana}-${r.fecha ?? ""}-${idx ?? 0}`;
+function cellText(value: string | null | undefined): string {
+  return value?.trim() ? value : "—";
+}
+
+function collectExpandableKeys(rows: CpaResumenRow[], kinds: CpaResumenRowKind[]): string[] {
+  const keys: string[] = [];
+  const walk = (nodes: CpaResumenRow[]) => {
+    for (const node of nodes) {
+      if (node.children?.length && kinds.includes(node.kind)) {
+        keys.push(node.key);
+        walk(node.children);
+      }
+    }
+  };
+  walk(rows);
+  return keys;
+}
+
+function rowStyle(kind: CpaResumenRowKind): CSSProperties {
+  if (kind === "grandTotal") return { fontWeight: 600, background: "rgba(22, 119, 255, 0.12)" };
+  if (kind === "monthTotal") return { fontWeight: 600, background: "rgba(34, 197, 94, 0.14)" };
+  if (kind === "weekTotal") return { fontWeight: 600, background: "rgba(148, 163, 184, 0.12)" };
+  if (kind === "month" || kind === "week") return { fontWeight: 600 };
+  if (kind === "product") return { background: "rgba(148, 163, 184, 0.04)" };
+  return {};
 }
 
 export function CpaResumenPage() {
@@ -45,6 +68,7 @@ export function CpaResumenPage() {
     dayjs().endOf("month"),
   ]);
   const [rows, setRows] = useState<CpaResumenRow[]>([]);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -56,9 +80,11 @@ export function CpaResumenPage() {
         hasta: range[1].format("YYYY-MM-DD"),
       });
       setRows(res.rows);
+      setExpandedRowKeys([]);
     } catch {
       message.error("No se pudo cargar el resumen CPA.");
       setRows([]);
+      setExpandedRowKeys([]);
     } finally {
       setLoading(false);
     }
@@ -70,10 +96,35 @@ export function CpaResumenPage() {
 
   const columns: ColumnsType<CpaResumenRow> = useMemo(
     () => [
-      { title: "Meses", dataIndex: "meses", key: "mes", width: 120, render: (v) => v || "—" },
-      { title: "SEMANA", dataIndex: "semana", key: "sem", width: 160, render: (v) => v || "—" },
-      { title: "Fecha", dataIndex: "fecha", key: "fec", width: 88, render: (v) => v ?? "—" },
-      { title: "Producto", dataIndex: "producto", key: "prod", width: 100, render: (v) => v ?? "—" },
+      {
+        title: "Meses",
+        dataIndex: "meses",
+        key: "mes",
+        width: 130,
+        render: (v, row) => (row.kind === "month" || row.kind === "monthTotal" || row.kind === "grandTotal" ? cellText(v) : ""),
+      },
+      {
+        title: "SEMANA",
+        dataIndex: "semana",
+        key: "sem",
+        width: 170,
+        render: (v, row) =>
+          row.kind === "week" || row.kind === "weekTotal" ? cellText(v) : "",
+      },
+      {
+        title: "Fecha",
+        dataIndex: "fecha",
+        key: "fec",
+        width: 96,
+        render: (v, row) => (row.kind === "day" ? cellText(v) : ""),
+      },
+      {
+        title: "Producto",
+        dataIndex: "producto",
+        key: "prod",
+        width: 180,
+        render: (v, row) => (row.kind === "product" ? cellText(v) : ""),
+      },
       {
         title: colTitle("Gasto pub.", "GASTO PUBLICIDAD (Sum)"),
         dataIndex: "gastoPublicidad",
@@ -138,17 +189,16 @@ export function CpaResumenPage() {
           CPA Resumen
         </Title>
         <Text type="secondary">
-          Vista tipo tabla dinámica del Excel <em>RESUMEN_DIARIO</em>: todos los productos sumados por día, con
-          subtotales por semana, mes y total general. Los datos provienen de{" "}
-          <Link to="/app/cpa-experimental">CPA experimental</Link> (calcula cada producto antes).
+          Tabla dinámica como el Excel <em>RESUMEN_DIARIO</em>: expande mes → semana → día para ver cada producto.
+          Los datos provienen de <Link to="/app/cpa-experimental">CPA experimental</Link>.
         </Text>
       </div>
 
       <Alert
         type="info"
         showIcon
-        message="Requisito"
-        description="Debes haber calculado el rango en CPA experimental para cada producto que quieras incluir. Sin filas en BD, el resumen saldrá vacío."
+        message="Cómo usar"
+        description="Colapsado verás meses y totales. Expande una semana para ver días; expande un día para ver productos (ACEITE TRULY, BATANA, etc.). Calcula cada producto en CPA experimental antes."
       />
 
       <Card title="Rango de fechas">
@@ -163,33 +213,37 @@ export function CpaResumenPage() {
             />
           </Col>
           <Col xs={24} md={10}>
-            <Button type="primary" icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>
-              Actualizar
-            </Button>
+            <Space wrap>
+              <Button type="primary" icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>
+                Actualizar
+              </Button>
+              <Button onClick={() => setExpandedRowKeys(collectExpandableKeys(rows, ["month"]))}>
+                Expandir semanas
+              </Button>
+              <Button onClick={() => setExpandedRowKeys(collectExpandableKeys(rows, ["month", "week"]))}>
+                Expandir días
+              </Button>
+              <Button onClick={() => setExpandedRowKeys([])}>Colapsar todo</Button>
+            </Space>
           </Col>
         </Row>
       </Card>
 
       <Card title="Resumen diario">
         <Table
-          rowKey={rowKey}
+          rowKey="key"
           size="small"
           loading={loading}
           dataSource={rows}
           columns={columns}
           pagination={false}
           scroll={{ x: "max-content" }}
-          onRow={(row) => ({
-            style: {
-              fontWeight: row.kind !== "day" ? 600 : undefined,
-              background:
-                row.kind === "grandTotal"
-                  ? "rgba(22, 119, 255, 0.12)"
-                  : row.kind !== "day"
-                    ? "rgba(148, 163, 184, 0.08)"
-                    : undefined,
-            },
-          })}
+          expandable={{
+            expandedRowKeys,
+            onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as string[]),
+            indentSize: 20,
+          }}
+          onRow={(row) => ({ style: rowStyle(row.kind) })}
         />
       </Card>
     </Space>

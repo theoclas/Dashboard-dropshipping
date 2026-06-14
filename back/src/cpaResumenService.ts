@@ -118,15 +118,29 @@ export function aggregateCpaResumenMetrics(rows: RawAggInput[]): CpaResumenMetri
   };
 }
 
-export type CpaResumenRowKind = "day" | "weekTotal" | "monthTotal" | "grandTotal";
+export type CpaResumenRowKind =
+  | "month"
+  | "week"
+  | "day"
+  | "product"
+  | "weekTotal"
+  | "monthTotal"
+  | "grandTotal";
 
 export type CpaResumenRow = {
+  key: string;
   kind: CpaResumenRowKind;
   meses: string;
   semana: string;
   fecha: string | null;
   producto: string | null;
+  children?: CpaResumenRow[];
 } & CpaResumenMetrics;
+
+type ProductEntry = RawAggInput & {
+  catalogProductId: string;
+  producto: string;
+};
 
 type DayBucket = {
   y: number;
@@ -136,68 +150,115 @@ type DayBucket = {
   mesLabel: string;
   semanaLabel: string;
   fechaLabel: string;
-  rows: RawAggInput[];
+  products: ProductEntry[];
 };
 
 function metricsToRow(
+  key: string,
   kind: CpaResumenRowKind,
   meses: string,
   semana: string,
   fecha: string | null,
+  producto: string | null,
   source: RawAggInput[],
+  children?: CpaResumenRow[],
 ): CpaResumenRow {
-  const m = aggregateCpaResumenMetrics(source);
   return {
+    key,
     kind,
     meses,
     semana,
     fecha,
-    producto: null,
-    ...m,
+    producto,
+    ...aggregateCpaResumenMetrics(source),
+    ...(children && children.length > 0 ? { children } : {}),
   };
 }
 
-export function buildCpaResumenRows(dayBuckets: DayBucket[]): CpaResumenRow[] {
+function productToRow(day: DayBucket, product: ProductEntry): CpaResumenRow {
+  return metricsToRow(
+    `prod-${day.ymd}-${product.catalogProductId}`,
+    "product",
+    "",
+    "",
+    null,
+    product.producto,
+    [product],
+  );
+}
+
+function dayToRow(day: DayBucket): CpaResumenRow {
+  const products = [...day.products].sort((a, b) => a.producto.localeCompare(b.producto, "es"));
+  const productRows = products.map((p) => productToRow(day, p));
+  return metricsToRow(`day-${day.ymd}`, "day", "", "", day.fechaLabel, null, products, productRows);
+}
+
+function weekToRow(weekLabel: string, days: DayBucket[], mesesLabel: string): CpaResumenRow {
+  const dayRows = days.map(dayToRow);
+  const allProducts = days.flatMap((d) => d.products);
+  const weekTotal = metricsToRow(
+    `wt-${days[0]!.ymd}-${weekLabel}`,
+    "weekTotal",
+    "",
+    `Total ${weekLabel}`,
+    null,
+    null,
+    allProducts,
+  );
+  return metricsToRow(
+    `week-${days[0]!.ymd}-${weekLabel}`,
+    "week",
+    mesesLabel,
+    weekLabel,
+    null,
+    null,
+    allProducts,
+    [...dayRows, weekTotal],
+  );
+}
+
+function monthToRow(monthLabel: string, weeks: Array<{ weekLabel: string; days: DayBucket[] }>): CpaResumenRow {
+  const weekRows = weeks.map((w, i) => weekToRow(w.weekLabel, w.days, i === 0 ? monthLabel : ""));
+  const allProducts = weeks.flatMap((w) => w.days.flatMap((d) => d.products));
+  const monthTotal = metricsToRow(`mt-${monthLabel}`, "monthTotal", `Total ${monthLabel}`, "", null, null, allProducts);
+  return metricsToRow(`month-${monthLabel}`, "month", monthLabel, "", null, null, allProducts, [...weekRows, monthTotal]);
+}
+
+/** Árbol mes → semana → día → producto, como tabla dinámica del Excel RESUMEN_DIARIO. */
+export function buildCpaResumenTree(dayBuckets: DayBucket[]): CpaResumenRow[] {
   if (dayBuckets.length === 0) return [];
 
   const sorted = [...dayBuckets].sort((a, b) => a.ymd.localeCompare(b.ymd));
-  const out: CpaResumenRow[] = [];
+  const months: CpaResumenRow[] = [];
 
   for (const monthGroup of groupBy(sorted, (d) => `${d.y}-${d.m}`)) {
     const daysInMonth = monthGroup.items;
     const monthLabel = daysInMonth[0]!.mesLabel;
-
-    let monthRows: RawAggInput[] = [];
-
-    for (const weekGroup of groupBy(daysInMonth, (d) => d.semanaLabel)) {
-      const weekLabel = weekGroup.items[0]!.semanaLabel;
-      let weekRows: RawAggInput[] = [];
-
-      for (let i = 0; i < weekGroup.items.length; i++) {
-        const day = weekGroup.items[i]!;
-        const m = aggregateCpaResumenMetrics(day.rows);
-        out.push({
-          kind: "day",
-          meses: day.ymd === daysInMonth[0]!.ymd ? monthLabel : "",
-          semana: i === 0 ? weekLabel : "",
-          fecha: day.fechaLabel,
-          producto: null,
-          ...m,
-        });
-        weekRows.push(...day.rows);
-      }
-
-      out.push(metricsToRow("weekTotal", "", `Total ${weekLabel}`, null, weekRows));
-      monthRows.push(...weekRows);
-    }
-
-    out.push(metricsToRow("monthTotal", `Total ${monthLabel}`, "", null, monthRows));
+    const weeks = groupBy(daysInMonth, (d) => d.semanaLabel).map((wg) => ({
+      weekLabel: wg.items[0]!.semanaLabel,
+      days: wg.items,
+    }));
+    months.push(monthToRow(monthLabel, weeks));
   }
 
-  const allRows = sorted.flatMap((d) => d.rows);
-  out.push(metricsToRow("grandTotal", "Total general", "", null, allRows));
+  const allProducts = sorted.flatMap((d) => d.products);
+  const grandTotal = metricsToRow("grand-total", "grandTotal", "Total general", "", null, null, allProducts);
 
-  return out;
+  return [...months, grandTotal];
+}
+
+/** @deprecated Usar buildCpaResumenTree. Aplana el árbol para tests legacy. */
+export function buildCpaResumenRows(dayBuckets: DayBucket[]): CpaResumenRow[] {
+  const flat: CpaResumenRow[] = [];
+  const walk = (nodes: CpaResumenRow[]) => {
+    for (const n of nodes) {
+      const { children, ...rest } = n;
+      flat.push(rest);
+      if (children) walk(children);
+    }
+  };
+  walk(buildCpaResumenTree(dayBuckets));
+  return flat;
 }
 
 function groupBy<T>(items: T[], keyFn: (item: T) => string): Array<{ key: string; items: T[] }> {
@@ -233,13 +294,18 @@ export async function getCpaResumen(
       },
     },
     select: {
+      catalogProductId: true,
       fecha: true,
+      semana: true,
+      producto: true,
       gastoPublicidad: true,
       conversaciones: true,
       ventas: true,
       totalFacturado: true,
       gananciaPromedio: true,
+      catalogProduct: { select: { name: true } },
     },
+    orderBy: [{ fecha: "asc" }, { producto: "asc" }],
   });
 
   const byDay = new Map<string, DayBucket>();
@@ -258,16 +324,25 @@ export async function getCpaResumen(
         d,
         ymd,
         mesLabel: mesLabelFull(mo),
-        semanaLabel: semanaDelMesLabel(y, mo, d),
+        semanaLabel: rec.semana?.trim() || semanaDelMesLabel(y, mo, d),
         fechaLabel: fechaDisplayDdMmm(y, mo, d),
-        rows: [],
+        products: [],
       };
       byDay.set(ymd, bucket);
     }
-    bucket.rows.push(rec);
+    const producto = rec.producto?.trim() || rec.catalogProduct?.name?.trim() || "Sin producto";
+    bucket.products.push({
+      catalogProductId: rec.catalogProductId,
+      producto,
+      gastoPublicidad: rec.gastoPublicidad,
+      conversaciones: rec.conversaciones,
+      ventas: rec.ventas,
+      totalFacturado: rec.totalFacturado,
+      gananciaPromedio: rec.gananciaPromedio,
+    });
   }
 
-  const rows = buildCpaResumenRows([...byDay.values()]);
+  const rows = buildCpaResumenTree([...byDay.values()]);
 
   return {
     desde: opts.desde,

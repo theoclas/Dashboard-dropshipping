@@ -179,9 +179,17 @@ export type CpaExperimentalRebuildResult = {
   warnings: string[];
 };
 
-export type CpaResumenRowKind = "day" | "weekTotal" | "monthTotal" | "grandTotal";
+export type CpaResumenRowKind =
+  | "month"
+  | "week"
+  | "day"
+  | "product"
+  | "weekTotal"
+  | "monthTotal"
+  | "grandTotal";
 
 export type CpaResumenRow = {
+  key: string;
   kind: CpaResumenRowKind;
   meses: string;
   semana: string;
@@ -193,6 +201,7 @@ export type CpaResumenRow = {
   gananciaPromedio: number | null;
   cpa: number | null;
   utilidadAproximada: number | null;
+  children?: CpaResumenRow[];
 };
 
 export type CpaResumenResponse = {
