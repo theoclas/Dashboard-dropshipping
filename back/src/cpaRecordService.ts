@@ -1,3 +1,7 @@
+/**
+ * @deprecated Servicio CPA clásico (tabla `cpas`, import Excel manual).
+ * El producto usa CPA experimental (`cpaExperimentalService`); estas rutas se mantienen por compatibilidad.
+ */
 import { Prisma, type CpaRecord, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { applyCpaDerivedFields, type CpaRowLike } from "./cpaDerivedFields";

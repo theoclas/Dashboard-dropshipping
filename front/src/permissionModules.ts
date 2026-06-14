@@ -105,26 +105,26 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
     accessIncludes: ["Consultar reglas de mapeo"],
   },
   {
+    /* Oculto del menú: sustituido por CPA experimental. Permisos legacy aún aplican a moduleCpa. */
     id: "cpa",
-    label: "CPA",
+    label: "CPA (legacy, oculto)",
     moduleKeys: ["moduleCpa"],
     actions: [
       { key: "actionCpaRegistrosCrud", sharedWithLabels: ["CPA experimental"] },
       { key: "actionCpaImportarExcel", sharedWithLabels: ["CPA experimental"] },
     ],
     sharedWithLabels: ["CPA experimental"],
-    accessIncludes: ["Consultar registros CPA"],
+    accessIncludes: ["Consultar registros CPA (legacy)"],
   },
   {
     id: "cpaExperimental",
     label: "CPA experimental",
     moduleKeys: ["moduleCpa"],
     actions: [
-      { key: "actionCpaRegistrosCrud", sharedWithLabels: ["CPA"] },
-      { key: "actionCpaImportarExcel", sharedWithLabels: ["CPA"] },
+      { key: "actionCpaRegistrosCrud" },
+      { key: "actionCpaImportarExcel" },
     ],
-    sharedWithLabels: ["CPA"],
-    accessIncludes: ["Consultar vista experimental y rangos"],
+    accessIncludes: ["Consultar y calcular CPA por producto y día"],
   },
   {
     id: "campanasMeta",

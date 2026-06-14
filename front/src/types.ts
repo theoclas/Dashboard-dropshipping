@@ -179,6 +179,28 @@ export type CpaExperimentalRebuildResult = {
   warnings: string[];
 };
 
+export type CpaResumenRowKind = "day" | "weekTotal" | "monthTotal" | "grandTotal";
+
+export type CpaResumenRow = {
+  kind: CpaResumenRowKind;
+  meses: string;
+  semana: string;
+  fecha: string | null;
+  producto: string | null;
+  gastoPublicidad: number;
+  conversaciones: number;
+  ventas: number;
+  gananciaPromedio: number | null;
+  cpa: number | null;
+  utilidadAproximada: number | null;
+};
+
+export type CpaResumenResponse = {
+  desde: string;
+  hasta: string;
+  rows: CpaResumenRow[];
+};
+
 export type CatalogProduct = {
   id: string;
   name: string;

@@ -11,8 +11,8 @@ import { ProductosPedidosPage } from "./pages/ProductosPedidosPage";
 import { ImportPage } from "./pages/ImportPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { MapeoPage } from "./pages/MapeoPage";
-import { CpaPage } from "./pages/CpaPage";
 import { CpaExperimentalPage } from "./pages/CpaExperimentalPage";
+import { CpaResumenPage } from "./pages/CpaResumenPage";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { AdminCompaniesPage } from "./pages/admin/AdminCompaniesPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
@@ -100,19 +100,21 @@ export function AppRoutes() {
             </Perm>
           }
         />
-        <Route
-          path="cpa"
-          element={
-            <Perm perm="moduleCpa">
-              <CpaPage />
-            </Perm>
-          }
-        />
+        {/* CPA clásico (import Excel manual): oculto del menú; usar CPA experimental. Ruta legacy redirige. */}
+        <Route path="cpa" element={<Navigate to="/app/cpa-experimental" replace />} />
         <Route
           path="cpa-experimental"
           element={
             <Perm perm="moduleCpa">
               <CpaExperimentalPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="cpa-resumen"
+          element={
+            <Perm perm="moduleCpa">
+              <CpaResumenPage />
             </Perm>
           }
         />

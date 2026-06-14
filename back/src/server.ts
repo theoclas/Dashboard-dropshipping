@@ -53,6 +53,7 @@ import {
 import { getDashboardMetrics } from "./dashboardMetrics";
 import { createCpaRecord, deleteCpaRecord, updateCpaRecord } from "./cpaRecordService";
 import { listCpaExperimental, rebuildCpaExperimentalByProduct } from "./cpaExperimentalService";
+import { getCpaResumen } from "./cpaResumenService";
 import { ordersTableConfigSchema } from "./ordersTableConfig";
 import * as catalogProductService from "./catalogProductService";
 
@@ -1343,6 +1344,7 @@ app.post(
   requirePermission("actionMapeoEstadosCrud"),
   importMapeoHandler,
 );
+/* --- CPA clásico (legacy): import Excel y CRUD en `cpas`. UI oculta; usar /api/cpa-experimental. --- */
 app.post("/api/import/cpa", ...importUploadMiddleware, requirePermission("actionCpaImportarExcel"), importCpaHandler);
 app.post("/api/import/cpa/", ...importUploadMiddleware, requirePermission("actionCpaImportarExcel"), importCpaHandler);
 
@@ -1486,6 +1488,7 @@ app.post("/api/import/wipe-cpa", authRequired, companyRequired, requireRoles([Ro
   }
 });
 
+/* CPA clásico (legacy): tabla `cpas`. El producto usa CPA experimental. */
 app.get("/api/cpa-records", authRequired, companyRequired, requirePermission("moduleCpa"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
   const rows = await prisma.cpaRecord.findMany({
@@ -1548,6 +1551,30 @@ app.get(
         hasta: q.hasta,
       });
       return res.json(rows);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ message: msg });
+    }
+  },
+);
+
+app.get(
+  "/api/cpa-resumen",
+  authRequired,
+  companyRequired,
+  requirePermission("moduleCpa"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const q = req.query as Record<string, string | undefined>;
+    const schema = z.object({
+      desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    const parsed = schema.safeParse({ desde: q.desde, hasta: q.hasta });
+    if (!parsed.success) return res.status(400).json({ message: "Indica rango desde y hasta (YYYY-MM-DD)." });
+    try {
+      const payload = await getCpaResumen(user.companyId, parsed.data);
+      return res.json(payload);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return res.status(400).json({ message: msg });

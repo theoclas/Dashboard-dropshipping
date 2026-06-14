@@ -13,6 +13,7 @@ import type {
   CpaRecordRow,
   CpaExperimentalRecordRow,
   CpaExperimentalRebuildResult,
+  CpaResumenResponse,
   CarteraSalidaCategoria,
   CarteraSalidasResponse,
   DropiWithdrawalRow,
@@ -153,6 +154,14 @@ export async function fetchCpaExperimental(params?: {
   hasta?: string;
 }): Promise<CpaExperimentalRecordRow[]> {
   const { data } = await api.get<CpaExperimentalRecordRow[]>("/cpa-experimental", { params });
+  return data;
+}
+
+export async function fetchCpaResumen(params: {
+  desde: string;
+  hasta: string;
+}): Promise<CpaResumenResponse> {
+  const { data } = await api.get<CpaResumenResponse>("/cpa-resumen", { params });
   return data;
 }
 

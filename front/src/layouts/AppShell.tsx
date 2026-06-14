@@ -3,10 +3,10 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button, Layout, Menu, Select, Typography, message, theme } from "antd";
 import type { MenuProps } from "antd";
 import {
+  BarChartOutlined,
   CloudUploadOutlined,
   DashboardOutlined,
   DollarCircleOutlined,
-  FileTextOutlined,
   ExperimentOutlined,
   FundProjectionScreenOutlined,
   InboxOutlined,
@@ -106,8 +106,10 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/dashboard")) return "/app/dashboard";
   if (pathname.startsWith("/app/reportes")) return "/app/reportes";
   if (pathname.startsWith("/app/mapeo")) return "/app/mapeo";
+  if (pathname.startsWith("/app/cpa-resumen")) return "/app/cpa-resumen";
   if (pathname.startsWith("/app/cpa-experimental")) return "/app/cpa-experimental";
-  if (pathname.startsWith("/app/cpa")) return "/app/cpa";
+  /* Ruta legacy /app/cpa redirige a CPA experimental; no aparece en el menú. */
+  if (pathname.startsWith("/app/cpa")) return "/app/cpa-experimental";
   if (pathname.startsWith("/app/admin/empresas")) return "/app/admin/empresas";
   if (pathname.startsWith("/app/admin/usuarios")) return "/app/admin/usuarios";
   if (pathname.startsWith("/app/admin/meta-ads-apps")) return "/app/admin/meta-ads-apps";
@@ -236,9 +238,9 @@ export function AppShell() {
         : null,
       canCpa
         ? {
-            key: "/app/cpa",
-            icon: <FileTextOutlined />,
-            label: <Link to="/app/cpa">CPA</Link>,
+            key: "/app/cpa-resumen",
+            icon: <BarChartOutlined />,
+            label: <Link to="/app/cpa-resumen">CPA Resumen</Link>,
           }
         : null,
       canCpa
@@ -248,6 +250,7 @@ export function AppShell() {
             label: <Link to="/app/cpa-experimental">CPA experimental</Link>,
           }
         : null,
+      /* CPA clásico (Excel / cpa-records) oculto: sustituido por CPA experimental. Ver CpaPage / CpaRecordsView. */
     ]);
 
     pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [

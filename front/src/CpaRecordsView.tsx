@@ -1,3 +1,7 @@
+/**
+ * @deprecated Vista CPA clásica (import Excel → tabla `cpas`).
+ * Oculta del menú; el flujo activo es CPA experimental (`CpaExperimentalPage`).
+ */
 import { useEffect, useState } from "react";
 import {
   Alert,
