@@ -72,6 +72,11 @@ const metaApiImportOptionsSchema = z.object({
   advertisingAccountId: z.string().min(1),
   metaAdsAppId: z.string().min(1).optional().nullable(),
   metaAdsSystemUserId: z.string().min(1).optional().nullable(),
+  reportDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD).")
+    .optional()
+    .nullable(),
   useShopifySessions: z.boolean().optional().default(false),
   shopifySessionsByCampaignId: z.record(z.string(), z.coerce.number()).optional().default({}),
   applyAdvertisingAccount: z.boolean().optional().default(true),
@@ -411,6 +416,7 @@ export function registerBusinessModules(app: express.Application) {
           {
             metaAdsAppId: parsed.data.metaAdsAppId,
             metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+            reportDate: parsed.data.reportDate,
           },
         );
         return res.json({
@@ -461,6 +467,7 @@ export function registerBusinessModules(app: express.Application) {
           {
             metaAdsAppId: parsed.data.metaAdsAppId,
             metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+            reportDate: parsed.data.reportDate,
           },
         );
 

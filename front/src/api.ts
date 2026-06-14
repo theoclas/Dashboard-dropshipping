@@ -555,6 +555,7 @@ export async function previewMetaApiCampaignImport(
     advertisingAccountId: string;
     metaAdsAppId?: string | null;
     metaAdsSystemUserId?: string | null;
+    reportDate?: string | null;
   },
 ): Promise<ImportAdvertisingPreviewResponse> {
   const { data } = await api.post<ImportAdvertisingPreviewResponse>(
@@ -571,6 +572,7 @@ export async function importMetaApiCampaignMetrics(
     advertisingAccountId: string;
     metaAdsAppId?: string | null;
     metaAdsSystemUserId?: string | null;
+    reportDate?: string | null;
     useShopifySessions?: boolean;
     shopifySessionsByCampaignId?: Record<string, number>;
     applyAdvertisingAccount?: boolean;

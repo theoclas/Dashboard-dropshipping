@@ -35,6 +35,11 @@ export function fmtApiDateIsoYmd(raw: string | null | undefined, emptyLabel = "�
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** Ayer como Dayjs (inicio de día local). */
+export function dayjsYesterday(): Dayjs {
+  return dayjs().subtract(1, "day").startOf("day");
+}
+
 /** Rango guardado como YYYY-MM-DD → instancia local para RangePicker. */
 export function dayjsFromYmdFilterString(ymd: string): Dayjs {
   const p = parseCalendarYmdFromIsoDate(ymd);

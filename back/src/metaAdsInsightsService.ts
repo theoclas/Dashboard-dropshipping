@@ -41,8 +41,11 @@ export function metaTimezone(): string {
   return process.env.META_TIMEZONE?.trim() || DEFAULT_TIMEZONE;
 }
 
-/** Ayer en zona horaria configurada (YYYY-MM-DD). */
-export function yesterdayYmdInTimezone(timeZone = metaTimezone()): string {
+function ymdFromParts(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function todayPartsInTimezone(timeZone = metaTimezone()): { y: number; m: number; d: number } {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -50,15 +53,43 @@ export function yesterdayYmdInTimezone(timeZone = metaTimezone()): string {
     day: "2-digit",
   });
   const parts = formatter.formatToParts(new Date());
-  const y = Number(parts.find((p) => p.type === "year")?.value);
-  const m = Number(parts.find((p) => p.type === "month")?.value);
-  const d = Number(parts.find((p) => p.type === "day")?.value);
+  return {
+    y: Number(parts.find((p) => p.type === "year")?.value),
+    m: Number(parts.find((p) => p.type === "month")?.value),
+    d: Number(parts.find((p) => p.type === "day")?.value),
+  };
+}
+
+/** Hoy en zona horaria configurada (YYYY-MM-DD). */
+export function todayYmdInTimezone(timeZone = metaTimezone()): string {
+  const { y, m, d } = todayPartsInTimezone(timeZone);
+  return ymdFromParts(y, m, d);
+}
+
+/** Ayer en zona horaria configurada (YYYY-MM-DD). */
+export function yesterdayYmdInTimezone(timeZone = metaTimezone()): string {
+  const { y, m, d } = todayPartsInTimezone(timeZone);
   const todayUtc = new Date(Date.UTC(y, m - 1, d));
   todayUtc.setUTCDate(todayUtc.getUTCDate() - 1);
-  const yy = todayUtc.getUTCFullYear();
-  const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(todayUtc.getUTCDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
+  return ymdFromParts(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth() + 1, todayUtc.getUTCDate());
+}
+
+/** Un solo día YYYY-MM-DD; por defecto ayer. No permite fechas futuras. */
+export function resolveMetaReportDate(input?: string | null, timeZone = metaTimezone()): string {
+  const ymd = input?.trim();
+  if (!ymd) return yesterdayYmdInTimezone(timeZone);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    throw new Error("Fecha inválida. Usa formato YYYY-MM-DD.");
+  }
+  const [y, mo, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+    throw new Error("Fecha inválida.");
+  }
+  if (ymd > todayYmdInTimezone(timeZone)) {
+    throw new Error("No se puede consultar una fecha futura.");
+  }
+  return ymd;
 }
 
 /** `1471976967613858` → `act_1471976967613858` */
@@ -128,12 +159,12 @@ function buildInsightsUrl(actId: string, reportDate: string): string {
 export async function fetchCampaignInsightsForAccount(
   metaAccountId: string,
   opts?: {
-    reportDate?: string;
+    reportDate?: string | null;
     metaAdsAppId?: string | null;
     metaAdsSystemUserId?: string | null;
   },
 ): Promise<FetchCampaignInsightsResult> {
-  const date = opts?.reportDate ?? yesterdayYmdInTimezone();
+  const date = resolveMetaReportDate(opts?.reportDate);
   const actId = toMetaActAccountId(metaAccountId);
   const accessToken = await resolveMetaAccessToken({
     metaAdsAppId: opts?.metaAdsAppId,

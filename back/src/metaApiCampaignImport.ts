@@ -16,7 +16,11 @@ export type MetaApiImportPreviewResult = ReturnType<typeof buildImportPreviewPay
 export async function fetchMetaApiParsedRowsForAccount(
   companyId: string,
   advertisingAccountId: string,
-  opts?: { metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
+  opts?: {
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+    reportDate?: string | null;
+  },
 ): Promise<{
   parsedRows: ParsedMetaCampaignRow[];
   reportDate: string;
@@ -45,7 +49,11 @@ export async function fetchMetaApiParsedRowsForAccount(
 export async function previewMetaApiCampaignImport(
   companyId: string,
   advertisingAccountId: string,
-  opts?: { metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
+  opts?: {
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+    reportDate?: string | null;
+  },
 ): Promise<MetaApiImportPreviewResult> {
   const { parsedRows, reportDate, metaAccountId, pagesFetched, errors } =
     await fetchMetaApiParsedRowsForAccount(companyId, advertisingAccountId, opts);

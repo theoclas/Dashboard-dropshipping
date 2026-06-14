@@ -5,6 +5,7 @@ import {
   Card,
   Checkbox,
   Col,
+  DatePicker,
   Descriptions,
   Input,
   Modal,
@@ -25,7 +26,7 @@ import { ClearOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
-import { fmtApiDateIsoYmd } from "../utils/calendarDateLocal";
+import { fmtApiDateIsoYmd, dayjsYesterday } from "../utils/calendarDateLocal";
 import {
   deleteAdvertisingCampaign,
   deleteAdvertisingMetric,
@@ -111,6 +112,7 @@ export function CampaignsPage() {
   const [importSource, setImportSource] = useState<"file" | "meta-api">("file");
   const [useShopify, setUseShopify] = useState(false);
   const [importAccountId, setImportAccountId] = useState<string | undefined>();
+  const [metaApiReportDate, setMetaApiReportDate] = useState(() => dayjsYesterday());
   const [metaAdsAppId, setMetaAdsAppId] = useState<string | undefined>();
   const [metaAdsSystemUserId, setMetaAdsSystemUserId] = useState<string | undefined>();
   const [metaAppOptions, setMetaAppOptions] = useState<MetaAdsAppOption[]>([]);
@@ -288,6 +290,7 @@ export function CampaignsPage() {
         advertisingAccountId: importAccountId,
         metaAdsAppId: metaAdsAppId ?? null,
         metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+        reportDate: metaApiReportDate.format("YYYY-MM-DD"),
       });
       setImportPreview(res);
       mergeShopifyPreview(res);
@@ -303,7 +306,7 @@ export function CampaignsPage() {
     } finally {
       setImportPreviewLoading(false);
     }
-  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, mergeShopifyPreview]);
+  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, metaApiReportDate, mergeShopifyPreview]);
 
   useEffect(() => {
     if (importSource !== "file") return;
@@ -335,7 +338,7 @@ export function CampaignsPage() {
     setCampaignDisplayNames({});
     setShopifySessionsInput({});
     setImportSelectedCampaignIds([]);
-  }, [importSource, importAccountId, productId]);
+  }, [importSource, importAccountId, productId, metaApiReportDate]);
 
   const importPreviewColumns: ColumnsType<ImportAdvertisingPreviewResponse["sampleRows"][number]> = useMemo(
     () => [
@@ -550,6 +553,7 @@ export function CampaignsPage() {
               advertisingAccountId: importAccountId!,
               metaAdsAppId: metaAdsAppId ?? null,
               metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+              reportDate: metaApiReportDate.format("YYYY-MM-DD"),
               useShopifySessions: useShopify,
               shopifySessionsByCampaignId: shopifyMap,
               applyAdvertisingAccount: true,
@@ -927,7 +931,7 @@ export function CampaignsPage() {
             onChange={(v) => setImportSource(v as "file" | "meta-api")}
             options={[
               { label: "Archivo Excel / CSV", value: "file" },
-              { label: "API Meta (ayer)", value: "meta-api" },
+              { label: "API Meta", value: "meta-api" },
             ]}
           />
 
@@ -954,8 +958,8 @@ export function CampaignsPage() {
             <Alert
               type="info"
               showIcon
-              message="Consulta el día anterior desde Meta Insights API"
-              description="Selecciona producto del catálogo y cuenta publicitaria (desde Cuentas publicitarias). Pulsa «Traer desde API» para ver la vista previa antes de importar."
+              message="Consulta un día concreto desde Meta Insights API"
+              description="Por defecto se usa ayer. Elige producto, cuenta publicitaria y día; pulsa «Traer desde API» para la vista previa antes de importar."
             />
             <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
               Aplicar sesiones Shopify manuales (editable en la vista previa)
@@ -1142,6 +1146,20 @@ export function CampaignsPage() {
             />
             {importSource === "meta-api" ? (
               <div style={{ maxWidth: 560, marginTop: 12 }}>
+                <Text strong style={{ display: "block", marginBottom: 6 }}>
+                  Día a consultar
+                </Text>
+                <DatePicker
+                  value={metaApiReportDate}
+                  onChange={(d) => setMetaApiReportDate(d ?? dayjsYesterday())}
+                  format="DD/MM/YYYY"
+                  allowClear={false}
+                  disabledDate={(current) => Boolean(current && current > dayjs().endOf("day"))}
+                  style={{ width: "100%", maxWidth: 480, marginBottom: 12 }}
+                />
+                <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 12 }}>
+                  Un solo día (sin rango). Por defecto: ayer.
+                </Text>
                 <Text strong style={{ display: "block", marginBottom: 6 }}>
                   App Meta
                 </Text>
