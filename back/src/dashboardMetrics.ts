@@ -51,6 +51,9 @@ const SQL_ENTREGA_BUCKET = `(CASE
   ELSE 'transito'
 END)`;
 
+/** Pedidos que cuentan en métricas financieras (excluye cancelados y rechazados). */
+const SQL_PEDIDO_ACTIVO = `(${SQL_ENTREGA_BUCKET}) NOT IN ('cancelado','rechazado')`;
+
 type AggRow = {
   total_orders: bigint | number;
   total_guias: bigint | number;
@@ -185,7 +188,7 @@ SELECT
   SUM(CASE WHEN (${SQL_ENTREGA_BUCKET}) = 'entregado' THEN 1 ELSE 0 END) AS entregados,
   SUM(CASE WHEN (${SQL_ENTREGA_BUCKET}) = 'devolucion' THEN 1 ELSE 0 END) AS devoluciones,
   SUM(CASE WHEN (${SQL_ENTREGA_BUCKET}) = 'transito' THEN 1 ELSE 0 END) AS en_proceso,
-  COALESCE(SUM(p.venta), 0) AS total_ventas,
+  COALESCE(SUM(CASE WHEN ${SQL_PEDIDO_ACTIVO} THEN p.venta ELSE 0 END), 0) AS total_ventas,
   SUM(CASE
     WHEN (${SQL_ENTREGA_BUCKET}) = 'devolucion'
       AND UPPER(TRIM(COALESCE(p.estado_cartera,''))) <> 'OK'
@@ -231,6 +234,7 @@ SELECT
    WHERE wm.companyId = ?
      AND UPPER(TRIM(COALESCE(p.estado_cartera,''))) = 'OK'
      AND (${SQL_ENTREGA_BUCKET}) IN ('entregado','devolucion')
+     AND ${SQL_PEDIDO_ACTIVO}
      ${whereDate}
   ) AS ganancia_total_mov,
   (SELECT COALESCE(SUM(
@@ -240,12 +244,14 @@ SELECT
           ELSE 0 END
       ), 0)
    FROM \`pedidos\` p WHERE p.companyId = ?
+     AND ${SQL_PEDIDO_ACTIVO}
      ${whereDate}
   ) AS ganancia_estimada_extra,
   (SELECT COALESCE(SUM(
         CASE WHEN (${SQL_ENTREGA_BUCKET}) = 'transito' THEN COALESCE(p.ganancia_calc, 0) ELSE 0 END
       ), 0)
    FROM \`pedidos\` p WHERE p.companyId = ?
+     AND ${SQL_PEDIDO_ACTIVO}
      ${whereDate}
   ) AS ganancia_proyectada_transito
 `;
