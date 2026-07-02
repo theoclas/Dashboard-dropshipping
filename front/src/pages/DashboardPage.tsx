@@ -665,7 +665,7 @@ export function DashboardPage() {
               label="Ganancia estimada"
               value={loading ? "…" : `$${fmtMoney(data?.gananciaEstimada ?? 0)}`}
               hint={
-                <Tooltip title="Ganancia total (cartera OK) más la suma de ganancia_calc de pedidos entregados cuya cartera aún no está en OK.">
+                <Tooltip title="Suma de ganancia_calc de pedidos ya entregados cuya cartera aún no está en OK: ingresos que deberían reflejarse en el próximo import de cartera (p. ej. mañana en la mañana). No incluye lo ya contabilizado en «Ganancia total (cartera OK)».">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }
@@ -679,7 +679,7 @@ export function DashboardPage() {
               label="Ganancia proyectada"
               value={loading ? "…" : `$${fmtMoney(data?.gananciaProyectada ?? 0)}`}
               hint={
-                <Tooltip title="Ganancia estimada más la suma de ganancia_calc de pedidos en tránsito (pendientes), como si todo lo pendiente se entregara.">
+                <Tooltip title="Ganancia total (cartera OK) + ganancia estimada (entregados sin cartera OK) + ganancia_calc de pedidos en tránsito, como si todo lo pendiente se entregara.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }

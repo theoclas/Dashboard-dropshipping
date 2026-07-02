@@ -296,12 +296,12 @@ SELECT
   const totalVentas = a ? num(a.total_ventas) : 0;
   const fin = finRows[0];
   const gananciaTotal = fin ? num(fin.ganancia_total_mov) : 0;
-  const gananciaEstimada = fin
-    ? num(fin.ganancia_total_mov) + num(fin.ganancia_estimada_extra)
-    : 0;
-  const gananciaProyectada = fin
-    ? num(fin.ganancia_total_mov) + num(fin.ganancia_estimada_extra) + num(fin.ganancia_proyectada_transito)
-    : 0;
+  const gananciaPendienteEntregados = fin ? num(fin.ganancia_estimada_extra) : 0;
+  const gananciaPendienteTransito = fin ? num(fin.ganancia_proyectada_transito) : 0;
+  /** Entregados sin cartera OK: ingresos esperados en el próximo corte de cartera. */
+  const gananciaEstimada = gananciaPendienteEntregados;
+  /** Cartera OK + pendiente entregado + tránsito (escenario si todo se concreta). */
+  const gananciaProyectada = gananciaTotal + gananciaPendienteEntregados + gananciaPendienteTransito;
   const pedidosCarteraSinOk = a ? numBI(a.pedidos_cartera_sin_ok) : 0;
   const pedidosCarteraSinOkEntregados = a ? numBI(a.pedidos_cartera_sin_ok_entregados) : 0;
   const pedidosCarteraOkEntregados = a ? numBI(a.pedidos_cartera_ok_entregados) : 0;
