@@ -7,6 +7,7 @@ import {
   Col,
   DatePicker,
   Descriptions,
+  Form,
   Input,
   Modal,
   Popconfirm,
@@ -16,13 +17,14 @@ import {
   Spin,
   Segmented,
   Table,
+  Tag,
   Typography,
   Upload,
   message,
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ClearOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { ClearOutlined, LinkOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
@@ -37,10 +39,12 @@ import {
   fetchMetaCampaignAdvertisingAccounts,
   fetchMetaAdsAppOptions,
   fetchMetaAdsSystemUserOptions,
+  fetchProductAdvertisingAccounts,
   importAdvertisingCampaignMetrics,
   importMetaApiCampaignMetrics,
   patchAdvertisingCampaign,
   patchAdvertisingMetric,
+  postAdvertisingCampaign,
   postMetaCampaignAdvertisingAccount,
   previewAdvertisingCampaignImport,
   previewMetaApiCampaignImport,
@@ -134,6 +138,10 @@ export function CampaignsPage() {
   const [importUploadKey, setImportUploadKey] = useState(0);
   /** IDs normalizados del archivo a importar para el producto (si hay varias campañas en el archivo). */
   const [importSelectedCampaignIds, setImportSelectedCampaignIds] = useState<string[]>([]);
+  const [productLinkedAccountIds, setProductLinkedAccountIds] = useState<string[]>([]);
+  const [manualCampaignOpen, setManualCampaignOpen] = useState(false);
+  const [manualCampaignForm] = Form.useForm<{ externalCampaignId: string; displayName?: string; advertisingAccountId?: string }>();
+  const [linkingCampaignId, setLinkingCampaignId] = useState<string | null>(null);
 
   const [newAccountMetaId, setNewAccountMetaId] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
@@ -244,14 +252,41 @@ export function CampaignsPage() {
     setMetricEditingKey(null);
   }, [selectedCampaign]);
 
+  useEffect(() => {
+    if (!productId) {
+      setProductLinkedAccountIds([]);
+      return;
+    }
+    void fetchProductAdvertisingAccounts(productId)
+      .then((list) => setProductLinkedAccountIds(list.map((a) => a.id)))
+      .catch(() => setProductLinkedAccountIds([]));
+  }, [productId]);
+
+  const filteredAccounts = useMemo(() => {
+    if (productLinkedAccountIds.length === 0) return accounts;
+    const set = new Set(productLinkedAccountIds);
+    return accounts.filter((a) => set.has(a.id));
+  }, [accounts, productLinkedAccountIds]);
+
   const accountOptions = useMemo(
-    () => accounts.map((a) => ({ value: a.id, label: `${a.metaAccountId}${a.businessName ? ` — ${a.businessName}` : ""}` })),
-    [accounts],
+    () =>
+      filteredAccounts.map((a) => ({
+        value: a.id,
+        label: `${a.metaAccountId}${a.businessName ? ` — ${a.businessName}` : ""}`,
+      })),
+    [filteredAccounts],
   );
+
+  useEffect(() => {
+    if (productLinkedAccountIds.length === 0) return;
+    if (importAccountId && productLinkedAccountIds.includes(importAccountId)) return;
+    setImportAccountId(productLinkedAccountIds[0]);
+  }, [productLinkedAccountIds, importAccountId]);
 
   const mergeShopifyPreview = useCallback((res: ImportAdvertisingPreviewResponse) => {
     const ids = res.uniqueCampaignIds ?? [];
     const names = res.campaignDisplayNames ?? {};
+    const defaultSelected = res.defaultSelectedCampaignIds ?? [...ids];
     setShopifyCampaignIds(ids);
     setCampaignDisplayNames(names);
     setShopifySessionsInput((prev) => {
@@ -261,7 +296,48 @@ export function CampaignsPage() {
       }
       return next;
     });
-    setImportSelectedCampaignIds([...ids]);
+    setImportSelectedCampaignIds([...defaultSelected]);
+  }, []);
+
+  const linkedExternalCampaignIds = useMemo(
+    () => new Set(campaigns.map((c) => normalizeMetaCampaignKey(c.externalCampaignId))),
+    [campaigns],
+  );
+
+  const linkPreviewCampaignToProduct = useCallback(
+    async (externalId: string) => {
+      if (!productId || !canCrud) return;
+      setLinkingCampaignId(externalId);
+      try {
+        await postAdvertisingCampaign(productId, {
+          externalCampaignId: externalId,
+          displayName: campaignDisplayNames[externalId]?.trim() || undefined,
+          advertisingAccountId: importAccountId ?? null,
+        });
+        message.success("Campaña vinculada al producto.");
+        await loadCampaigns(productId);
+        setImportSelectedCampaignIds((prev) =>
+          prev.some((id) => normalizeMetaCampaignKey(id) === normalizeMetaCampaignKey(externalId))
+            ? prev
+            : [...prev, externalId],
+        );
+      } catch {
+        message.error("No se pudo vincular la campaña al producto.");
+      } finally {
+        setLinkingCampaignId(null);
+      }
+    },
+    [productId, canCrud, campaignDisplayNames, importAccountId, loadCampaigns],
+  );
+
+  const toggleImportCampaignSelection = useCallback((externalId: string, checked: boolean) => {
+    setImportSelectedCampaignIds((prev) => {
+      const key = normalizeMetaCampaignKey(externalId);
+      if (checked) {
+        return prev.some((id) => normalizeMetaCampaignKey(id) === key) ? prev : [...prev, externalId];
+      }
+      return prev.filter((id) => normalizeMetaCampaignKey(id) !== key);
+    });
   }, []);
 
   const fetchImportPreview = useCallback(async (): Promise<boolean> => {
@@ -1043,38 +1119,85 @@ export function CampaignsPage() {
                       </>
                     ) : null}
                   </Text>
-                  {importPreview.uniqueCampaignIds.length > 1 ? (
+                  {importPreview.defaultSelectedCampaignIds &&
+                  importPreview.uniqueCampaignIds.length > 1 ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 12 }}
+                      message="Preselección según mapeo del producto"
+                      description="Las campañas marcadas coinciden con las vinculadas a este producto. Puedes ajustar la selección antes de importar."
+                    />
+                  ) : null}
+                  {importPreview.uniqueCampaignIds.length >= 1 ? (
                     <div style={{ marginBottom: 14 }}>
                       <Text strong style={{ display: "block", marginBottom: 6 }}>
-                        Campañas a importar para este producto
+                        Campañas en la vista previa
                       </Text>
                       <Text type="secondary" style={{ display: "block", marginBottom: 10, maxWidth: 720 }}>
-                        El archivo incluye varias campañas en la misma cuenta. Desmarca las que no correspondan al
-                        producto del catálogo seleccionado arriba; el resto no se creará ni actualizará en este import.
+                        Marca las que quieras importar. Si una campaña aún no está configurada para este producto, usa{" "}
+                        <strong>Vincular al producto</strong> para guardarla en el mapeo (y que quede preseleccionada en
+                        futuros imports).
                       </Text>
-                      <Space wrap style={{ marginBottom: 10 }}>
-                        <Button
-                          size="small"
-                          onClick={() => setImportSelectedCampaignIds([...importPreview.uniqueCampaignIds])}
-                        >
-                          Marcar todas
-                        </Button>
-                        <Button size="small" onClick={() => setImportSelectedCampaignIds([])}>
-                          Quitar todas
-                        </Button>
-                      </Space>
-                      <Checkbox.Group
-                        style={{ display: "flex", flexDirection: "column", gap: 8 }}
-                        value={importSelectedCampaignIds}
-                        onChange={(v) => setImportSelectedCampaignIds(v as string[])}
-                        options={importPreview.uniqueCampaignIds.map((id) => {
+                      {importPreview.uniqueCampaignIds.length > 1 ? (
+                        <Space wrap style={{ marginBottom: 10 }}>
+                          <Button
+                            size="small"
+                            onClick={() => setImportSelectedCampaignIds([...importPreview.uniqueCampaignIds])}
+                          >
+                            Marcar todas
+                          </Button>
+                          <Button size="small" onClick={() => setImportSelectedCampaignIds([])}>
+                            Quitar todas
+                          </Button>
+                        </Space>
+                      ) : null}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {importPreview.uniqueCampaignIds.map((id) => {
                           const n = importPreview.campaignAggregatedRowCounts?.[id];
-                          const label = `${id}${campaignDisplayNames[id] ? ` — ${campaignDisplayNames[id]}` : ""}${
-                            n != null ? ` (${n} fila(s) agrupadas)` : ""
-                          }`;
-                          return { label, value: id };
+                          const linked = linkedExternalCampaignIds.has(normalizeMetaCampaignKey(id));
+                          const checked = importSelectedCampaignIds.some(
+                            (sel) => normalizeMetaCampaignKey(sel) === normalizeMetaCampaignKey(id),
+                          );
+                          return (
+                            <div
+                              key={id}
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "6px 0",
+                                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                              }}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onChange={(e) => toggleImportCampaignSelection(id, e.target.checked)}
+                              />
+                              <Text style={{ flex: "1 1 240px", minWidth: 0 }}>
+                                {id}
+                                {campaignDisplayNames[id] ? ` — ${campaignDisplayNames[id]}` : ""}
+                                {n != null ? ` (${n} fila(s) agrupadas)` : ""}
+                              </Text>
+                              {linked ? (
+                                <Tag color="green">Del producto</Tag>
+                              ) : canCrud ? (
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<LinkOutlined />}
+                                  loading={linkingCampaignId === id}
+                                  onClick={() => void linkPreviewCampaignToProduct(id)}
+                                  style={{ paddingInline: 4 }}
+                                >
+                                  Vincular al producto
+                                </Button>
+                              ) : null}
+                            </div>
+                          );
                         })}
-                      />
+                      </div>
                     </div>
                   ) : null}
                   {importPreview.errors.length ? (
@@ -1120,6 +1243,12 @@ export function CampaignsPage() {
               {importSource === "meta-api"
                 ? "Se consultan los insights de esta cuenta en Meta. Las campañas importadas quedarán vinculadas a ella."
                 : "Si eliges una cuenta, se vinculará a las campañas tocadas por este import. Déjalo vacío si no quieres cambiar la cuenta en las campañas."}
+              {productLinkedAccountIds.length > 0 ? (
+                <>
+                  {" "}
+                  Solo se muestran las cuentas asignadas a este producto en Productos → Configurar Meta.
+                </>
+              ) : null}
             </Text>
             {accountsError ? (
               <Alert
@@ -1286,7 +1415,16 @@ export function CampaignsPage() {
         </Space>
       </Card>
 
-      <Card title="Campañas">
+      <Card
+        title="Campañas"
+        extra={
+          canCrud && productId ? (
+            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setManualCampaignOpen(true)}>
+              Agregar campaña
+            </Button>
+          ) : null
+        }
+      >
         <Table
           rowKey="id"
           loading={loading}
@@ -1384,6 +1522,55 @@ export function CampaignsPage() {
             )}
           </Space>
         ) : null}
+      </Modal>
+
+      <Modal
+        title="Agregar campaña Meta"
+        open={manualCampaignOpen}
+        onCancel={() => {
+          setManualCampaignOpen(false);
+          manualCampaignForm.resetFields();
+        }}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          form={manualCampaignForm}
+          layout="vertical"
+          onFinish={async (vals) => {
+            if (!productId) return;
+            try {
+              await postAdvertisingCampaign(productId, {
+                externalCampaignId: vals.externalCampaignId.trim(),
+                displayName: vals.displayName?.trim(),
+                advertisingAccountId: vals.advertisingAccountId ?? null,
+              });
+              message.success("Campaña agregada.");
+              setManualCampaignOpen(false);
+              manualCampaignForm.resetFields();
+              void loadCampaigns(productId);
+            } catch {
+              message.error("No se pudo agregar la campaña.");
+            }
+          }}
+        >
+          <Form.Item
+            name="externalCampaignId"
+            label="ID campaña Meta"
+            rules={[{ required: true, message: "Indica el ID." }]}
+          >
+            <Input placeholder="Ej. 52522857115331" />
+          </Form.Item>
+          <Form.Item name="displayName" label="Nombre (opcional)">
+            <Input allowClear />
+          </Form.Item>
+          <Form.Item name="advertisingAccountId" label="Cuenta publicitaria (opcional)">
+            <Select allowClear placeholder="Cuenta" options={accountOptions} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">
+            Guardar
+          </Button>
+        </Form>
       </Modal>
     </Space>
   );

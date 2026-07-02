@@ -88,7 +88,7 @@ const metaApiImportOptionsSchema = z.object({
 });
 
 export function registerBusinessModules(app: express.Application) {
-  app.get("/api/catalog-products", authRequired, companyRequired, requirePermission("moduleCatalogoProductos"), async (req, res) => {
+  app.get("/api/catalog-products", authRequired, companyRequired, requireAnyPermission(["moduleCatalogoProductos", "moduleCampanasMeta", "moduleCuentasPublicitarias"]), async (req, res) => {
     const u = user(req);
     const list = await catalogProductService.listCatalogProducts(u.companyId);
     return res.json(list);
@@ -274,12 +274,84 @@ export function registerBusinessModules(app: express.Application) {
         .safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
       const row = await advertisingCampaignService.createAdvertisingCampaign(u.companyId, {
-        productId,
+        catalogProductId: productId,
         externalCampaignId: parsed.data.externalCampaignId,
         displayName: parsed.data.displayName,
         advertisingAccountId: parsed.data.advertisingAccountId,
       });
       return res.status(201).json(row);
+    },
+  );
+
+  app.delete(
+    "/api/catalog-products/:productId/advertising-campaigns/:campaignId",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCampanasMetaCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const campaignId = String(req.params.campaignId);
+      const p = await catalogProductService.getCatalogProduct(u.companyId, productId);
+      if (!p) return res.status(404).json({ message: "Producto no encontrado." });
+      const ok = await advertisingCampaignService.unlinkCampaignFromProduct(u.companyId, productId, campaignId);
+      if (!ok) return res.status(404).json({ message: "Vínculo no encontrado." });
+      return res.status(204).send();
+    },
+  );
+
+  app.patch(
+    "/api/advertising-campaigns/:id/products",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCampanasMetaCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const id = String(req.params.id);
+      const parsed = z.object({ catalogProductIds: z.array(z.string().min(1)) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      const row = await advertisingCampaignService.setCampaignProductLinks(
+        u.companyId,
+        id,
+        parsed.data.catalogProductIds,
+      );
+      if (!row) return res.status(404).json({ message: "Campaña no encontrada." });
+      return res.json(row);
+    },
+  );
+
+  app.get(
+    "/api/catalog-products/:productId/advertising-accounts",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleCampanasMeta", "moduleCatalogoProductos"]),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const p = await catalogProductService.getCatalogProduct(u.companyId, productId);
+      if (!p) return res.status(404).json({ message: "Producto no encontrado." });
+      const list = await catalogProductService.listProductAdvertisingAccounts(u.companyId, productId);
+      return res.json(list);
+    },
+  );
+
+  app.put(
+    "/api/catalog-products/:productId/advertising-accounts",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["actionCampanasMetaCrud", "actionCatalogoProductosCrud"]),
+    async (req, res) => {
+      const u = user(req);
+      const productId = String(req.params.productId);
+      const parsed = z.object({ advertisingAccountIds: z.array(z.string()) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      const result = await catalogProductService.replaceProductAdvertisingAccounts(
+        u.companyId,
+        productId,
+        parsed.data.advertisingAccountIds,
+      );
+      if (!result.ok) return res.status(404).json({ message: "Producto no encontrado." });
+      return res.json(result.accounts);
     },
   );
 
@@ -385,7 +457,17 @@ export function registerBusinessModules(app: express.Application) {
       const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer, {
         sourceFilename: file.originalname,
       });
-      const payload = buildImportPreviewPayload(rows, errors, { source: "file" });
+      const prePayload = buildImportPreviewPayload(rows, errors, { source: "file" });
+      const defaultSelectedCampaignIds = await advertisingCampaignService.resolveDefaultSelectedCampaignIds(
+        u.companyId,
+        productId,
+        null,
+        prePayload.uniqueCampaignIds,
+      );
+      const payload = buildImportPreviewPayload(rows, errors, {
+        source: "file",
+        defaultSelectedCampaignIds,
+      });
       return res.json({
         ...payload,
         sampleRows: payload.sampleRows.map((r) => ({
@@ -423,8 +505,15 @@ export function registerBusinessModules(app: express.Application) {
             reportDate: parsed.data.reportDate,
           },
         );
+        const defaultSelectedCampaignIds = await advertisingCampaignService.resolveDefaultSelectedCampaignIds(
+          u.companyId,
+          productId,
+          parsed.data.advertisingAccountId,
+          preview.uniqueCampaignIds,
+        );
         return res.json({
           ...preview,
+          defaultSelectedCampaignIds,
           sampleRows: preview.sampleRows.map((r) => ({
             ...r,
             recordDate: r.recordDate instanceof Date ? r.recordDate.toISOString() : String(r.recordDate),
@@ -604,6 +693,51 @@ export function registerBusinessModules(app: express.Application) {
         orderBy: { metaAccountId: "asc" },
       });
       return res.json(accounts);
+    },
+  );
+
+  app.get(
+    "/api/advertising-accounts/:accountId/campaigns",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleCampanasMeta", "moduleCuentasPublicitarias"]),
+    async (req, res) => {
+      const u = user(req);
+      const accountId = String(req.params.accountId);
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, accountId);
+      if (!acc) return res.status(404).json({ message: "Cuenta no encontrada." });
+      const list = await advertisingCampaignService.listAdvertisingCampaignsByAccount(u.companyId, accountId);
+      return res.json(list);
+    },
+  );
+
+  app.post(
+    "/api/advertising-accounts/:accountId/campaigns",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["actionCampanasMetaCrud", "actionCuentasPublicitariasCrud"]),
+    async (req, res) => {
+      const u = user(req);
+      const accountId = String(req.params.accountId);
+      const parsed = z
+        .object({
+          externalCampaignId: z.string().min(1),
+          displayName: z.string().optional(),
+          catalogProductIds: z.array(z.string().min(1)).min(1),
+        })
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      try {
+        const row = await advertisingCampaignService.createAdvertisingCampaignForAccount(u.companyId, accountId, {
+          externalCampaignId: parsed.data.externalCampaignId,
+          displayName: parsed.data.displayName,
+          catalogProductIds: parsed.data.catalogProductIds,
+        });
+        return res.status(201).json(row);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return res.status(400).json({ message: msg });
+      }
     },
   );
 

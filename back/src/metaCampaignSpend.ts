@@ -45,12 +45,16 @@ export async function getMetaAdvertisingSpendSummary(
         : {}),
     },
     select: {
+      id: true,
       recordDate: true,
       metaExcelSnapshot: true,
       campaign: {
         select: {
-          productId: true,
-          product: { select: { id: true, name: true } },
+          productLinks: {
+            select: {
+              catalogProduct: { select: { id: true, name: true } },
+            },
+          },
         },
       },
     },
@@ -69,20 +73,25 @@ export async function getMetaAdvertisingSpendSummary(
     total += sp.amount;
     metricRowsWithSpend += 1;
 
-    const pid = m.campaign.productId;
     const dayKey = m.recordDate.toISOString().slice(0, 10);
-    let row = byProduct.get(pid);
-    if (!row) {
-      row = {
-        productId: pid,
-        productName: m.campaign.product.name,
-        amount: 0,
-        days: new Set<string>(),
-      };
-      byProduct.set(pid, row);
+    const links = m.campaign.productLinks;
+    if (links.length === 0) continue;
+
+    for (const link of links) {
+      const pid = link.catalogProduct.id;
+      let row = byProduct.get(pid);
+      if (!row) {
+        row = {
+          productId: pid,
+          productName: link.catalogProduct.name,
+          amount: 0,
+          days: new Set<string>(),
+        };
+        byProduct.set(pid, row);
+      }
+      row.amount += sp.amount;
+      row.days.add(dayKey);
     }
-    row.amount += sp.amount;
-    row.days.add(dayKey);
   }
 
   const byProductList: MetaSpendByProductRow[] = [...byProduct.values()]

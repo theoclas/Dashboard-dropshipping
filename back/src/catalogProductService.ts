@@ -218,3 +218,49 @@ export function updateCatalogProduct(
     },
   });
 }
+
+export async function listProductAdvertisingAccounts(companyId: string, catalogProductId: string) {
+  const rows = await prisma.catalogProductAdvertisingAccount.findMany({
+    where: { companyId, catalogProductId },
+    include: { advertisingAccount: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => r.advertisingAccount);
+}
+
+export async function replaceProductAdvertisingAccounts(
+  companyId: string,
+  catalogProductId: string,
+  advertisingAccountIds: string[],
+) {
+  const p = await getCatalogProduct(companyId, catalogProductId);
+  if (!p) return { ok: false as const, code: "NOT_FOUND" as const };
+
+  const uniq = [...new Set(advertisingAccountIds.filter(Boolean))];
+  const valid = await prisma.advertisingAccount.findMany({
+    where: { companyId, id: { in: uniq } },
+    select: { id: true },
+  });
+  const validIds = valid.map((a) => a.id);
+
+  await prisma.$transaction([
+    prisma.catalogProductAdvertisingAccount.deleteMany({
+      where: { companyId, catalogProductId, advertisingAccountId: { notIn: validIds } },
+    }),
+    ...validIds.map((advertisingAccountId) =>
+      prisma.catalogProductAdvertisingAccount.upsert({
+        where: {
+          companyId_catalogProductId_advertisingAccountId: {
+            companyId,
+            catalogProductId,
+            advertisingAccountId,
+          },
+        },
+        create: { companyId, catalogProductId, advertisingAccountId },
+        update: {},
+      }),
+    ),
+  ]);
+
+  return { ok: true as const, accounts: await listProductAdvertisingAccounts(companyId, catalogProductId) };
+}

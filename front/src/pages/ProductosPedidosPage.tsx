@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
+  Drawer,
   Form,
   Input,
   Modal,
@@ -16,7 +17,7 @@ import {
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { InboxOutlined, PlusOutlined } from "@ant-design/icons";
+import { InboxOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import {
@@ -30,6 +31,7 @@ import {
   type OrderProductLine,
 } from "../api";
 import { usePermission } from "../hooks/usePermission";
+import { ProductMetaMappingPanel } from "../components/ProductMetaMappingPanel";
 import type { CatalogProduct } from "../types";
 
 const { Title, Text } = Typography;
@@ -69,9 +71,13 @@ export function ProductosPedidosPage() {
   const [linkScope, setLinkScope] = useState<"all" | "one">("all");
   const [createForm] = Form.useForm<{ name: string; sku?: string; notes?: string }>();
   const [catalogCreateOpen, setCatalogCreateOpen] = useState(false);
+  const [metaConfigProduct, setMetaConfigProduct] = useState<CatalogProduct | null>(null);
+
+  const canMetaConfig =
+    usePermission("moduleCampanasMeta") || usePermission("moduleCuentasPublicitarias");
 
   const loadCatalog = useCallback(async () => {
-    if (!canCatalog) return;
+    if (!canCatalog && !canMetaConfig) return;
     try {
       const list = await fetchCatalogProducts();
       setCatalogList(list.filter((p) => p.isActive));
@@ -79,7 +85,7 @@ export function ProductosPedidosPage() {
       message.error("No se pudo cargar el catálogo.");
       setCatalogList([]);
     }
-  }, [canCatalog]);
+  }, [canCatalog, canMetaConfig]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
@@ -490,13 +496,14 @@ export function ProductosPedidosPage() {
           vincule las variantes.
         </Text>
       ) : null}
-      {canCatalog && canCatalogCrud ? (
+      {(canCatalog && canCatalogCrud) || canMetaConfig ? (
         <Card size="small" title="Catálogo administrativo">
-          {!catalogCreateOpen ? (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCatalogCreateOpen(true)}>
-              Crear producto del catálogo
-            </Button>
-          ) : (
+          {canCatalog && canCatalogCrud ? (
+            !catalogCreateOpen ? (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCatalogCreateOpen(true)}>
+                Crear producto del catálogo
+              </Button>
+            ) : (
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
               <Button type="link" size="small" style={{ padding: 0 }} onClick={() => {
                 setCatalogCreateOpen(false);
@@ -552,7 +559,35 @@ export function ProductosPedidosPage() {
                 </Space>
               </Form>
             </Space>
-          )}
+          )
+          ) : null}
+          {canMetaConfig && catalogList.length > 0 ? (
+            <Table
+              style={{ marginTop: 16 }}
+              size="small"
+              rowKey="id"
+              pagination={false}
+              dataSource={catalogList}
+              columns={[
+                { title: "Producto", dataIndex: "name", key: "name" },
+                { title: "SKU", dataIndex: "sku", key: "sku", render: (v) => v ?? "—" },
+                {
+                  title: "",
+                  key: "meta",
+                  width: 160,
+                  render: (_, p) => (
+                    <Button
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => setMetaConfigProduct(p)}
+                    >
+                      Configurar Meta
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          ) : null}
         </Card>
       ) : null}
       <Space wrap align="center" size="middle">
@@ -677,6 +712,16 @@ export function ProductosPedidosPage() {
           </Space>
         ) : null}
       </Modal>
+
+      <Drawer
+        title={metaConfigProduct ? `Meta — ${metaConfigProduct.name}` : "Configuración Meta"}
+        open={metaConfigProduct != null}
+        onClose={() => setMetaConfigProduct(null)}
+        width={720}
+        destroyOnClose
+      >
+        {metaConfigProduct ? <ProductMetaMappingPanel catalogProduct={metaConfigProduct} /> : null}
+      </Drawer>
     </Space>
   );
 }

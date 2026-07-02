@@ -6,6 +6,7 @@ import {
   normalizeCampaignMapKey,
   type ParsedMetaCampaignRow,
 } from "./metaCampaignExcelParse";
+import { linkCampaignToProduct } from "./advertisingCampaignService";
 
 export type ImportAdvertisingCampaignMetricsOptions = {
   useShopifySessions: boolean;
@@ -85,13 +86,6 @@ export async function importAdvertisingCampaignMetrics(
         where: { companyId_externalCampaignId: { companyId, externalCampaignId: extId } },
       });
 
-      if (existingCamp && existingCamp.productId !== catalogProductId) {
-        errors.push(
-          `Campaña ${extId} ya existe vinculada a otro producto del catálogo; no se importó la fila del ${recordDate.toISOString().slice(0, 10)}.`,
-        );
-        continue;
-      }
-
       let campaignId: string;
       if (existingCamp) {
         campaignId = existingCamp.id;
@@ -109,7 +103,6 @@ export async function importAdvertisingCampaignMetrics(
         const created = await prisma.advertisingCampaign.create({
           data: {
             companyId,
-            productId: catalogProductId,
             externalCampaignId: extId,
             displayName: r.displayName ?? null,
             ...(options.applyAdvertisingAccount ? { advertisingAccountId: options.advertisingAccountId } : {}),
@@ -118,6 +111,8 @@ export async function importAdvertisingCampaignMetrics(
         campaignId = created.id;
         imported += 1;
       }
+
+      await linkCampaignToProduct(companyId, catalogProductId, campaignId);
 
       const existingMetric = await prisma.advertisingCampaignMetric.findUnique({
         where: { campaignId_recordDate: { campaignId, recordDate } },
@@ -168,6 +163,7 @@ export type ImportAdvertisingPreviewPayload = {
   uniqueCampaignIds: string[];
   campaignDisplayNames: Record<string, string>;
   campaignAggregatedRowCounts: Record<string, number>;
+  defaultSelectedCampaignIds: string[];
   reportDate?: string;
   source?: "file" | "meta-api";
 };
@@ -175,7 +171,11 @@ export type ImportAdvertisingPreviewPayload = {
 export function buildImportPreviewPayload(
   parsedRows: ParsedMetaCampaignRow[],
   errors: string[],
-  extras?: { reportDate?: string; source?: "file" | "meta-api" },
+  extras?: {
+    reportDate?: string;
+    source?: "file" | "meta-api";
+    defaultSelectedCampaignIds?: string[];
+  },
 ): ImportAdvertisingPreviewPayload {
   const aggregated = aggregateMetricRowsByCampaignAndDate(parsedRows);
   const labelByKey = new Map<string, string>();
@@ -196,6 +196,10 @@ export function buildImportPreviewPayload(
     recordDate: rest.recordDate,
   }));
 
+  const defaultSelected =
+    extras?.defaultSelectedCampaignIds ??
+    uniqueCampaignIds;
+
   return {
     sampleRows: sampleRows.map((r) => ({
       ...r,
@@ -206,6 +210,7 @@ export function buildImportPreviewPayload(
     uniqueCampaignIds,
     campaignDisplayNames: Object.fromEntries(labelByKey),
     campaignAggregatedRowCounts: Object.fromEntries(rowCountByCampaign),
+    defaultSelectedCampaignIds: defaultSelected,
     ...(extras?.reportDate ? { reportDate: extras.reportDate } : {}),
     ...(extras?.source ? { source: extras.source } : {}),
   };

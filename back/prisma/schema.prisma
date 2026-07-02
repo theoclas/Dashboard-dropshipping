@@ -44,6 +44,8 @@ model Company {
   operationalExpenses        OperationalExpense[]
   catalogProducts            CatalogProduct[]
   advertisingCampaigns       AdvertisingCampaign[]
+  catalogProductAdvertisingAccounts CatalogProductAdvertisingAccount[]
+  catalogProductAdvertisingCampaigns CatalogProductAdvertisingCampaign[]
   catalogProductDropiLinks   CatalogProductDropiLink[]
   advertisingCampaignMetrics AdvertisingCampaignMetric[]
   advertisingAccounts        AdvertisingAccount[]
@@ -65,6 +67,7 @@ model AdvertisingAccount {
   company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   operationalExpenses  OperationalExpense[]
   advertisingCampaigns AdvertisingCampaign[]
+  catalogProductLinks  CatalogProductAdvertisingAccount[]
   cpaExperimentalRecords CpaExperimentalRecord[]
 
   @@unique([companyId, metaAccountId])
@@ -262,7 +265,8 @@ model CatalogProduct {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   company    Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  campaigns  AdvertisingCampaign[]
+  advertisingAccountLinks CatalogProductAdvertisingAccount[]
+  advertisingCampaignLinks CatalogProductAdvertisingCampaign[]
   cpaRecords CpaRecord[]
   cpaExperimentalRecords CpaExperimentalRecord[]
   dropiLinks CatalogProductDropiLink[]
@@ -296,26 +300,60 @@ model CatalogProductDropiLink {
   @@map("catalog_product_dropi_links")
 }
 
-/// Campaña publicitaria; una campaña pertenece a un solo producto del catálogo.
+/// Campaña publicitaria Meta (ID externo único por empresa); productos vinculados vía junction.
 model AdvertisingCampaign {
   id                   String   @id @default(cuid())
   companyId            String   @map("company_id")
-  productId            String   @map("product_id")
   externalCampaignId   String   @map("external_campaign_id") @db.VarChar(128)
   displayName          String?  @map("display_name") @db.VarChar(255)
   advertisingAccountId String?  @map("advertising_account_id")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
-  company            Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  product            CatalogProduct              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  advertisingAccount AdvertisingAccount?         @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  company            Company                             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount?                 @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  productLinks       CatalogProductAdvertisingCampaign[]
   metrics            AdvertisingCampaignMetric[]
 
   @@unique([companyId, externalCampaignId])
-  @@index([companyId, productId])
   @@index([advertisingAccountId])
   @@map("advertising_campaigns")
+}
+
+/// Cuentas publicitarias Meta asignadas a un producto del catálogo (N:N).
+model CatalogProductAdvertisingAccount {
+  id                   String   @id @default(cuid())
+  companyId            String   @map("company_id")
+  catalogProductId     String   @map("catalog_product_id")
+  advertisingAccountId String   @map("advertising_account_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  catalogProduct     CatalogProduct     @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount @relation(fields: [advertisingAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, catalogProductId, advertisingAccountId])
+  @@index([companyId, catalogProductId])
+  @@index([advertisingAccountId])
+  @@map("catalog_product_advertising_accounts")
+}
+
+/// Campañas Meta vinculadas a productos del catálogo (N:N).
+model CatalogProductAdvertisingCampaign {
+  id               String   @id @default(cuid())
+  companyId        String   @map("company_id")
+  catalogProductId String   @map("catalog_product_id")
+  campaignId       String   @map("campaign_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  catalogProduct CatalogProduct      @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+  campaign       AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, catalogProductId, campaignId])
+  @@index([companyId, catalogProductId])
+  @@index([campaignId])
+  @@map("catalog_product_advertising_campaigns")
 }
 
 /// Métricas de una campaña por día (import Meta / Shopify); una campaña tiene un registro por fecha.

@@ -21,12 +21,14 @@ import {
   deleteOperationalExpense,
   fetchAdvertisingAccountOperationalExpenses,
   fetchAdvertisingAccountsWithStats,
+  fetchCatalogProducts,
   postMetaCampaignAdvertisingAccount,
 } from "../api";
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
+import { ProductMetaMappingPanel } from "../components/ProductMetaMappingPanel";
 import { usePermission } from "../hooks/usePermission";
 import { formatDateOnly } from "../utils/formatDateOnly";
-import type { AdvertisingAccountWithStats, OperationalExpenseRow } from "../types";
+import type { AdvertisingAccountWithStats, CatalogProduct, OperationalExpenseRow } from "../types";
 
 const { Title, Text } = Typography;
 
@@ -52,6 +54,7 @@ export function AdvertisingAccountsPage() {
   const [summary, setSummary] = useState({ totalGastado: 0, totalPagado: 0, pendientePorPagar: 0 });
   const [detailRows, setDetailRows] = useState<OperationalExpenseRow[]>([]);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +92,13 @@ export function AdvertisingAccountsPage() {
   useEffect(() => {
     if (canSee) void load();
   }, [canSee, load]);
+
+  useEffect(() => {
+    if (!canSee) return;
+    void fetchCatalogProducts()
+      .then(setCatalogProducts)
+      .catch(() => setCatalogProducts([]));
+  }, [canSee]);
 
   useEffect(() => {
     if (selected) void loadDetail();
@@ -323,6 +333,14 @@ export function AdvertisingAccountsPage() {
             pagination={{ pageSize: 12, showTotal: (t) => `${t} registros` }}
             locale={{ emptyText: "Sin gastos vinculados a esta cuenta en el rango seleccionado." }}
           />
+
+          <Card size="small" title="Campañas Meta" style={{ marginTop: 24 }}>
+            <ProductMetaMappingPanel
+              fixedAccountId={selected.id}
+              fixedAccountLabel={`${selected.metaAccountId}${selected.businessName ? ` — ${selected.businessName}` : ""}`}
+              allProducts={catalogProducts}
+            />
+          </Card>
         </Card>
       ) : null}
 

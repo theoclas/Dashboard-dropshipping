@@ -130,12 +130,18 @@ export async function rebuildCpaExperimentalByProduct(
         });
   const orderExternalIds = [...new Set(detailMatches.map((r) => r.pedidoIdDropi).filter(Boolean))];
 
-  const campaigns = await prisma.advertisingCampaign.findMany({
-    where: { companyId, productId: catalogProductId },
+  const campaignIds = await prisma.catalogProductAdvertisingCampaign
+    .findMany({
+      where: { companyId, catalogProductId },
+      select: { campaignId: true, campaign: { select: { advertisingAccountId: true } } },
+    })
+    .then((rows) => rows.map((r) => r.campaignId));
+
+  const campaignsMeta = await prisma.advertisingCampaign.findMany({
+    where: { companyId, id: { in: campaignIds } },
     select: { id: true, advertisingAccountId: true },
   });
-  const campaignIds = campaigns.map((c) => c.id);
-  const campaignsSinCuenta = campaigns.filter((c) => !c.advertisingAccountId).length;
+  const campaignsSinCuenta = campaignsMeta.filter((c) => !c.advertisingAccountId).length;
   if (campaignIds.length === 0) {
     warnings.push(
       "No hay campañas Meta para este producto; el gasto publicitario será cero (las ventas pueden venir de pedidos Dropi).",

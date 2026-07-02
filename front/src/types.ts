@@ -231,6 +231,9 @@ export type AdvertisingCampaignRow = {
   displayName?: string | null;
   advertisingAccountId?: string | null;
   advertisingAccount?: AdvertisingAccount | null;
+  productLinks?: Array<{
+    catalogProduct: { id: string; name: string };
+  }>;
 };
 
 export type AdvertisingCampaignMetricRow = {
@@ -270,6 +273,8 @@ export type ImportAdvertisingPreviewResponse = {
   source?: "file" | "meta-api";
   pagesFetched?: number;
   metaAccountId?: string;
+  /** IDs preseleccionados según mapeo producto–campaña. */
+  defaultSelectedCampaignIds?: string[];
 };
 
 export type ImportAdvertisingCampaignMetricsResult = {

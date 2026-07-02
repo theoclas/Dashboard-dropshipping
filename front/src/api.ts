@@ -498,6 +498,48 @@ export async function deleteAdvertisingCampaign(id: string): Promise<void> {
   await api.delete(`/advertising-campaigns/${id}`);
 }
 
+export async function unlinkAdvertisingCampaignFromProduct(productId: string, campaignId: string): Promise<void> {
+  await api.delete(`/catalog-products/${productId}/advertising-campaigns/${campaignId}`);
+}
+
+export async function patchAdvertisingCampaignProducts(
+  campaignId: string,
+  catalogProductIds: string[],
+): Promise<AdvertisingCampaignRow> {
+  const { data } = await api.patch<AdvertisingCampaignRow>(`/advertising-campaigns/${campaignId}/products`, {
+    catalogProductIds,
+  });
+  return data;
+}
+
+export async function fetchProductAdvertisingAccounts(productId: string): Promise<AdvertisingAccount[]> {
+  const { data } = await api.get<AdvertisingAccount[]>(`/catalog-products/${productId}/advertising-accounts`);
+  return data;
+}
+
+export async function putProductAdvertisingAccounts(
+  productId: string,
+  advertisingAccountIds: string[],
+): Promise<AdvertisingAccount[]> {
+  const { data } = await api.put<AdvertisingAccount[]>(`/catalog-products/${productId}/advertising-accounts`, {
+    advertisingAccountIds,
+  });
+  return data;
+}
+
+export async function fetchAdvertisingAccountCampaigns(accountId: string): Promise<AdvertisingCampaignRow[]> {
+  const { data } = await api.get<AdvertisingCampaignRow[]>(`/advertising-accounts/${accountId}/campaigns`);
+  return data;
+}
+
+export async function postAdvertisingAccountCampaign(
+  accountId: string,
+  body: { externalCampaignId: string; displayName?: string; catalogProductIds: string[] },
+): Promise<AdvertisingCampaignRow> {
+  const { data } = await api.post<AdvertisingCampaignRow>(`/advertising-accounts/${accountId}/campaigns`, body);
+  return data;
+}
+
 export async function fetchAdvertisingMetrics(campaignId: string): Promise<AdvertisingCampaignMetricRow[]> {
   const { data } = await api.get<AdvertisingCampaignMetricRow[]>(`/advertising-campaigns/${campaignId}/metrics`);
   return data;
