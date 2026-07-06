@@ -36,6 +36,11 @@ import {
   enumerateYmdDays,
   sleep,
 } from "../utils/metaApiRange";
+import {
+  applySessionsToBatchDays,
+  parseShopifySessionsJsonl,
+  shopifySessionsInputForDay,
+} from "../utils/parseShopifySessionsJsonl";
 import { metaApiAccountAccessHint } from "../utils/metaApiErrorHint";
 import {
   deleteAdvertisingCampaign,
@@ -168,6 +173,9 @@ export function CampaignsPage() {
   const [shopifyCampaignIds, setShopifyCampaignIds] = useState<string[]>([]);
   const [campaignDisplayNames, setCampaignDisplayNames] = useState<Record<string, string>>({});
   const [shopifySessionsInput, setShopifySessionsInput] = useState<Record<string, string>>({});
+  const [shopifySessionsByDate, setShopifySessionsByDate] = useState<Record<string, number>>({});
+  const [shopifyJsonPasteOpen, setShopifyJsonPasteOpen] = useState(false);
+  const [shopifyJsonPasteText, setShopifyJsonPasteText] = useState("");
   const [importUploadKey, setImportUploadKey] = useState(0);
   /** IDs normalizados del archivo a importar para el producto (si hay varias campañas en el archivo). */
   const [importSelectedCampaignIds, setImportSelectedCampaignIds] = useState<string[]>([]);
@@ -437,14 +445,19 @@ export function CampaignsPage() {
           reportDate,
         });
         const defaultSelected = res.defaultSelectedCampaignIds ?? res.uniqueCampaignIds ?? [];
+        const sessionsForDay = shopifySessionsByDate[reportDate];
         const dayRow: MetaApiBatchDay = {
           reportDate,
           status: "ok",
           preview: res,
           error: null,
           selectedCampaignIds: [...defaultSelected],
-          shopifySessionsInput: shopifyInputFromPreview(res),
+          shopifySessionsInput:
+            sessionsForDay != null
+              ? shopifySessionsInputForDay(res, defaultSelected, sessionsForDay)
+              : shopifyInputFromPreview(res),
         };
+        if (sessionsForDay != null) setUseShopify(true);
         setMetaApiBatchDays((prev) => prev.map((d) => (d.reportDate === reportDate ? dayRow : d)));
         if (!firstOk) firstOk = dayRow;
       } catch (e) {
@@ -474,7 +487,7 @@ export function CampaignsPage() {
     }
     setImportPreviewError("No se pudo consultar ningún día del rango.");
     return false;
-  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, metaApiDateRange]);
+  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, metaApiDateRange, shopifySessionsByDate]);
 
   const getBatchDaysWithActivePersisted = useCallback((): MetaApiBatchDay[] => {
     if (!activeBatchDate) return metaApiBatchDays;
@@ -504,6 +517,49 @@ export function CampaignsPage() {
     },
     [getBatchDaysWithActivePersisted],
   );
+
+  const applyShopifySessionsByDate = useCallback(
+    (byDate: Map<string, number>) => {
+      const recordPatch: Record<string, number> = {};
+      for (const [k, v] of byDate) recordPatch[k] = v;
+      setShopifySessionsByDate((prev) => ({ ...prev, ...recordPatch }));
+      setUseShopify(true);
+
+      const persisted = getBatchDaysWithActivePersisted();
+      const { updated, applied, batchWithoutJson, jsonWithoutBatch } = applySessionsToBatchDays(
+        persisted,
+        byDate,
+      );
+      setMetaApiBatchDays(updated);
+
+      const active = activeBatchDate ? updated.find((d) => d.reportDate === activeBatchDate) : null;
+      if (active?.preview) {
+        setShopifySessionsInput({ ...active.shopifySessionsInput });
+      }
+
+      return { applied, batchWithoutJson, jsonWithoutBatch };
+    },
+    [getBatchDaysWithActivePersisted, activeBatchDate],
+  );
+
+  const handleApplyShopifyJsonPaste = useCallback(() => {
+    const result = parseShopifySessionsJsonl(shopifyJsonPasteText);
+    if (!result.ok) {
+      message.error(result.message);
+      return;
+    }
+    const { applied, batchWithoutJson, jsonWithoutBatch } = applyShopifySessionsByDate(result.byDate);
+    const parts: string[] = [];
+    if (applied > 0) parts.push(`${applied} día(s) con sesiones aplicadas`);
+    if (jsonWithoutBatch > 0) parts.push(`${jsonWithoutBatch} fecha(s) del JSON sin día en el glosario`);
+    if (batchWithoutJson > 0) parts.push(`${batchWithoutJson} día(s) del glosario sin sesión en el JSON`);
+    if (result.invalidLines.length > 0) parts.push(`${result.invalidLines.length} fila(s) ignoradas`);
+    if (applied === 0 && metaApiBatchDays.length === 0) {
+      parts.push("sesiones guardadas; al traer desde API se aplicarán automáticamente");
+    }
+    message.success(parts.length ? `${parts.join("; ")}.` : "Sesiones Shopify aplicadas.");
+    setShopifyJsonPasteOpen(false);
+  }, [shopifyJsonPasteText, applyShopifySessionsByDate, metaApiBatchDays.length]);
 
   const runMetaApiDayImport = useCallback(
     async (day: MetaApiBatchDay): Promise<boolean> => {
@@ -920,6 +976,9 @@ export function CampaignsPage() {
     setActiveBatchDate(null);
     setMetaApiBatchProgress(null);
     setMetaApiBatchImporting(false);
+    setShopifySessionsByDate({});
+    setShopifyJsonPasteText("");
+    setShopifyJsonPasteOpen(false);
     setMetaApiDateRange(() => {
       const y = dayjsYesterday();
       return [y, y];
@@ -1365,6 +1424,13 @@ export function CampaignsPage() {
             <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
               Aplicar sesiones Shopify manuales (editable en la vista previa)
             </Checkbox>
+            <Button
+              type="default"
+              disabled={!canImport}
+              onClick={() => setShopifyJsonPasteOpen(true)}
+            >
+              Pegar sesiones Shopify (JSON)
+            </Button>
             </>
           )}
 
@@ -1916,6 +1982,31 @@ export function CampaignsPage() {
             )}
           </Space>
         ) : null}
+      </Modal>
+
+      <Modal
+        title="Pegar sesiones Shopify (JSON / JSONL)"
+        open={shopifyJsonPasteOpen}
+        onCancel={() => setShopifyJsonPasteOpen(false)}
+        onOk={handleApplyShopifyJsonPaste}
+        okText="Aplicar"
+        cancelText="Cancelar"
+        width={640}
+        destroyOnClose={false}
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+          Pega el informe de Shopify (una línea por día). Ejemplo:{" "}
+          <Text code>{'{"day":"2026-06-01","sessions":149}'}</Text>
+          . También acepta array JSON o columnas <Text code>fecha</Text> / <Text code>sesiones</Text>.
+          Puedes pegar antes o después de «Traer desde API».
+        </Text>
+        <Input.TextArea
+          value={shopifyJsonPasteText}
+          onChange={(e) => setShopifyJsonPasteText(e.target.value)}
+          rows={10}
+          placeholder={'{"day":"2026-06-01","sessions":149}\n{"day":"2026-06-02","sessions":112}'}
+          style={{ fontFamily: "monospace", fontSize: 13 }}
+        />
       </Modal>
 
       <Modal
