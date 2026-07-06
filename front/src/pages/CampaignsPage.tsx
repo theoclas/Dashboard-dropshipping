@@ -1998,7 +1998,8 @@ export function CampaignsPage() {
           Pega el informe de Shopify (una línea por día). Ejemplo:{" "}
           <Text code>{'{"day":"2026-06-01","sessions":149}'}</Text>
           . También acepta array JSON o columnas <Text code>fecha</Text> / <Text code>sesiones</Text>.
-          Puedes pegar antes o después de «Traer desde API».
+          Si hay varias campañas marcadas el mismo día, el total se reparte entre ellas (la suma coincide con
+          Shopify). Puedes pegar antes o después de «Traer desde API».
         </Text>
         <Input.TextArea
           value={shopifyJsonPasteText}

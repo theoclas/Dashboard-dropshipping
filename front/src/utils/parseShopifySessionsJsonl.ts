@@ -123,6 +123,28 @@ function shopifyInputFromPreviewIds(ids: string[]): Record<string, string> {
   return out;
 }
 
+/** Reparte sesiones diarias de la tienda entre campañas; la suma de partes = total del día. */
+export function splitShopifySessionsAmongCampaigns(
+  totalSessions: number,
+  campaignIds: string[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (campaignIds.length === 0) return out;
+  if (campaignIds.length === 1) {
+    out[campaignIds[0]!] = String(totalSessions);
+    return out;
+  }
+  const n = campaignIds.length;
+  const base = Math.floor(totalSessions / n);
+  let remainder = totalSessions - base * n;
+  for (const id of campaignIds) {
+    const share = base + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder -= 1;
+    out[id] = String(share);
+  }
+  return out;
+}
+
 export function shopifySessionsInputForDay(
   preview: { uniqueCampaignIds?: string[] },
   selectedCampaignIds: string[],
@@ -131,8 +153,8 @@ export function shopifySessionsInputForDay(
   const base = shopifyInputFromPreviewIds(preview.uniqueCampaignIds ?? []);
   const targets =
     selectedCampaignIds.length > 0 ? selectedCampaignIds : (preview.uniqueCampaignIds ?? []);
-  const val = String(sessions);
-  for (const id of targets) {
+  const shares = splitShopifySessionsAmongCampaigns(sessions, targets);
+  for (const [id, val] of Object.entries(shares)) {
     base[id] = val;
   }
   return base;
