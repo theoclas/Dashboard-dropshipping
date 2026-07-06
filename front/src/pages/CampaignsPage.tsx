@@ -25,10 +25,17 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ClearOutlined, LinkOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import { fmtApiDateIsoYmd, dayjsYesterday } from "../utils/calendarDateLocal";
+import {
+  META_API_DAY_DELAY_MS,
+  META_API_MAX_RANGE_DAYS,
+  countInclusiveDays,
+  enumerateYmdDays,
+  sleep,
+} from "../utils/metaApiRange";
 import { metaApiAccountAccessHint } from "../utils/metaApiErrorHint";
 import {
   deleteAdvertisingCampaign,
@@ -95,6 +102,25 @@ function normalizeMetaCampaignKey(id: string): string {
   return String(id).trim().replace(/\s+/g, "");
 }
 
+type MetaApiBatchDayStatus = "pending" | "loading" | "ok" | "error" | "importing" | "imported";
+
+type MetaApiBatchDay = {
+  reportDate: string;
+  status: MetaApiBatchDayStatus;
+  preview: ImportAdvertisingPreviewResponse | null;
+  error: string | null;
+  selectedCampaignIds: string[];
+  shopifySessionsInput: Record<string, string>;
+};
+
+function shopifyInputFromPreview(preview: ImportAdvertisingPreviewResponse): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const id of preview.uniqueCampaignIds ?? []) {
+    out[id] = "";
+  }
+  return out;
+}
+
 export function CampaignsPage() {
   const { token } = theme.useToken();
   const canModule = usePermission("moduleCampanasMeta");
@@ -117,7 +143,14 @@ export function CampaignsPage() {
   const [importSource, setImportSource] = useState<"file" | "meta-api">("file");
   const [useShopify, setUseShopify] = useState(false);
   const [importAccountId, setImportAccountId] = useState<string | undefined>();
-  const [metaApiReportDate, setMetaApiReportDate] = useState(() => dayjsYesterday());
+  const [metaApiDateRange, setMetaApiDateRange] = useState<[Dayjs, Dayjs]>(() => {
+    const y = dayjsYesterday();
+    return [y, y];
+  });
+  const [metaApiBatchDays, setMetaApiBatchDays] = useState<MetaApiBatchDay[]>([]);
+  const [activeBatchDate, setActiveBatchDate] = useState<string | null>(null);
+  const [metaApiBatchProgress, setMetaApiBatchProgress] = useState<string | null>(null);
+  const [metaApiBatchImporting, setMetaApiBatchImporting] = useState(false);
   const [metaAdsAppId, setMetaAdsAppId] = useState<string | undefined>();
   const [metaAdsSystemUserId, setMetaAdsSystemUserId] = useState<string | undefined>();
   const [metaAppOptions, setMetaAppOptions] = useState<MetaAdsAppOption[]>([]);
@@ -360,30 +393,306 @@ export function CampaignsPage() {
 
   const fetchMetaApiPreview = useCallback(async (): Promise<boolean> => {
     if (!productId || !importAccountId) return false;
+    const [desde, hasta] = metaApiDateRange;
+    const dates = enumerateYmdDays(desde, hasta);
+    if (dates.length === 0) {
+      setImportPreviewError("Rango de fechas inválido.");
+      return false;
+    }
+    if (countInclusiveDays(desde, hasta) > META_API_MAX_RANGE_DAYS) {
+      setImportPreviewError(`Máximo ${META_API_MAX_RANGE_DAYS} días por consulta.`);
+      return false;
+    }
+
     setImportPreviewLoading(true);
     setImportPreviewError(null);
-    try {
-      const res = await previewMetaApiCampaignImport(productId, {
-        advertisingAccountId: importAccountId,
-        metaAdsAppId: metaAdsAppId ?? null,
-        metaAdsSystemUserId: metaAdsSystemUserId ?? null,
-        reportDate: metaApiReportDate.format("YYYY-MM-DD"),
-      });
-      setImportPreview(res);
-      mergeShopifyPreview(res);
-      return true;
-    } catch (e) {
-      setImportPreview(null);
-      const msg =
-        isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
-          ? String((e.response.data as { message?: string }).message)
-          : "No se pudo consultar Meta API. Revisa el token en .env y la cuenta publicitaria.";
-      setImportPreviewError(msg);
-      return false;
-    } finally {
-      setImportPreviewLoading(false);
+    setMetaApiBatchProgress(null);
+    setImportPreview(null);
+    setMetaApiBatchDays(
+      dates.map((reportDate) => ({
+        reportDate,
+        status: "pending",
+        preview: null,
+        error: null,
+        selectedCampaignIds: [],
+        shopifySessionsInput: {},
+      })),
+    );
+    setActiveBatchDate(null);
+
+    let firstOk: MetaApiBatchDay | null = null;
+
+    for (let i = 0; i < dates.length; i++) {
+      const reportDate = dates[i]!;
+      setMetaApiBatchProgress(`Consultando Meta API: día ${i + 1} de ${dates.length} (${reportDate})…`);
+      setMetaApiBatchDays((prev) =>
+        prev.map((d) => (d.reportDate === reportDate ? { ...d, status: "loading" } : d)),
+      );
+      if (i > 0) await sleep(META_API_DAY_DELAY_MS);
+      try {
+        const res = await previewMetaApiCampaignImport(productId, {
+          advertisingAccountId: importAccountId,
+          metaAdsAppId: metaAdsAppId ?? null,
+          metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+          reportDate,
+        });
+        const defaultSelected = res.defaultSelectedCampaignIds ?? res.uniqueCampaignIds ?? [];
+        const dayRow: MetaApiBatchDay = {
+          reportDate,
+          status: "ok",
+          preview: res,
+          error: null,
+          selectedCampaignIds: [...defaultSelected],
+          shopifySessionsInput: shopifyInputFromPreview(res),
+        };
+        setMetaApiBatchDays((prev) => prev.map((d) => (d.reportDate === reportDate ? dayRow : d)));
+        if (!firstOk) firstOk = dayRow;
+      } catch (e) {
+        const msg =
+          isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
+            ? String((e.response.data as { message?: string }).message)
+            : "No se pudo consultar Meta API.";
+        setMetaApiBatchDays((prev) =>
+          prev.map((d) =>
+            d.reportDate === reportDate ? { ...d, status: "error", error: msg, preview: null } : d,
+          ),
+        );
+      }
     }
-  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, metaApiReportDate, mergeShopifyPreview]);
+
+    setMetaApiBatchProgress(null);
+    setImportPreviewLoading(false);
+
+    if (firstOk) {
+      setActiveBatchDate(firstOk.reportDate);
+      setImportPreview(firstOk.preview);
+      setShopifyCampaignIds(firstOk.preview?.uniqueCampaignIds ?? []);
+      setCampaignDisplayNames(firstOk.preview?.campaignDisplayNames ?? {});
+      setImportSelectedCampaignIds(firstOk.selectedCampaignIds);
+      setShopifySessionsInput(firstOk.shopifySessionsInput);
+      return true;
+    }
+    setImportPreviewError("No se pudo consultar ningún día del rango.");
+    return false;
+  }, [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, metaApiDateRange]);
+
+  const getBatchDaysWithActivePersisted = useCallback((): MetaApiBatchDay[] => {
+    if (!activeBatchDate) return metaApiBatchDays;
+    return metaApiBatchDays.map((d) =>
+      d.reportDate === activeBatchDate
+        ? {
+            ...d,
+            selectedCampaignIds: [...importSelectedCampaignIds],
+            shopifySessionsInput: { ...shopifySessionsInput },
+          }
+        : d,
+    );
+  }, [activeBatchDate, metaApiBatchDays, importSelectedCampaignIds, shopifySessionsInput]);
+
+  const selectBatchDay = useCallback(
+    (reportDate: string) => {
+      const days = getBatchDaysWithActivePersisted();
+      const day = days.find((d) => d.reportDate === reportDate);
+      if (!day || day.status !== "ok" || !day.preview) return;
+      setMetaApiBatchDays(days);
+      setActiveBatchDate(reportDate);
+      setImportPreview(day.preview);
+      setShopifyCampaignIds(day.preview.uniqueCampaignIds ?? []);
+      setCampaignDisplayNames(day.preview.campaignDisplayNames ?? {});
+      setImportSelectedCampaignIds([...day.selectedCampaignIds]);
+      setShopifySessionsInput({ ...day.shopifySessionsInput });
+    },
+    [getBatchDaysWithActivePersisted],
+  );
+
+  const runMetaApiDayImport = useCallback(
+    async (day: MetaApiBatchDay): Promise<boolean> => {
+      if (!productId || !importAccountId || !day.preview || day.status === "imported") return false;
+      const previewIds = day.preview.uniqueCampaignIds ?? [];
+      if (previewIds.length > 1 && day.selectedCampaignIds.length === 0) {
+        message.warning(`Marca al menos una campaña para importar el día ${day.reportDate}.`);
+        return false;
+      }
+      let shopifyMap: Record<string, number> = {};
+      if (useShopify) {
+        shopifyMap = buildShopifySessionsMapFromInputs(day.shopifySessionsInput);
+      }
+      const allowedOpts =
+        previewIds.length > 1
+          ? { allowedCampaignIds: day.selectedCampaignIds.map((id) => normalizeMetaCampaignKey(id)) }
+          : {};
+
+      setMetaApiBatchDays((prev) =>
+        prev.map((d) => (d.reportDate === day.reportDate ? { ...d, status: "importing" } : d)),
+      );
+
+      try {
+        const res = await importMetaApiCampaignMetrics(productId, {
+          advertisingAccountId: importAccountId,
+          metaAdsAppId: metaAdsAppId ?? null,
+          metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+          reportDate: day.reportDate,
+          useShopifySessions: useShopify,
+          shopifySessionsByCampaignId: shopifyMap,
+          applyAdvertisingAccount: true,
+          ...allowedOpts,
+        });
+        setMetaApiBatchDays((prev) =>
+          prev.map((d) => (d.reportDate === day.reportDate ? { ...d, status: "imported" } : d)),
+        );
+        message.success(
+          `${day.reportDate}: ${res.imported} campañas nuevas, ${res.campaignsUpdated} actualizadas; métricas +${res.metricsCreated} / ~${res.metricsUpdated}.`,
+        );
+        if (res.errors.length) {
+          Modal.warning({
+            title: `Avisos del import (${day.reportDate})`,
+            content: res.errors.slice(0, 30).join("\n"),
+          });
+        }
+        void loadCampaigns(productId);
+        if (selectedCampaign) void loadMetrics(selectedCampaign.id);
+        return true;
+      } catch (e) {
+        setMetaApiBatchDays((prev) =>
+          prev.map((d) => (d.reportDate === day.reportDate ? { ...d, status: "ok" } : d)),
+        );
+        const msg =
+          isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
+            ? String((e.response.data as { message?: string }).message)
+            : "Error al importar.";
+        message.error(`${day.reportDate}: ${msg}`);
+        return false;
+      }
+    },
+    [productId, importAccountId, metaAdsAppId, metaAdsSystemUserId, useShopify, loadCampaigns, selectedCampaign, loadMetrics],
+  );
+
+  const handleImportAllBatchDays = useCallback(async () => {
+    const days = getBatchDaysWithActivePersisted().filter((d) => d.status === "ok" && d.preview);
+    if (days.length === 0) {
+      message.warning("No hay días listos para importar.");
+      return;
+    }
+    setMetaApiBatchImporting(true);
+    setMetaApiBatchDays(getBatchDaysWithActivePersisted());
+    let ok = 0;
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i]!;
+      setMetaApiBatchProgress(`Importando día ${i + 1} de ${days.length} (${day.reportDate})…`);
+      if (i > 0) await sleep(META_API_DAY_DELAY_MS);
+      const imported = await runMetaApiDayImport(day);
+      if (imported) ok += 1;
+    }
+    setMetaApiBatchProgress(null);
+    setMetaApiBatchImporting(false);
+    if (ok > 0) message.success(`Importación masiva: ${ok} de ${days.length} día(s) importados.`);
+  }, [getBatchDaysWithActivePersisted, runMetaApiDayImport]);
+
+  const activeBatchDay = useMemo(
+    () => (activeBatchDate ? metaApiBatchDays.find((d) => d.reportDate === activeBatchDate) ?? null : null),
+    [activeBatchDate, metaApiBatchDays],
+  );
+
+  const metaApiImportableCount = useMemo(
+    () => metaApiBatchDays.filter((d) => d.status === "ok" && d.preview).length,
+    [metaApiBatchDays],
+  );
+
+  const metaApiBatchDayStatusTag = (status: MetaApiBatchDayStatus) => {
+    switch (status) {
+      case "pending":
+        return <Tag>Pendiente</Tag>;
+      case "loading":
+        return <Tag color="processing">Consultando…</Tag>;
+      case "ok":
+        return <Tag color="success">Listo</Tag>;
+      case "error":
+        return <Tag color="error">Error</Tag>;
+      case "importing":
+        return <Tag color="processing">Importando…</Tag>;
+      case "imported":
+        return <Tag color="cyan">Importado</Tag>;
+      default:
+        return <Tag>{status}</Tag>;
+    }
+  };
+
+  const metaApiBatchColumns: ColumnsType<MetaApiBatchDay> = useMemo(
+    () => [
+      {
+        title: "Día",
+        dataIndex: "reportDate",
+        key: "date",
+        width: 120,
+        render: (v: string) => fmtApiDateIsoYmd(v),
+      },
+      {
+        title: "Estado",
+        dataIndex: "status",
+        key: "status",
+        width: 130,
+        render: (_: unknown, row) => metaApiBatchDayStatusTag(row.status),
+      },
+      {
+        title: "Resumen",
+        key: "summary",
+        render: (_: unknown, row) => {
+          if (row.status === "error") return <Text type="danger">{row.error ?? "Error"}</Text>;
+          if (!row.preview) return "—";
+          const n = row.preview.uniqueCampaignIds?.length ?? 0;
+          return (
+            <Text type="secondary">
+              {row.preview.totalRows} fila(s), {n} campaña(s)
+            </Text>
+          );
+        },
+      },
+      {
+        title: "Acciones",
+        key: "actions",
+        width: 200,
+        render: (_: unknown, row) => (
+          <Space size="small">
+            <Button
+              size="small"
+              type={activeBatchDate === row.reportDate ? "primary" : "default"}
+              disabled={row.status !== "ok" || !row.preview}
+              onClick={() => selectBatchDay(row.reportDate)}
+            >
+              Ver
+            </Button>
+            <Button
+              size="small"
+              disabled={
+                row.status !== "ok" ||
+                !row.preview ||
+                metaApiBatchImporting ||
+                importPreviewLoading
+              }
+              loading={row.status === "importing"}
+              onClick={() => {
+                const days = getBatchDaysWithActivePersisted();
+                const day = days.find((d) => d.reportDate === row.reportDate);
+                if (!day) return;
+                setMetaApiBatchDays(days);
+                void runMetaApiDayImport(day);
+              }}
+            >
+              Importar
+            </Button>
+          </Space>
+        ),
+      },
+    ],
+    [
+      activeBatchDate,
+      selectBatchDay,
+      getBatchDaysWithActivePersisted,
+      runMetaApiDayImport,
+      metaApiBatchImporting,
+      importPreviewLoading,
+    ],
+  );
 
   useEffect(() => {
     if (importSource !== "file") return;
@@ -411,11 +720,14 @@ export function CampaignsPage() {
     setImportPreview(null);
     setImportPreviewError(null);
     setImportPreviewLoading(false);
+    setMetaApiBatchDays([]);
+    setActiveBatchDate(null);
+    setMetaApiBatchProgress(null);
     setShopifyCampaignIds([]);
     setCampaignDisplayNames({});
     setShopifySessionsInput({});
     setImportSelectedCampaignIds([]);
-  }, [importSource, importAccountId, productId, metaApiReportDate]);
+  }, [importSource, importAccountId, productId, metaApiDateRange]);
 
   const importPreviewColumns: ColumnsType<ImportAdvertisingPreviewResponse["sampleRows"][number]> = useMemo(
     () => [
@@ -549,8 +861,9 @@ export function CampaignsPage() {
     if (!productId) return false;
     if (importSource === "file" && !importFile) return true;
     if (importSource === "meta-api" && !importAccountId) return false;
-    if (importPreviewLoading || importPreviewError) return false;
+    if (importPreviewLoading || importPreviewError || metaApiBatchImporting) return false;
     if (!importPreview) return false;
+    if (importSource === "meta-api" && activeBatchDay?.status === "imported") return false;
     if (importPreview.uniqueCampaignIds.length > 1 && importSelectedCampaignIds.length === 0) return false;
     return true;
   }, [
@@ -560,8 +873,10 @@ export function CampaignsPage() {
     productId,
     importPreviewLoading,
     importPreviewError,
+    metaApiBatchImporting,
     importPreview,
     importSelectedCampaignIds,
+    activeBatchDay,
   ]);
 
   const handleRefreshImportPreview = async () => {
@@ -601,12 +916,33 @@ export function CampaignsPage() {
     setImportCreateMetaId("");
     setImportCreateName("");
     setImportSelectedCampaignIds([]);
+    setMetaApiBatchDays([]);
+    setActiveBatchDate(null);
+    setMetaApiBatchProgress(null);
+    setMetaApiBatchImporting(false);
+    setMetaApiDateRange(() => {
+      const y = dayjsYesterday();
+      return [y, y];
+    });
     if (notify) message.success("Formulario de import listo para un archivo nuevo.");
   }, []);
 
   const handleImport = async () => {
     if (!productId) {
       message.warning("Selecciona producto del catálogo.");
+      return;
+    }
+    if (importSource === "meta-api") {
+      const days = getBatchDaysWithActivePersisted();
+      const day =
+        (activeBatchDate ? days.find((d) => d.reportDate === activeBatchDate) : null) ??
+        days.find((d) => d.status === "ok" && d.preview);
+      if (!day?.preview) {
+        message.warning("Consulta primero el rango con «Traer desde API».");
+        return;
+      }
+      setMetaApiBatchDays(days);
+      await runMetaApiDayImport(day);
       return;
     }
     const previewIds = importPreview?.uniqueCampaignIds ?? [];
@@ -624,25 +960,13 @@ export function CampaignsPage() {
         : {};
 
     try {
-      const res =
-        importSource === "meta-api"
-          ? await importMetaApiCampaignMetrics(productId, {
-              advertisingAccountId: importAccountId!,
-              metaAdsAppId: metaAdsAppId ?? null,
-              metaAdsSystemUserId: metaAdsSystemUserId ?? null,
-              reportDate: metaApiReportDate.format("YYYY-MM-DD"),
-              useShopifySessions: useShopify,
-              shopifySessionsByCampaignId: shopifyMap,
-              applyAdvertisingAccount: true,
-              ...allowedOpts,
-            })
-          : await importAdvertisingCampaignMetrics(productId, importFile!, {
-              useShopifySessions: useShopify,
-              shopifySessionsByCampaignId: shopifyMap,
-              applyAdvertisingAccount: !!importAccountId,
-              advertisingAccountId: importAccountId ?? null,
-              ...allowedOpts,
-            });
+      const res = await importAdvertisingCampaignMetrics(productId, importFile!, {
+        useShopifySessions: useShopify,
+        shopifySessionsByCampaignId: shopifyMap,
+        applyAdvertisingAccount: !!importAccountId,
+        advertisingAccountId: importAccountId ?? null,
+        ...allowedOpts,
+      });
       message.success(
         `Importación: ${res.imported} campañas nuevas, ${res.campaignsUpdated} actualizadas; métricas +${res.metricsCreated} / ~${res.metricsUpdated} actualizadas.`,
       );
@@ -1035,8 +1359,8 @@ export function CampaignsPage() {
             <Alert
               type="info"
               showIcon
-              message="Consulta un día concreto desde Meta Insights API"
-              description="Por defecto se usa ayer. Elige producto, cuenta publicitaria y día; pulsa «Traer desde API» para la vista previa antes de importar."
+              message="Consulta por rango desde Meta Insights API"
+              description={`Elige un rango de hasta ${META_API_MAX_RANGE_DAYS} días (máx.). El sistema consulta día a día con pausa entre llamadas para no saturar la API. Tras «Traer desde API» verás un resumen por día; puedes importar cada uno o todos a la vez.`}
             />
             <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
               Aplicar sesiones Shopify manuales (editable en la vista previa)
@@ -1065,13 +1389,49 @@ export function CampaignsPage() {
           ) : null}
 
           {(importSource === "file" && importFile && productId) ||
-          (importSource === "meta-api" && productId && importAccountId && (importPreview || importPreviewLoading || importPreviewError)) ? (
+          (importSource === "meta-api" &&
+            productId &&
+            importAccountId &&
+            (importPreview || importPreviewLoading || importPreviewError || metaApiBatchDays.length > 0)) ? (
             <div style={{ width: "100%" }}>
+              {importSource === "meta-api" && metaApiBatchDays.length > 0 ? (
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong style={{ display: "block", marginBottom: 8 }}>
+                    Resumen por día (glosario)
+                  </Text>
+                  {metaApiBatchProgress ? (
+                    <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                      {metaApiBatchProgress}
+                    </Text>
+                  ) : null}
+                  <Table
+                    size="small"
+                    rowKey="reportDate"
+                    dataSource={metaApiBatchDays}
+                    columns={metaApiBatchColumns}
+                    pagination={false}
+                    scroll={{ x: "max-content" }}
+                  />
+                </div>
+              ) : null}
               <Text strong style={{ display: "block", marginBottom: 8 }}>
                 Vista previa del import
+                {importSource === "meta-api" && activeBatchDate ? (
+                  <Text type="secondary" style={{ fontWeight: 400 }}>
+                    {" "}
+                    — día {fmtApiDateIsoYmd(activeBatchDate)}
+                    {activeBatchDay?.status === "imported" ? " (ya importado)" : ""}
+                  </Text>
+                ) : null}
               </Text>
               {importPreviewLoading ? (
-                <Spin tip={importSource === "meta-api" ? "Consultando Meta API…" : "Analizando archivo…"} />
+                <Spin
+                  tip={
+                    importSource === "meta-api"
+                      ? metaApiBatchProgress ?? "Consultando Meta API día a día…"
+                      : "Analizando archivo…"
+                  }
+                />
               ) : importPreviewError ? (
                 <Alert
                   type="error"
@@ -1079,7 +1439,12 @@ export function CampaignsPage() {
                   message={importPreviewError}
                   description={metaApiAccountAccessHint(importPreviewError) ?? undefined}
                   action={
-                    <Button size="small" onClick={() => void fetchImportPreview()}>
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        void (importSource === "meta-api" ? fetchMetaApiPreview() : fetchImportPreview())
+                      }
+                    >
                       Reintentar
                     </Button>
                   }
@@ -1278,18 +1643,31 @@ export function CampaignsPage() {
             {importSource === "meta-api" ? (
               <div style={{ maxWidth: 560, marginTop: 12 }}>
                 <Text strong style={{ display: "block", marginBottom: 6 }}>
-                  Día a consultar
+                  Rango a consultar (máx. {META_API_MAX_RANGE_DAYS} días)
                 </Text>
-                <DatePicker
-                  value={metaApiReportDate}
-                  onChange={(d) => setMetaApiReportDate(d ?? dayjsYesterday())}
+                <DatePicker.RangePicker
+                  value={metaApiDateRange}
+                  onChange={(vals) => {
+                    if (!vals?.[0] || !vals[1]) {
+                      const y = dayjsYesterday();
+                      setMetaApiDateRange([y, y]);
+                      return;
+                    }
+                    const [a, b] = vals;
+                    if (countInclusiveDays(a, b) > META_API_MAX_RANGE_DAYS) {
+                      message.warning(`Máximo ${META_API_MAX_RANGE_DAYS} días por consulta.`);
+                      return;
+                    }
+                    setMetaApiDateRange([a, b]);
+                  }}
                   format="DD/MM/YYYY"
                   allowClear={false}
                   disabledDate={(current) => Boolean(current && current > dayjs().endOf("day"))}
                   style={{ width: "100%", maxWidth: 480, marginBottom: 12 }}
                 />
                 <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 12 }}>
-                  Un solo día (sin rango). Por defecto: ayer.
+                  Consulta día a día con pausa de ~{Math.round(META_API_DAY_DELAY_MS / 1000)} s entre llamadas. Por
+                  defecto: ayer.
                 </Text>
                 <Text strong style={{ display: "block", marginBottom: 6 }}>
                   App Meta
@@ -1386,7 +1764,7 @@ export function CampaignsPage() {
               <Button
                 type="default"
                 onClick={() => void handleRefreshImportPreview()}
-                disabled={!productId || !importAccountId || importPreviewLoading}
+                disabled={!productId || !importAccountId || importPreviewLoading || metaApiBatchImporting}
                 loading={importPreviewLoading}
               >
                 Traer desde API
@@ -1399,6 +1777,21 @@ export function CampaignsPage() {
                 Actualizar vista previa
               </Button>
             )}
+            {importSource === "meta-api" && metaApiImportableCount > 0 ? (
+              <Button
+                onClick={() => void handleImportAllBatchDays()}
+                disabled={
+                  !canImport ||
+                  !productId ||
+                  !importAccountId ||
+                  importPreviewLoading ||
+                  metaApiBatchImporting
+                }
+                loading={metaApiBatchImporting}
+              >
+                Importar todos ({metaApiImportableCount})
+              </Button>
+            ) : null}
             <Button
               type="primary"
               onClick={handleImport}
@@ -1406,10 +1799,11 @@ export function CampaignsPage() {
                 !canImport ||
                 !productId ||
                 !importPreviewReady ||
-                (importSource === "file" ? !importFile : !importAccountId)
+                (importSource === "file" ? !importFile : !importAccountId) ||
+                metaApiBatchImporting
               }
             >
-              Importar
+              {importSource === "meta-api" ? "Importar día activo" : "Importar"}
             </Button>
           </Space>
         </Space>

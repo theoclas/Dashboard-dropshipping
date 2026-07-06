@@ -132,6 +132,58 @@ export function registerBusinessModules(app: express.Application) {
     },
   );
 
+  app.delete(
+    "/api/catalog-products/:id",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCatalogoProductosCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const id = String(req.params.id);
+      const ok = await catalogProductService.deleteCatalogProduct(u.companyId, id);
+      if (!ok) return res.status(404).json({ message: "Producto no encontrado." });
+      return res.status(204).send();
+    },
+  );
+
+  app.post(
+    "/api/catalog-products/merge",
+    authRequired,
+    companyRequired,
+    requirePermission("actionCatalogoProductosCrud"),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = z
+        .object({
+          targetId: z.string().min(1),
+          sourceIds: z.array(z.string().min(1)).min(1).max(50),
+        })
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+
+      const result = await catalogProductService.mergeCatalogProducts(
+        u.companyId,
+        parsed.data.targetId,
+        parsed.data.sourceIds,
+      );
+      if (!result.ok) {
+        const msg =
+          result.code === "TARGET_NOT_FOUND" || result.code === "SOURCE_NOT_FOUND"
+            ? "Producto no encontrado."
+            : result.code === "SAME_PRODUCT"
+              ? "El producto destino no puede estar entre los que se unen."
+              : "Indica al menos un producto a unir.";
+        return res.status(400).json({ message: msg });
+      }
+      const row = await catalogProductService.getCatalogProduct(u.companyId, parsed.data.targetId);
+      return res.json({
+        merged: result.merged,
+        skipped_dropi_links: result.skippedDropiLinks,
+        product: row,
+      });
+    },
+  );
+
   app.get(
     "/api/catalog-products/:productId/dropi-links",
     authRequired,

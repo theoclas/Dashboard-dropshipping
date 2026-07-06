@@ -17,13 +17,15 @@ import {
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { InboxOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import { InboxOutlined, DeleteOutlined, MergeCellsOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import {
+  deleteCatalogProduct,
   deleteCatalogProductDropiLink,
   fetchCatalogProducts,
   fetchOrderProductLines,
+  mergeCatalogProducts,
   postCatalogProduct,
   upsertCatalogProductDropiLink,
   upsertCatalogProductDropiLinksBulk,
@@ -72,12 +74,15 @@ export function ProductosPedidosPage() {
   const [createForm] = Form.useForm<{ name: string; sku?: string; notes?: string }>();
   const [catalogCreateOpen, setCatalogCreateOpen] = useState(false);
   const [metaConfigProduct, setMetaConfigProduct] = useState<CatalogProduct | null>(null);
+  const [mergeSource, setMergeSource] = useState<CatalogProduct | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | undefined>();
+  const [mergeLoading, setMergeLoading] = useState(false);
 
   const canMetaConfig =
     usePermission("moduleCampanasMeta") || usePermission("moduleCuentasPublicitarias");
 
   const loadCatalog = useCallback(async () => {
-    if (!canCatalog && !canMetaConfig) return;
+    if (!canCatalog && !canMetaConfig && !canCatalogCrud) return;
     try {
       const list = await fetchCatalogProducts();
       setCatalogList(list.filter((p) => p.isActive));
@@ -85,7 +90,7 @@ export function ProductosPedidosPage() {
       message.error("No se pudo cargar el catálogo.");
       setCatalogList([]);
     }
-  }, [canCatalog, canMetaConfig]);
+  }, [canCatalog, canMetaConfig, canCatalogCrud]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
@@ -130,6 +135,94 @@ export function ProductosPedidosPage() {
     setCatalogPick(undefined);
     void loadCatalog();
   }, [linkRow, canCatalog, loadCatalog]);
+
+  const handleDeleteCatalogProduct = useCallback(
+    async (p: CatalogProduct) => {
+      try {
+        await deleteCatalogProduct(p.id);
+        message.success(`«${p.name}» eliminado del catálogo.`);
+        if (metaConfigProduct?.id === p.id) setMetaConfigProduct(null);
+        void loadCatalog();
+      } catch {
+        message.error("No se pudo eliminar el producto.");
+      }
+    },
+    [loadCatalog, metaConfigProduct?.id],
+  );
+
+  const handleMergeCatalog = useCallback(async () => {
+    if (!mergeSource || !mergeTargetId) return;
+    setMergeLoading(true);
+    try {
+      const res = await mergeCatalogProducts({ targetId: mergeTargetId, sourceIds: [mergeSource.id] });
+      message.success(
+        res.skipped_dropi_links > 0
+          ? `Unido en «${res.product.name}». ${res.skipped_dropi_links} variante(s) ya existían en el destino.`
+          : `Unido en «${res.product.name}».`,
+      );
+      setMergeSource(null);
+      setMergeTargetId(undefined);
+      void loadCatalog();
+    } catch (e) {
+      const msg =
+        isAxiosError(e) && typeof e.response?.data === "object" && e.response?.data && "message" in e.response.data
+          ? String((e.response.data as { message?: string }).message)
+          : "No se pudo unir el producto.";
+      message.error(msg);
+    } finally {
+      setMergeLoading(false);
+    }
+  }, [mergeSource, mergeTargetId, loadCatalog]);
+
+  const catalogTableColumns = useMemo(() => {
+    const cols: ColumnsType<CatalogProduct> = [
+      { title: "Producto", dataIndex: "name", key: "name" },
+      { title: "SKU", dataIndex: "sku", key: "sku", render: (v) => v ?? "—" },
+    ];
+    if (canMetaConfig || canCatalogCrud) {
+      cols.push({
+        title: "",
+        key: "actions",
+        width: canCatalogCrud ? 320 : 160,
+        render: (_, p) => (
+          <Space wrap size="small">
+            {canMetaConfig ? (
+              <Button size="small" icon={<SettingOutlined />} onClick={() => setMetaConfigProduct(p)}>
+                Configurar Meta
+              </Button>
+            ) : null}
+            {canCatalogCrud ? (
+              <>
+                <Button
+                  size="small"
+                  icon={<MergeCellsOutlined />}
+                  onClick={() => {
+                    setMergeSource(p);
+                    setMergeTargetId(undefined);
+                  }}
+                >
+                  Juntar
+                </Button>
+                <Popconfirm
+                  title={`¿Eliminar «${p.name}»?`}
+                  description="Se quitan vínculos Dropi, Meta y CPA de este producto. No borra pedidos Dropi."
+                  okText="Eliminar"
+                  cancelText="Cancelar"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => void handleDeleteCatalogProduct(p)}
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />}>
+                    Eliminar
+                  </Button>
+                </Popconfirm>
+              </>
+            ) : null}
+          </Space>
+        ),
+      });
+    }
+    return cols;
+  }, [canMetaConfig, canCatalogCrud, handleDeleteCatalogProduct]);
 
   const handleUnlink = useCallback(
     async (r: OrderProductLine) => {
@@ -561,31 +654,14 @@ export function ProductosPedidosPage() {
             </Space>
           )
           ) : null}
-          {canMetaConfig && catalogList.length > 0 ? (
+          {catalogList.length > 0 && (canMetaConfig || canCatalogCrud) ? (
             <Table
               style={{ marginTop: 16 }}
               size="small"
               rowKey="id"
               pagination={false}
               dataSource={catalogList}
-              columns={[
-                { title: "Producto", dataIndex: "name", key: "name" },
-                { title: "SKU", dataIndex: "sku", key: "sku", render: (v) => v ?? "—" },
-                {
-                  title: "",
-                  key: "meta",
-                  width: 160,
-                  render: (_, p) => (
-                    <Button
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={() => setMetaConfigProduct(p)}
-                    >
-                      Configurar Meta
-                    </Button>
-                  ),
-                },
-              ]}
+              columns={catalogTableColumns}
             />
           ) : null}
         </Card>
@@ -722,6 +798,48 @@ export function ProductosPedidosPage() {
       >
         {metaConfigProduct ? <ProductMetaMappingPanel catalogProduct={metaConfigProduct} /> : null}
       </Drawer>
+
+      <Modal
+        title="Juntar producto del catálogo"
+        open={mergeSource != null}
+        onCancel={() => {
+          setMergeSource(null);
+          setMergeTargetId(undefined);
+        }}
+        onOk={() => void handleMergeCatalog()}
+        okText="Juntar"
+        confirmLoading={mergeLoading}
+        okButtonProps={{ disabled: !mergeTargetId }}
+        destroyOnClose
+      >
+        {mergeSource ? (
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <Text>
+              Mover vínculos Dropi, campañas Meta, cuentas y CPA de{" "}
+              <Text strong>«{mergeSource.name}»</Text> hacia otro producto. El duplicado se elimina al finalizar.
+            </Text>
+            <div>
+              <Text strong style={{ display: "block", marginBottom: 8 }}>
+                Producto que se conserva
+              </Text>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="Elige el producto destino"
+                style={{ width: "100%" }}
+                value={mergeTargetId}
+                onChange={setMergeTargetId}
+                options={catalogList
+                  .filter((p) => p.id !== mergeSource.id)
+                  .map((p) => ({
+                    value: p.id,
+                    label: `${p.name}${p.sku ? ` (${p.sku})` : ""}`,
+                  }))}
+              />
+            </div>
+          </Space>
+        ) : null}
+      </Modal>
     </Space>
   );
 }

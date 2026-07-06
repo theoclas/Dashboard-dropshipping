@@ -264,3 +264,133 @@ export async function replaceProductAdvertisingAccounts(
 
   return { ok: true as const, accounts: await listProductAdvertisingAccounts(companyId, catalogProductId) };
 }
+
+export async function deleteCatalogProduct(companyId: string, id: string): Promise<boolean> {
+  const r = await prisma.catalogProduct.deleteMany({ where: { id, companyId } });
+  return r.count > 0;
+}
+
+export async function mergeCatalogProducts(
+  companyId: string,
+  targetId: string,
+  sourceIds: string[],
+): Promise<
+  | { ok: false; code: "TARGET_NOT_FOUND" | "SOURCE_NOT_FOUND" | "NO_SOURCES" | "SAME_PRODUCT" }
+  | { ok: true; merged: number; skippedDropiLinks: number }
+> {
+  const sources = [...new Set(sourceIds.filter(Boolean))].filter((id) => id !== targetId);
+  if (sources.length === 0) {
+    if (sourceIds.some((id) => id === targetId)) return { ok: false, code: "SAME_PRODUCT" };
+    return { ok: false, code: "NO_SOURCES" };
+  }
+
+  const target = await getCatalogProduct(companyId, targetId);
+  if (!target) return { ok: false, code: "TARGET_NOT_FOUND" };
+
+  const sourceProducts = await prisma.catalogProduct.findMany({
+    where: { companyId, id: { in: sources } },
+    select: { id: true },
+  });
+  if (sourceProducts.length !== sources.length) return { ok: false, code: "SOURCE_NOT_FOUND" };
+
+  let skippedDropiLinks = 0;
+
+  await prisma.$transaction(async (tx) => {
+    const targetVariantKeys = new Set(
+      (
+        await tx.catalogProductDropiLink.findMany({
+          where: { companyId, catalogProductId: targetId },
+          select: { variantKey: true },
+        })
+      ).map((l) => l.variantKey),
+    );
+
+    for (const sourceId of sources) {
+      const srcLinks = await tx.catalogProductDropiLink.findMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+      for (const link of srcLinks) {
+        if (targetVariantKeys.has(link.variantKey)) {
+          await tx.catalogProductDropiLink.delete({ where: { id: link.id } });
+          skippedDropiLinks += 1;
+        } else {
+          await tx.catalogProductDropiLink.update({
+            where: { id: link.id },
+            data: { catalogProductId: targetId },
+          });
+          targetVariantKeys.add(link.variantKey);
+        }
+      }
+
+      const accLinks = await tx.catalogProductAdvertisingAccount.findMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+      for (const al of accLinks) {
+        await tx.catalogProductAdvertisingAccount.upsert({
+          where: {
+            companyId_catalogProductId_advertisingAccountId: {
+              companyId,
+              catalogProductId: targetId,
+              advertisingAccountId: al.advertisingAccountId,
+            },
+          },
+          create: {
+            companyId,
+            catalogProductId: targetId,
+            advertisingAccountId: al.advertisingAccountId,
+          },
+          update: {},
+        });
+      }
+      await tx.catalogProductAdvertisingAccount.deleteMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+
+      const campLinks = await tx.catalogProductAdvertisingCampaign.findMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+      for (const cl of campLinks) {
+        await tx.catalogProductAdvertisingCampaign.upsert({
+          where: {
+            companyId_catalogProductId_campaignId: {
+              companyId,
+              catalogProductId: targetId,
+              campaignId: cl.campaignId,
+            },
+          },
+          create: { companyId, catalogProductId: targetId, campaignId: cl.campaignId },
+          update: {},
+        });
+      }
+      await tx.catalogProductAdvertisingCampaign.deleteMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+
+      await tx.cpaRecord.updateMany({
+        where: { companyId, productId: sourceId },
+        data: { productId: targetId },
+      });
+
+      const expRows = await tx.cpaExperimentalRecord.findMany({
+        where: { companyId, catalogProductId: sourceId },
+      });
+      for (const row of expRows) {
+        const conflict = await tx.cpaExperimentalRecord.findFirst({
+          where: { companyId, catalogProductId: targetId, fecha: row.fecha },
+        });
+        if (conflict) {
+          await tx.cpaExperimentalRecord.delete({ where: { id: row.id } });
+        } else {
+          await tx.cpaExperimentalRecord.update({
+            where: { id: row.id },
+            data: { catalogProductId: targetId },
+          });
+        }
+      }
+
+      await tx.catalogProduct.delete({ where: { id: sourceId } });
+    }
+  });
+
+  return { ok: true, merged: sources.length, skippedDropiLinks };
+}

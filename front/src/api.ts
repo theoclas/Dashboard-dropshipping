@@ -468,6 +468,21 @@ export async function postCatalogProduct(body: { name: string; sku?: string; not
   return data;
 }
 
+export async function deleteCatalogProduct(id: string): Promise<void> {
+  await api.delete(`/catalog-products/${id}`);
+}
+
+export async function mergeCatalogProducts(body: {
+  targetId: string;
+  sourceIds: string[];
+}): Promise<{ merged: number; skipped_dropi_links: number; product: CatalogProduct }> {
+  const { data } = await api.post<{ merged: number; skipped_dropi_links: number; product: CatalogProduct }>(
+    "/catalog-products/merge",
+    body,
+  );
+  return data;
+}
+
 export async function fetchAdvertisingCampaigns(productId: string): Promise<AdvertisingCampaignRow[]> {
   const { data } = await api.get<AdvertisingCampaignRow[]>(
     `/catalog-products/${productId}/advertising-campaigns`,
