@@ -70,14 +70,24 @@ export async function importAdvertisingCampaignMetrics(
     const recordDate = toMetricRecordDate(r.recordDate);
     const extId = r.externalCampaignId.trim();
 
-    let shopify = r.shopifySessions;
+    let shopify: number | null | undefined = r.shopifySessions ?? undefined;
+    let shopifyManualApplied = false;
     if (options.useShopifySessions) {
       const k = normalizeCampaignMapKey(extId);
       const manual = options.shopifySessionsByCampaignId[k];
       if (manual !== undefined && manual !== null && !Number.isNaN(Number(manual))) {
         shopify = Math.round(Number(manual));
+        shopifyManualApplied = true;
+      } else {
+        shopify = null;
       }
     }
+
+    const shopifyForDb = options.useShopifySessions
+      ? shopifyManualApplied
+        ? (shopify ?? null)
+        : null
+      : (shopify ?? null);
 
     const snapshot = r.rawRow as Prisma.InputJsonValue;
 
@@ -127,13 +137,13 @@ export async function importAdvertisingCampaignMetrics(
           recordDate,
           metaLinkClicks: r.metaLinkClicks ?? null,
           metaConversationsStarted: r.metaConversationsStarted ?? null,
-          shopifySessions: shopify ?? null,
+          shopifySessions: shopifyForDb,
           metaExcelSnapshot: snapshot,
         },
         update: {
           metaLinkClicks: r.metaLinkClicks ?? null,
           metaConversationsStarted: r.metaConversationsStarted ?? null,
-          shopifySessions: shopify ?? null,
+          ...(options.useShopifySessions ? { shopifySessions: shopifyForDb } : { shopifySessions: shopify ?? null }),
           metaExcelSnapshot: snapshot,
         },
       });

@@ -171,12 +171,12 @@ export function applySessionsToBatchDays<T extends {
   byDate: Map<string, number>,
 ): { updated: T[]; applied: number; batchWithoutJson: number; jsonWithoutBatch: number } {
   const batchOkDates = new Set(
-    days.filter((d) => d.status === "ok" && d.preview).map((d) => d.reportDate),
+    days.filter((d) => (d.status === "ok" || d.status === "imported") && d.preview).map((d) => d.reportDate),
   );
   let applied = 0;
   let batchWithoutJson = 0;
   const updated = days.map((day) => {
-    if (day.status !== "ok" || !day.preview) return day;
+    if ((day.status !== "ok" && day.status !== "imported") || !day.preview) return day;
     const sessions = byDate.get(day.reportDate);
     if (sessions == null) {
       batchWithoutJson++;
@@ -185,6 +185,7 @@ export function applySessionsToBatchDays<T extends {
     applied++;
     return {
       ...day,
+      status: "ok" as const,
       shopifySessionsInput: shopifySessionsInputForDay(day.preview, day.selectedCampaignIds, sessions),
     };
   });

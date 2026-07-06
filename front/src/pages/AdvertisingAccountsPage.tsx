@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined } from "@ant-design/icons";
 import {
   Button,
   Card,
@@ -22,6 +22,7 @@ import {
   fetchAdvertisingAccountOperationalExpenses,
   fetchAdvertisingAccountsWithStats,
   fetchCatalogProducts,
+  patchMetaCampaignAdvertisingAccount,
   postMetaCampaignAdvertisingAccount,
 } from "../api";
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
@@ -48,6 +49,10 @@ export function AdvertisingAccountsPage() {
   const [metaId, setMetaId] = useState("");
   const [name, setName] = useState("");
   const [newAccountOpen, setNewAccountOpen] = useState(false);
+  const [editAccountOpen, setEditAccountOpen] = useState(false);
+  const [editMetaId, setEditMetaId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const [selected, setSelected] = useState<AdvertisingAccountWithStats | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -104,11 +109,66 @@ export function AdvertisingAccountsPage() {
     if (selected) void loadDetail();
   }, [selected, loadDetail]);
 
+  const openEditAccount = (row: AdvertisingAccountWithStats) => {
+    setEditMetaId(row.metaAccountId);
+    setEditName(row.businessName ?? "");
+    setEditAccountOpen(true);
+  };
+
+  const saveEditAccount = async () => {
+    if (!selected) return;
+    if (!editMetaId.trim()) {
+      message.warning("Indica el ID de cuenta Meta.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const updated = await patchMetaCampaignAdvertisingAccount(selected.id, {
+        metaAccountId: editMetaId.trim(),
+        businessName: editName.trim() || null,
+      });
+      message.success("Cuenta actualizada.");
+      setEditAccountOpen(false);
+      setSelected((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+      void load();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? String((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "")
+          : "";
+      message.error(msg || "No se pudo actualizar la cuenta.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const columns: ColumnsType<AdvertisingAccountWithStats> = [
     { title: "ID Meta", dataIndex: "metaAccountId", key: "mid" },
     { title: "Negocio", dataIndex: "businessName", key: "bn", render: (v) => v ?? "—" },
     { title: "Campañas", key: "c", render: (_, r) => r._count.advertisingCampaigns },
     { title: "Gastos vinculados", key: "g", render: (_, r) => r._count.operationalExpenses },
+    ...(canCrud
+      ? [
+          {
+            title: "",
+            key: "edit",
+            width: 56,
+            render: (_: unknown, r: AdvertisingAccountWithStats) => (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                aria-label="Editar cuenta"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelected(r);
+                  openEditAccount(r);
+                }}
+              />
+            ),
+          } as const,
+        ]
+      : []),
   ];
 
   const expenseColumns: ColumnsType<OperationalExpenseRow> = [
@@ -258,7 +318,10 @@ export function AdvertisingAccountsPage() {
           columns={columns}
           pagination={{ pageSize: 15 }}
           onRow={(record) => ({
-            onClick: () => setSelected((prev) => (prev?.id === record.id ? null : record)),
+            onClick: () => {
+              setEditAccountOpen(false);
+              setSelected((prev) => (prev?.id === record.id ? null : record));
+            },
             style: { cursor: "pointer" },
           })}
           rowClassName={(record) => (selected?.id === record.id ? "fs-account-row-selected" : "")}
@@ -276,9 +339,52 @@ export function AdvertisingAccountsPage() {
               <Button size="small" onClick={() => setSelected(null)}>
                 Cerrar detalle
               </Button>
+              {canCrud ? (
+                <Button size="small" icon={<EditOutlined />} onClick={() => openEditAccount(selected)}>
+                  Editar ID Meta
+                </Button>
+              ) : null}
             </Space>
           }
         >
+          {canCrud && editAccountOpen ? (
+            <Card size="small" title="Corregir cuenta Meta" style={{ marginBottom: 16 }}>
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <Text type="secondary">
+                  Cambia el ID numérico de Meta si lo registraste mal. Las campañas y gastos vinculados a esta cuenta
+                  interna se mantienen.
+                </Text>
+                <Space wrap>
+                  <Input
+                    placeholder="ID cuenta Meta (numérico)"
+                    value={editMetaId}
+                    onChange={(e) => setEditMetaId(e.target.value)}
+                    style={{ width: 220 }}
+                  />
+                  <Input
+                    placeholder="Nombre negocio (opcional)"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    style={{ width: 260 }}
+                  />
+                  <Button type="primary" loading={editSaving} onClick={() => void saveEditAccount()}>
+                    Guardar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditAccountOpen(false);
+                      if (selected) {
+                        setEditMetaId(selected.metaAccountId);
+                        setEditName(selected.businessName ?? "");
+                      }
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </Space>
+              </Space>
+            </Card>
+          ) : null}
           <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
             Haz clic de nuevo en la misma fila de la tabla superior para ocultar este panel. Los importes corresponden a{" "}
             <strong>gastos operacionales</strong> vinculados a esta cuenta Meta.

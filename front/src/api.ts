@@ -755,6 +755,14 @@ export async function postMetaCampaignAdvertisingAccount(body: {
   return data;
 }
 
+export async function patchMetaCampaignAdvertisingAccount(
+  id: string,
+  body: { metaAccountId?: string; businessName?: string | null },
+): Promise<AdvertisingAccount> {
+  const { data } = await api.patch<AdvertisingAccount>(`/meta-campaign/advertising-accounts/${id}`, body);
+  return data;
+}
+
 export async function fetchAdvertisingAccountsWithStats(): Promise<AdvertisingAccountWithStats[]> {
   const { data } = await api.get<AdvertisingAccountWithStats[]>("/advertising-accounts/with-stats");
   return data;

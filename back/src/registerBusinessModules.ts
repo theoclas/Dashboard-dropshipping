@@ -730,6 +730,38 @@ export function registerBusinessModules(app: express.Application) {
     },
   );
 
+  app.patch(
+    "/api/meta-campaign/advertising-accounts/:id",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["actionCampanasMetaCrud", "actionCuentasPublicitariasCrud"]),
+    async (req, res) => {
+      const u = user(req);
+      const id = String(req.params.id);
+      const parsed = z
+        .object({
+          metaAccountId: z.string().min(1).optional(),
+          businessName: z.string().nullable().optional(),
+        })
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+      if (parsed.data.metaAccountId === undefined && parsed.data.businessName === undefined) {
+        return res.status(400).json({ message: "Indica metaAccountId o businessName." });
+      }
+      try {
+        const result = await advertisingAccountService.updateAdvertisingAccount(u.companyId, id, parsed.data);
+        if (!result.ok) {
+          if (result.code === "NOT_FOUND") return res.status(404).json({ message: "Cuenta no encontrada." });
+          return res.status(409).json({ message: "Ya existe otra cuenta con ese ID Meta." });
+        }
+        return res.json(result.account);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return res.status(400).json({ message: msg });
+      }
+    },
+  );
+
   app.get(
     "/api/advertising-accounts/with-stats",
     authRequired,
