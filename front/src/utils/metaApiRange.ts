@@ -1,6 +1,6 @@
 import type { Dayjs } from "dayjs";
 
-export const META_API_MAX_RANGE_DAYS = 10;
+export const META_API_MAX_RANGE_DAYS = 30;
 /** Pausa entre consultas Meta API (evitar saturar / rate limit). */
 export const META_API_DAY_DELAY_MS = 1600;
 

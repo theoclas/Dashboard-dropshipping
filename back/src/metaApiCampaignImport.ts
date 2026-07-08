@@ -70,7 +70,7 @@ export async function previewMetaApiCampaignImport(
   };
 }
 
-export const META_API_MAX_RANGE_DAYS = 10;
+export const META_API_MAX_RANGE_DAYS = 30;
 export const META_API_DAY_DELAY_MS = 1600;
 
 function parseYmd(s: string): Date | null {
