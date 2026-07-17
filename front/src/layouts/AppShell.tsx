@@ -22,6 +22,7 @@ import {
   AppstoreOutlined,
   SettingOutlined,
   ExportOutlined,
+  ImportOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
@@ -74,7 +75,11 @@ function openSubmenusForPath(pathname: string): string[] {
   ) {
     keys.push(SUBMENU_MARKETING);
   }
-  if (pathname.startsWith("/app/gasto-operacional") || pathname.startsWith("/app/salidas-cartera")) {
+  if (
+    pathname.startsWith("/app/gasto-operacional") ||
+    pathname.startsWith("/app/salidas-cartera") ||
+    pathname.startsWith("/app/entradas-cartera")
+  ) {
     keys.push(SUBMENU_FINANZAS);
   }
   if (pathname.startsWith("/app/reportes")) {
@@ -99,6 +104,7 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
+  if (pathname.startsWith("/app/entradas-cartera")) return "/app/entradas-cartera";
   if (pathname.startsWith("/app/pedidos")) return "/app/pedidos";
   if (pathname.startsWith("/app/productos")) return "/app/productos";
   if (pathname.startsWith("/app/logistica")) return "/app/logistica";
@@ -255,6 +261,13 @@ export function AppShell() {
     ]);
 
     pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [
+      canSalidasCartera
+        ? {
+            key: "/app/entradas-cartera",
+            icon: <ImportOutlined />,
+            label: <Link to="/app/entradas-cartera">Entradas cartera</Link>,
+          }
+        : null,
       canSalidasCartera
         ? {
             key: "/app/salidas-cartera",

@@ -14,6 +14,8 @@ import type {
   CpaExperimentalRecordRow,
   CpaExperimentalRebuildResult,
   CpaResumenResponse,
+  CarteraEntradaCategoria,
+  CarteraEntradasResponse,
   CarteraSalidaCategoria,
   CarteraSalidasResponse,
   DropiWithdrawalRow,
@@ -241,6 +243,15 @@ export async function fetchCarteraSalidas(params?: {
   categoria?: CarteraSalidaCategoria;
 }): Promise<CarteraSalidasResponse> {
   const { data } = await api.get<CarteraSalidasResponse>("/cartera-salidas", { params });
+  return data;
+}
+
+export async function fetchCarteraEntradas(params?: {
+  desde?: string;
+  hasta?: string;
+  categoria?: CarteraEntradaCategoria;
+}): Promise<CarteraEntradasResponse> {
+  const { data } = await api.get<CarteraEntradasResponse>("/cartera-entradas", { params });
   return data;
 }
 

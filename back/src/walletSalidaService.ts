@@ -39,6 +39,7 @@ export type CarteraSalidaListItem = {
     estadoOperativo: string | null;
     fecha: string | null;
   } | null;
+  productos: Array<{ nombre: string; cantidad: number }>;
 };
 
 export type CarteraSalidasSummary = {
@@ -88,9 +89,9 @@ export async function listCarteraSalidas(
     opts?.categoria != null ? salidas.filter((s) => s.categoria === opts.categoria) : salidas;
 
   const ordenIds = [...new Set(filtered.map((s) => s.ordenId).filter((id): id is string => !!id))];
-  const pedidos =
+  const [pedidos, productos] = await Promise.all([
     ordenIds.length > 0
-      ? await prisma.order.findMany({
+      ? prisma.order.findMany({
           where: { companyId, externalOrderId: { in: ordenIds } },
           select: {
             externalOrderId: true,
@@ -99,8 +100,24 @@ export async function listCarteraSalidas(
             fecha: true,
           },
         })
-      : [];
+      : [],
+    ordenIds.length > 0
+      ? prisma.productDetail.findMany({
+          where: { companyId, pedidoIdDropi: { in: ordenIds } },
+          select: { pedidoIdDropi: true, productoNombre: true, cantidad: true },
+        })
+      : [],
+  ]);
   const pedidoByOrden = new Map(pedidos.map((p) => [p.externalOrderId, p]));
+  const productosByPedido = new Map<string, Array<{ nombre: string; cantidad: number }>>();
+  for (const producto of productos) {
+    const list = productosByPedido.get(producto.pedidoIdDropi) ?? [];
+    list.push({
+      nombre: producto.productoNombre?.trim() || "Sin producto",
+      cantidad: producto.cantidad ?? 1,
+    });
+    productosByPedido.set(producto.pedidoIdDropi, list);
+  }
 
   const byCategoria: CarteraSalidasSummary["byCategoria"] = {
     pedido: { count: 0, totalMonto: 0 },
@@ -130,6 +147,7 @@ export async function listCarteraSalidas(
       numeroGuia: row.numeroGuia,
       categoria,
       ordenId,
+      productos: ordenId ? productosByPedido.get(ordenId) ?? [] : [],
       pedido: ped
         ? {
             externalOrderId: ped.externalOrderId,

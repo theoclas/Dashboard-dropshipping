@@ -25,6 +25,7 @@ import { CampaignsPage } from "./pages/CampaignsPage";
 import { AdvertisingAccountsPage } from "./pages/AdvertisingAccountsPage";
 import { OperationalExpensesPage } from "./pages/OperationalExpensesPage";
 import { CarteraSalidasPage } from "./pages/CarteraSalidasPage";
+import { CarteraEntradasPage } from "./pages/CarteraEntradasPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 function Perm({ perm, children }: { perm: Parameters<typeof RequirePermission>[0]["perm"]; children: React.ReactNode }) {
@@ -131,6 +132,14 @@ export function AppRoutes() {
           element={
             <Perm perm="moduleCuentasPublicitarias">
               <AdvertisingAccountsPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="entradas-cartera"
+          element={
+            <Perm perm="moduleSalidasCartera">
+              <CarteraEntradasPage />
             </Perm>
           }
         />

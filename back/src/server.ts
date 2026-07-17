@@ -36,6 +36,8 @@ import { createImportBatch, listImportBatches, undoImportBatch } from "./importB
 import { listDropiWithdrawals, patchDropiWithdrawalNota } from "./dropiWithdrawalService";
 import { listCarteraSalidas } from "./walletSalidaService";
 import type { CarteraSalidaCategoria } from "./carteraSalidaClassification";
+import { listCarteraEntradas } from "./walletEntradaService";
+import type { CarteraEntradaCategoria } from "./carteraEntradaClassification";
 import {
   buildOrderOrderBy,
   buildPrismaOrderWhere,
@@ -1226,6 +1228,7 @@ app.get("/api/dropi-retiros", authRequired, companyRequired, requirePermission("
 });
 
 const CARTERA_SALIDA_CATEGORIAS = ["pedido", "retiro", "recarga_tarjeta", "otro"] as const;
+const CARTERA_ENTRADA_CATEGORIAS = ["pedido", "otro"] as const;
 
 app.get("/api/cartera-salidas", authRequired, companyRequired, requirePermission("moduleSalidasCartera"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;
@@ -1236,6 +1239,18 @@ app.get("/api/cartera-salidas", authRequired, companyRequired, requirePermission
   const desde = typeof req.query.desde === "string" ? req.query.desde : undefined;
   const hasta = typeof req.query.hasta === "string" ? req.query.hasta : undefined;
   const result = await listCarteraSalidas(user.companyId, { desde, hasta, categoria });
+  return res.json(result);
+});
+
+app.get("/api/cartera-entradas", authRequired, companyRequired, requirePermission("moduleSalidasCartera"), async (req, res) => {
+  const user = (req as express.Request & { user?: JwtPayload }).user!;
+  const rawCat = String(req.query.categoria ?? "");
+  const categoria = (CARTERA_ENTRADA_CATEGORIAS as readonly string[]).includes(rawCat)
+    ? (rawCat as CarteraEntradaCategoria)
+    : undefined;
+  const desde = typeof req.query.desde === "string" ? req.query.desde : undefined;
+  const hasta = typeof req.query.hasta === "string" ? req.query.hasta : undefined;
+  const result = await listCarteraEntradas(user.companyId, { desde, hasta, categoria });
   return res.json(result);
 });
 

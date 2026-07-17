@@ -20,6 +20,7 @@ import {
   CloseCircleOutlined,
   DollarOutlined,
   ExportOutlined,
+  ImportOutlined,
   InfoCircleOutlined,
   ShoppingCartOutlined,
   ShoppingOutlined,
@@ -32,7 +33,7 @@ import {
 } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { isDashboardCardVisible } from "../dashboardVisibility";
 import { useAuth } from "../contexts/AuthContext";
@@ -103,6 +104,10 @@ export type DashboardMetrics = {
   gastoOperacional: number;
   retirosDropiTotal: number;
   retirosDropiCount: number;
+  entradasCarteraTotal: number;
+  entradasCarteraCount: number;
+  salidasCarteraTotal: number;
+  salidasCarteraCount: number;
   pedidosCarteraSinOk: number;
   pedidosCarteraSinOkPct: number;
   pedidosCarteraSinOkEntregados: number;
@@ -187,6 +192,7 @@ function MetricCard({
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { token } = theme.useToken();
   const { user } = useAuth();
   const canOpenSettings = usePermission("moduleConfiguracion");
@@ -750,6 +756,44 @@ export function DashboardPage() {
               }
               hint={
                 <Tooltip title="Suma de montos en retiros_dropi (detectados al importar cartera por la descripción estándar de retiro de saldo), con fecha del movimiento en el rango. El número entre paréntesis es la cantidad de movimientos. Detalle en Configuración → Retiros Dropi.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_entradasCartera") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<ImportOutlined />}
+              label="Entradas cartera"
+              value={
+                loading
+                  ? "…"
+                  : `$${fmtMoney(data?.entradasCarteraTotal ?? 0)} (${fmtInteger(data?.entradasCarteraCount ?? 0)} mov.)`
+              }
+              onClick={() => navigate("/app/entradas-cartera")}
+              hint={
+                <Tooltip title="Movimientos ENTRADA del historial de cartera. Clic para ver pedido, producto u otras entradas.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_salidasCartera") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<ExportOutlined />}
+              label="Salidas cartera"
+              value={
+                loading
+                  ? "…"
+                  : `$${fmtMoney(data?.salidasCarteraTotal ?? 0)} (${fmtInteger(data?.salidasCarteraCount ?? 0)} mov.)`
+              }
+              onClick={() => navigate("/app/salidas-cartera")}
+              hint={
+                <Tooltip title="Movimientos SALIDA del historial de cartera. Clic para ver pedido, producto, retiros u otras salidas.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }

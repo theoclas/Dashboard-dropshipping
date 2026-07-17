@@ -152,6 +152,23 @@ export function CarteraSalidasPage() {
         width: 120,
       },
       {
+        title: "Producto",
+        key: "productos",
+        width: 260,
+        render: (_, r) =>
+          r.productos.length > 0 ? (
+            <Space direction="vertical" size={0}>
+              {r.productos.map((p, i) => (
+                <Text key={`${p.nombre}-${i}`}>
+                  {p.nombre} {p.cantidad > 1 ? `× ${p.cantidad}` : ""}
+                </Text>
+              ))}
+            </Space>
+          ) : (
+            <Tag>Otro</Tag>
+          ),
+      },
+      {
         title: "Descripción",
         dataIndex: "descripcion",
         key: "descripcion",
@@ -215,7 +232,16 @@ export function CarteraSalidasPage() {
         </Col>
         {(Object.keys(CATEGORIA_LABELS) as CarteraSalidaCategoria[]).map((cat) => (
           <Col xs={24} sm={12} lg={6} key={cat}>
-            <Card size="small" style={{ background: token.colorFillAlter }}>
+            <Card
+              size="small"
+              hoverable
+              onClick={() => setCategoria(cat)}
+              style={{
+                background: token.colorFillAlter,
+                borderColor: categoria === cat ? token.colorPrimary : undefined,
+                cursor: "pointer",
+              }}
+            >
               <Statistic
                 title={CATEGORIA_LABELS[cat]}
                 value={summary.byCategoria[cat].totalMonto}
@@ -236,7 +262,7 @@ export function CarteraSalidasPage() {
           columns={columns}
           pagination={{ pageSize: 20, showTotal: (t) => `${t} salidas` }}
           locale={{ emptyText: "Sin salidas. Importa el historial de cartera Dropi." }}
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1360 }}
         />
       </Card>
     </Space>

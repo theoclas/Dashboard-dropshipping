@@ -363,6 +363,7 @@ export type CarteraSalidaRow = {
     estadoOperativo: string | null;
     fecha: string | null;
   } | null;
+  productos: Array<{ nombre: string; cantidad: number }>;
 };
 
 export type CarteraSalidasResponse = {
@@ -371,6 +372,35 @@ export type CarteraSalidasResponse = {
     totalMonto: number;
     count: number;
     byCategoria: Record<CarteraSalidaCategoria, { count: number; totalMonto: number }>;
+  };
+};
+
+export type CarteraEntradaCategoria = "pedido" | "otro";
+
+export type CarteraEntradaRow = {
+  movementId: string;
+  fecha: string | null;
+  monto: number | null;
+  montoPrevio: number | null;
+  descripcion: string | null;
+  numeroGuia: string | null;
+  categoria: CarteraEntradaCategoria;
+  ordenId: string | null;
+  productos: Array<{ nombre: string; cantidad: number }>;
+  pedido: {
+    externalOrderId: string;
+    estadoUnificado: string | null;
+    estadoOperativo: string | null;
+    fecha: string | null;
+  } | null;
+};
+
+export type CarteraEntradasResponse = {
+  items: CarteraEntradaRow[];
+  summary: {
+    totalMonto: number;
+    count: number;
+    byCategoria: Record<CarteraEntradaCategoria, { count: number; totalMonto: number }>;
   };
 };
 

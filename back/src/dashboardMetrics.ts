@@ -76,6 +76,13 @@ type FinRow = {
   ganancia_proyectada_transito: unknown;
 };
 
+type WalletTotalsRow = {
+  entradas_total: unknown;
+  entradas_count: bigint | number;
+  salidas_total: unknown;
+  salidas_count: bigint | number;
+};
+
 function num(v: unknown): number {
   if (v === null || v === undefined) return 0;
   const n = Number(v);
@@ -149,6 +156,10 @@ export type DashboardMetricsPayload = {
   /** Suma de montos en retiros_dropi (import cartera: descripción retiro saldo) con fecha en el rango. */
   retirosDropiTotal: number;
   retirosDropiCount: number;
+  entradasCarteraTotal: number;
+  entradasCarteraCount: number;
+  salidasCarteraTotal: number;
+  salidasCarteraCount: number;
   pedidosCarteraSinOk: number;
   pedidosCarteraSinOkPct: number;
   pedidosCarteraSinOkEntregados: number;
@@ -258,7 +269,19 @@ SELECT
 
   const finParams: unknown[] = hasRange ? [companyId, start, end, companyId, start, end, companyId, start, end] : [companyId, companyId, companyId];
 
-  const [aggRows, productRows, finRows, cpaExperimentalRows, opExpenseAgg, retirosAgg, metaSpend, entregaByProduct] =
+  const walletTotalsSql = `
+SELECT
+  COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(tipo,''))) = 'ENTRADA' THEN ABS(COALESCE(monto,0)) ELSE 0 END), 0) AS entradas_total,
+  SUM(CASE WHEN UPPER(TRIM(COALESCE(tipo,''))) = 'ENTRADA' THEN 1 ELSE 0 END) AS entradas_count,
+  COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(tipo,''))) = 'SALIDA' THEN ABS(COALESCE(monto,0)) ELSE 0 END), 0) AS salidas_total,
+  SUM(CASE WHEN UPPER(TRIM(COALESCE(tipo,''))) = 'SALIDA' THEN 1 ELSE 0 END) AS salidas_count
+FROM cartera_movimientos
+WHERE companyId = ?
+${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
+`;
+  const walletTotalsParams: unknown[] = hasRange ? [companyId, start, end] : [companyId];
+
+  const [aggRows, productRows, finRows, cpaExperimentalRows, opExpenseAgg, retirosAgg, walletTotalsRows, metaSpend, entregaByProduct] =
     await Promise.all([
     prisma.$queryRawUnsafe<AggRow[]>(aggSql, ...aggParams),
     prisma.$queryRawUnsafe<{ productos_vendidos: unknown }[]>(productSql, ...aggParams),
@@ -281,6 +304,7 @@ SELECT
       },
     }),
     aggregateRetirosDropiSafe(prisma, companyId, Boolean(hasRange && start && end), start, end),
+    prisma.$queryRawUnsafe<WalletTotalsRow[]>(walletTotalsSql, ...walletTotalsParams),
     getMetaAdvertisingSpendSummary(prisma, companyId, opts),
     queryEntregaByProductBreakdown(prisma, companyId, opts),
   ]);
@@ -317,6 +341,7 @@ SELECT
   const gastoOperacional = Number(opExpenseAgg._sum.monto ?? 0);
   const retirosDropiTotal = Number(retirosAgg._sum.monto ?? 0);
   const retirosDropiCount = retirosAgg._count.id;
+  const walletTotals = walletTotalsRows[0];
 
   const safeDiv = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
 
@@ -356,6 +381,10 @@ SELECT
     gastoOperacional,
     retirosDropiTotal,
     retirosDropiCount,
+    entradasCarteraTotal: num(walletTotals?.entradas_total),
+    entradasCarteraCount: walletTotals ? numBI(walletTotals.entradas_count) : 0,
+    salidasCarteraTotal: num(walletTotals?.salidas_total),
+    salidasCarteraCount: walletTotals ? numBI(walletTotals.salidas_count) : 0,
     pedidosCarteraSinOk,
     pedidosCarteraSinOkPct: safeDiv(pedidosCarteraSinOk, totalOrders),
     pedidosCarteraSinOkEntregados,

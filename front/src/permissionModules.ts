@@ -158,10 +158,10 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
   },
   {
     id: "salidasCartera",
-    label: "Salidas cartera",
+    label: "Entradas y salidas cartera",
     moduleKeys: ["moduleSalidasCartera"],
     actions: [],
-    accessIncludes: ["Consultar salidas de cartera Dropi clasificadas por pedido, retiro o tarjeta"],
+    accessIncludes: ["Consultar entradas y salidas de cartera Dropi con pedido, producto u otras categorías"],
   },
   {
     id: "gastoOperacional",
