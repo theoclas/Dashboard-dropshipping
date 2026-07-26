@@ -38,9 +38,24 @@ export type EntregaEstadoByProductRow = {
   pctPendientes: number;
 };
 
+/** Margen de pedidos en tránsito (en proceso) por producto. */
+export type EnProcesoByProductRow = {
+  productKey: string;
+  productName: string;
+  pedidos: number;
+  unidades: number;
+  /** Suma de ganancia_calc de pedidos en tránsito atribuidos a este producto. */
+  gananciaEstimada: number;
+  /** Gasto publicitario Meta del producto en el rango (se completa en dashboardMetrics). */
+  gastoPublicitario: number;
+  /** gananciaEstimada − gastoPublicitario. */
+  margen: number;
+};
+
 type LineRow = {
   pedido_id_dropi: string;
   bucket: string;
+  ganancia_calc: unknown;
   producto_id: string | null;
   sku: string | null;
   variacion_id: string | null;
@@ -65,6 +80,12 @@ function pctOf(n: number, d: number): number {
   return Math.round((n / den) * 1000) / 10;
 }
 
+function num(v: unknown): number {
+  if (v === null || v === undefined) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function queryEntregaByProductBreakdown(
   prisma: PrismaClient,
   companyId: string,
@@ -72,12 +93,14 @@ export async function queryEntregaByProductBreakdown(
 ): Promise<{
   entregadosByProduct: EntregaEstadoByProductRow[];
   devolucionesByProduct: EntregaEstadoByProductRow[];
+  enProcesoByProduct: EnProcesoByProductRow[];
 }> {
   const dr = parseDateRange(opts.desde, opts.hasta);
   const sql = `
 SELECT
   TRIM(p.id_dropi) AS pedido_id_dropi,
   (${SQL_ENTREGA_BUCKET}) AS bucket,
+  p.ganancia_calc,
   pd.producto_id,
   pd.sku,
   pd.variacion_id,
@@ -96,7 +119,7 @@ WHERE p.companyId = ?
 
   const lines = await prisma.$queryRawUnsafe<LineRow[]>(sql, ...args);
   if (lines.length === 0) {
-    return { entregadosByProduct: [], devolucionesByProduct: [] };
+    return { entregadosByProduct: [], devolucionesByProduct: [], enProcesoByProduct: [] };
   }
 
   const variantKeys = lines.map((l) =>
@@ -118,13 +141,18 @@ WHERE p.companyId = ?
     unidadesEntregadas: number;
     unidadesDevueltas: number;
     unidadesPendientes: number;
+    gananciaTransito: number;
   };
   const byProduct = new Map<string, Acc>();
 
+  /** Pedido en tránsito → unidades totales y ganancia_calc (para repartir sin doble conteo). */
+  type TransitOrder = { totalUnits: number; ganancia: number; products: Map<string, number> };
+  const transitOrders = new Map<string, TransitOrder>();
+
   for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
+    const l = lines[i]!;
     const bucket = l.bucket;
-    const vKey = variantKeys[i];
+    const vKey = variantKeys[i]!;
     const catalog = catalogByKey.get(vKey);
     const productKey = catalog?.catalogProductId ?? `dropi:${vKey}`;
     const productName =
@@ -144,6 +172,7 @@ WHERE p.companyId = ?
         unidadesEntregadas: 0,
         unidadesDevueltas: 0,
         unidadesPendientes: 0,
+        gananciaTransito: 0,
       };
       byProduct.set(productKey, acc);
     }
@@ -165,11 +194,29 @@ WHERE p.companyId = ?
     if (bucket === "transito") {
       acc.pendientes.add(pedidoId);
       acc.unidadesPendientes += qty;
+
+      let to = transitOrders.get(pedidoId);
+      if (!to) {
+        to = { totalUnits: 0, ganancia: num(l.ganancia_calc), products: new Map() };
+        transitOrders.set(pedidoId, to);
+      }
+      to.totalUnits += qty;
+      to.products.set(productKey, (to.products.get(productKey) ?? 0) + qty);
+    }
+  }
+
+  for (const to of transitOrders.values()) {
+    const den = to.totalUnits > 0 ? to.totalUnits : 1;
+    for (const [productKey, units] of to.products.entries()) {
+      const acc = byProduct.get(productKey);
+      if (!acc) continue;
+      acc.gananciaTransito += (to.ganancia * units) / den;
     }
   }
 
   const entregadosByProduct: EntregaEstadoByProductRow[] = [];
   const devolucionesByProduct: EntregaEstadoByProductRow[] = [];
+  const enProcesoByProduct: EnProcesoByProductRow[] = [];
 
   for (const [productKey, acc] of byProduct.entries()) {
     const enviados = acc.enviados.size;
@@ -199,10 +246,24 @@ WHERE p.companyId = ?
         pctPendientes: pctOf(acc.pendientes.size, enviados),
       });
     }
+
+    if (acc.pendientes.size > 0) {
+      const gananciaEstimada = Math.round(acc.gananciaTransito * 100) / 100;
+      enProcesoByProduct.push({
+        productKey,
+        productName: acc.productName,
+        pedidos: acc.pendientes.size,
+        unidades: acc.unidadesPendientes,
+        gananciaEstimada,
+        gastoPublicitario: 0,
+        margen: gananciaEstimada,
+      });
+    }
   }
 
   entregadosByProduct.sort((a, b) => b.pedidos - a.pedidos);
   devolucionesByProduct.sort((a, b) => b.pedidos - a.pedidos);
+  enProcesoByProduct.sort((a, b) => b.gananciaEstimada - a.gananciaEstimada);
 
-  return { entregadosByProduct, devolucionesByProduct };
+  return { entregadosByProduct, devolucionesByProduct, enProcesoByProduct };
 }

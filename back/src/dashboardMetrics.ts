@@ -4,6 +4,7 @@ import { computeCpaExperimentalTotals } from "./cpaExperimentalTotals";
 import {
   queryEntregaByProductBreakdown,
   type EntregaEstadoByProductRow,
+  type EnProcesoByProductRow,
 } from "./dashboardEntregaByProduct";
 
 function parseYmd(s: string | undefined): Date | null {
@@ -141,6 +142,8 @@ export type DashboardMetricsPayload = {
   devolucionesByProduct: EntregaEstadoByProductRow[];
   enProceso: number;
   enProcesoPct: number;
+  /** Pedidos en tránsito por producto: ganancia_calc esperada y gasto Meta del producto. */
+  enProcesoByProduct: EnProcesoByProductRow[];
   totalVentas: number;
   gananciaTotal: number;
   gananciaEstimada: number;
@@ -346,7 +349,19 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
   const safeDiv = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
 
   const pedidosEnviados = Math.max(0, totalOrders - pedidosCancelados);
-  const { entregadosByProduct, devolucionesByProduct } = entregaByProduct;
+  const { entregadosByProduct, devolucionesByProduct, enProcesoByProduct: enProcesoRaw } = entregaByProduct;
+
+  const spendByProductId = new Map(metaSpend.byProduct.map((r) => [r.productId, r.amount]));
+  const enProcesoByProduct: EnProcesoByProductRow[] = enProcesoRaw.map((row) => {
+    const gastoPublicitario = spendByProductId.get(row.productKey) ?? 0;
+    const gananciaEstimada = row.gananciaEstimada;
+    return {
+      ...row,
+      gastoPublicitario,
+      margen: Math.round((gananciaEstimada - gastoPublicitario) * 100) / 100,
+    };
+  });
+  enProcesoByProduct.sort((a, b) => b.margen - a.margen);
 
   return {
     companyId,
@@ -369,6 +384,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
     devolucionesByProduct,
     enProceso,
     enProcesoPct: safeDiv(enProceso, totalOrders),
+    enProcesoByProduct,
     totalVentas,
     gananciaTotal,
     gananciaEstimada,
