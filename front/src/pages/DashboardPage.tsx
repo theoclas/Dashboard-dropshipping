@@ -50,6 +50,10 @@ const cardSurface = {
   border: "1px solid rgba(148, 163, 184, 0.14)",
 } as const;
 
+const marginGroupSeparator = {
+  borderRight: "2px solid rgba(148, 163, 184, 0.5)",
+} as const;
+
 export type DashboardMetrics = {
   companyId: string;
   desde: string | null;
@@ -531,6 +535,8 @@ export function DashboardPage() {
                   key: "margen",
                   align: "right",
                   width: 110,
+                  onHeaderCell: () => ({ style: marginGroupSeparator }),
+                  onCell: () => ({ style: marginGroupSeparator }),
                   render: (v: number) => (
                     <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
                       ${fmtMoney(v)}
@@ -604,9 +610,11 @@ export function DashboardPage() {
                       <Text strong>${fmtMoney(ganancia)}</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={5} align="right">
-                      <Text strong type={ganancia - gasto < 0 ? "danger" : undefined}>
-                        ${fmtMoney(ganancia - gasto)}
-                      </Text>
+                      <div style={marginGroupSeparator}>
+                        <Text strong type={ganancia - gasto < 0 ? "danger" : undefined}>
+                          ${fmtMoney(ganancia - gasto)}
+                        </Text>
+                      </div>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={6} align="right">
                       <Text strong>${fmtMoney(ganEnt)}</Text>
