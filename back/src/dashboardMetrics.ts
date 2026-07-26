@@ -4,7 +4,7 @@ import { computeCpaExperimentalTotals } from "./cpaExperimentalTotals";
 import {
   queryEntregaByProductBreakdown,
   type EntregaEstadoByProductRow,
-  type EnProcesoByProductRow,
+  type TotalPedidosByProductRow,
 } from "./dashboardEntregaByProduct";
 
 function parseYmd(s: string | undefined): Date | null {
@@ -142,8 +142,8 @@ export type DashboardMetricsPayload = {
   devolucionesByProduct: EntregaEstadoByProductRow[];
   enProceso: number;
   enProcesoPct: number;
-  /** Pedidos en tránsito por producto: ganancia de todos los pedidos, gasto Meta y margen neto de entregados. */
-  enProcesoByProduct: EnProcesoByProductRow[];
+  /** Pedidos del total por producto: ganancia, gasto Meta y márgenes (sin cancelados/rechazados). */
+  totalPedidosByProduct: TotalPedidosByProductRow[];
   totalVentas: number;
   gananciaTotal: number;
   gananciaEstimada: number;
@@ -349,10 +349,11 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
   const safeDiv = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
 
   const pedidosEnviados = Math.max(0, totalOrders - pedidosCancelados);
-  const { entregadosByProduct, devolucionesByProduct, enProcesoByProduct: enProcesoRaw } = entregaByProduct;
+  const { entregadosByProduct, devolucionesByProduct, totalPedidosByProduct: totalPedidosRaw } =
+    entregaByProduct;
 
   const spendByProductId = new Map(metaSpend.byProduct.map((r) => [r.productId, r.amount]));
-  const enProcesoByProduct: EnProcesoByProductRow[] = enProcesoRaw.map((row) => {
+  const totalPedidosByProduct: TotalPedidosByProductRow[] = totalPedidosRaw.map((row) => {
     const gastoPublicitario = spendByProductId.get(row.productKey) ?? 0;
     const gananciaEstimada = row.gananciaEstimada;
     const gananciaEntregados = row.gananciaEntregados;
@@ -365,7 +366,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
         Math.round((gananciaEntregados - perdidasDevoluciones - gastoPublicitario) * 100) / 100,
     };
   });
-  enProcesoByProduct.sort((a, b) => b.margen - a.margen);
+  totalPedidosByProduct.sort((a, b) => b.margen - a.margen);
 
   return {
     companyId,
@@ -388,7 +389,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
     devolucionesByProduct,
     enProceso,
     enProcesoPct: safeDiv(enProceso, totalOrders),
-    enProcesoByProduct,
+    totalPedidosByProduct,
     totalVentas,
     gananciaTotal,
     gananciaEstimada,

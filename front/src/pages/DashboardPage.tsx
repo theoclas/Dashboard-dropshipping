@@ -87,7 +87,7 @@ export type DashboardMetrics = {
   }>;
   enProceso: number;
   enProcesoPct: number;
-  enProcesoByProduct: Array<{
+  totalPedidosByProduct: Array<{
     productKey: string;
     productName: string;
     pedidos: number;
@@ -215,7 +215,7 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
-  const [entregaDetailOpen, setEntregaDetailOpen] = useState<"entregados" | "devoluciones" | "enProceso" | null>(null);
+  const [entregaDetailOpen, setEntregaDetailOpen] = useState<"entregados" | "devoluciones" | "totalPedidos" | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -283,6 +283,15 @@ export function DashboardPage() {
               icon={<ShoppingCartOutlined />}
               label="Total pedidos"
               value={loading ? "…" : fmtInteger(data?.totalOrders ?? 0)}
+              active={entregaDetailOpen === "totalPedidos"}
+              onClick={() =>
+                setEntregaDetailOpen((prev) => (prev === "totalPedidos" ? null : "totalPedidos"))
+              }
+              hint={
+                <Tooltip title="Total de pedidos del rango. Clic para ver margen por producto del total.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
             />
           </Col>
           ) : null}
@@ -360,6 +369,172 @@ export function DashboardPage() {
           </Col>
           ) : null}
         </Row>
+        {entregaDetailOpen === "totalPedidos" && isDashboardCardVisible(dashCfg, "card_totalOrders") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Total pedidos — margen por producto"
+            extra={
+              <Link to="/app/campanas-meta" style={{ fontSize: 13 }}>
+                Campañas Meta
+              </Link>
+            }
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Desglose del <strong>total de pedidos</strong> del rango (sin cancelados/rechazados), por producto.{" "}
+              <strong>Ganancia estimada</strong> suma ganancia_calc de todos esos pedidos.{" "}
+              <strong>Margen</strong> = ganancia estimada − gasto Meta. Luego: ganancia solo de entregados,
+              pérdidas por devoluciones (|costo devolución|) y <strong>margen entregados</strong> = ganancia
+              entregados − pérdidas − gasto. Al final, <strong>pend. por entregar</strong> es solo informativo:
+              lo que entraría si se entregan los pedidos aún en tránsito.
+            </Text>
+            <Table
+              size="small"
+              rowKey="productKey"
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1250 }}
+              locale={{ emptyText: "Sin pedidos con líneas de producto en este rango." }}
+              dataSource={data?.totalPedidosByProduct ?? []}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true, width: 200 },
+                {
+                  title: "Pedidos",
+                  dataIndex: "pedidos",
+                  key: "pedidos",
+                  align: "right",
+                  width: 80,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "Unidades",
+                  dataIndex: "unidades",
+                  key: "unidades",
+                  align: "right",
+                  width: 85,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "Gasto publicidad",
+                  dataIndex: "gastoPublicitario",
+                  key: "gasto",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Ganancia estimada",
+                  dataIndex: "gananciaEstimada",
+                  key: "ganancia",
+                  align: "right",
+                  width: 140,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Margen",
+                  dataIndex: "margen",
+                  key: "margen",
+                  align: "right",
+                  width: 110,
+                  render: (v: number) => (
+                    <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
+                      ${fmtMoney(v)}
+                    </Text>
+                  ),
+                },
+                {
+                  title: "Gan. entregados",
+                  dataIndex: "gananciaEntregados",
+                  key: "ganEnt",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Pérdidas devol.",
+                  dataIndex: "perdidasDevoluciones",
+                  key: "perd",
+                  align: "right",
+                  width: 120,
+                  render: (v: number) => (
+                    <Text type={v > 0 ? "danger" : undefined}>${fmtMoney(v)}</Text>
+                  ),
+                },
+                {
+                  title: "Margen entregados",
+                  dataIndex: "margenEntregados",
+                  key: "margenEnt",
+                  align: "right",
+                  width: 140,
+                  render: (v: number) => (
+                    <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
+                      ${fmtMoney(v)}
+                    </Text>
+                  ),
+                },
+                {
+                  title: "Pend. por entregar",
+                  dataIndex: "gananciaPendientes",
+                  key: "ganPend",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+              ]}
+              summary={() => {
+                const rows = data?.totalPedidosByProduct ?? [];
+                if (rows.length === 0) return null;
+                const gasto = rows.reduce((s, r) => s + (r.gastoPublicitario ?? 0), 0);
+                const ganancia = rows.reduce((s, r) => s + (r.gananciaEstimada ?? 0), 0);
+                const ganEnt = rows.reduce((s, r) => s + (r.gananciaEntregados ?? 0), 0);
+                const perdidas = rows.reduce((s, r) => s + (r.perdidasDevoluciones ?? 0), 0);
+                const ganPend = rows.reduce((s, r) => s + (r.gananciaPendientes ?? 0), 0);
+                const pedidos = rows.reduce((s, r) => s + (r.pedidos ?? 0), 0);
+                const unidades = rows.reduce((s, r) => s + (r.unidades ?? 0), 0);
+                return (
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0}>
+                      <Text strong>Total general</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={1} align="right">
+                      <Text strong>{fmtInteger(pedidos)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} align="right">
+                      <Text strong>{fmtInteger(unidades)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={3} align="right">
+                      <Text strong>${fmtMoney(gasto)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={4} align="right">
+                      <Text strong>${fmtMoney(ganancia)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={5} align="right">
+                      <Text strong type={ganancia - gasto < 0 ? "danger" : undefined}>
+                        ${fmtMoney(ganancia - gasto)}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={6} align="right">
+                      <Text strong>${fmtMoney(ganEnt)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={7} align="right">
+                      <Text strong type={perdidas > 0 ? "danger" : undefined}>
+                        ${fmtMoney(perdidas)}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={8} align="right">
+                      <Text strong type={ganEnt - perdidas - gasto < 0 ? "danger" : undefined}>
+                        ${fmtMoney(ganEnt - perdidas - gasto)}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={9} align="right">
+                      <Text strong>${fmtMoney(ganPend)}</Text>
+                    </Table.Summary.Cell>
+                  </Table.Summary.Row>
+                );
+              }}
+            />
+          </Card>
+        ) : null}
       </div>
 
       <div>
@@ -419,12 +594,8 @@ export function DashboardPage() {
                   ? "…"
                   : `${fmtInteger(data?.enProceso ?? 0)} (${fmtPercent(data?.enProcesoPct ?? 0)})`
               }
-              active={entregaDetailOpen === "enProceso"}
-              onClick={() =>
-                setEntregaDetailOpen((prev) => (prev === "enProceso" ? null : "enProceso"))
-              }
               hint={
-                <Tooltip title="Pedidos en tránsito. Clic para ver margen por producto: gasto publicitario y ganancia estimada.">
+                <Tooltip title="Pedidos en tránsito: aún no entregados, devueltos ni cancelados.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }
@@ -655,172 +826,6 @@ export function DashboardPage() {
                   </Table.Summary.Row>
                 ) : null
               }
-            />
-          </Card>
-        ) : null}
-        {entregaDetailOpen === "enProceso" && isDashboardCardVisible(dashCfg, "card_enProceso") ? (
-          <Card
-            size="small"
-            style={{ ...cardSurface, marginTop: 16 }}
-            title="En proceso — margen por producto"
-            extra={
-              <Link to="/app/campanas-meta" style={{ fontSize: 13 }}>
-                Campañas Meta
-              </Link>
-            }
-          >
-            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
-              Productos con pedidos en tránsito. <strong>Ganancia estimada</strong> suma ganancia_calc de todos
-              los pedidos del producto (entregados, en proceso y devueltos). <strong>Margen</strong> = ganancia
-              estimada − gasto Meta. Luego: ganancia solo de entregados, pérdidas por devoluciones
-              (|costo devolución|) y <strong>margen entregados</strong> = ganancia entregados − pérdidas −
-              gasto. Al final, <strong>pend. por entregar</strong> es solo informativo: lo que entraría si se
-              entregan los pedidos aún en tránsito.
-            </Text>
-            <Table
-              size="small"
-              rowKey="productKey"
-              loading={loading}
-              pagination={false}
-              scroll={{ x: 1250 }}
-              locale={{ emptyText: "Sin pedidos en proceso con líneas de producto en este rango." }}
-              dataSource={data?.enProcesoByProduct ?? []}
-              columns={[
-                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true, width: 200 },
-                {
-                  title: "Pedidos",
-                  dataIndex: "pedidos",
-                  key: "pedidos",
-                  align: "right",
-                  width: 80,
-                  render: (v: number) => fmtInteger(v),
-                },
-                {
-                  title: "Unidades",
-                  dataIndex: "unidades",
-                  key: "unidades",
-                  align: "right",
-                  width: 85,
-                  render: (v: number) => fmtInteger(v),
-                },
-                {
-                  title: "Gasto publicidad",
-                  dataIndex: "gastoPublicitario",
-                  key: "gasto",
-                  align: "right",
-                  width: 130,
-                  render: (v: number) => `$${fmtMoney(v)}`,
-                },
-                {
-                  title: "Ganancia estimada",
-                  dataIndex: "gananciaEstimada",
-                  key: "ganancia",
-                  align: "right",
-                  width: 140,
-                  render: (v: number) => `$${fmtMoney(v)}`,
-                },
-                {
-                  title: "Margen",
-                  dataIndex: "margen",
-                  key: "margen",
-                  align: "right",
-                  width: 110,
-                  render: (v: number) => (
-                    <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
-                      ${fmtMoney(v)}
-                    </Text>
-                  ),
-                },
-                {
-                  title: "Gan. entregados",
-                  dataIndex: "gananciaEntregados",
-                  key: "ganEnt",
-                  align: "right",
-                  width: 130,
-                  render: (v: number) => `$${fmtMoney(v)}`,
-                },
-                {
-                  title: "Pérdidas devol.",
-                  dataIndex: "perdidasDevoluciones",
-                  key: "perd",
-                  align: "right",
-                  width: 120,
-                  render: (v: number) => (
-                    <Text type={v > 0 ? "danger" : undefined}>${fmtMoney(v)}</Text>
-                  ),
-                },
-                {
-                  title: "Margen entregados",
-                  dataIndex: "margenEntregados",
-                  key: "margenEnt",
-                  align: "right",
-                  width: 140,
-                  render: (v: number) => (
-                    <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
-                      ${fmtMoney(v)}
-                    </Text>
-                  ),
-                },
-                {
-                  title: "Pend. por entregar",
-                  dataIndex: "gananciaPendientes",
-                  key: "ganPend",
-                  align: "right",
-                  width: 130,
-                  render: (v: number) => `$${fmtMoney(v)}`,
-                },
-              ]}
-              summary={() => {
-                const rows = data?.enProcesoByProduct ?? [];
-                if (rows.length === 0) return null;
-                const gasto = rows.reduce((s, r) => s + (r.gastoPublicitario ?? 0), 0);
-                const ganancia = rows.reduce((s, r) => s + (r.gananciaEstimada ?? 0), 0);
-                const ganEnt = rows.reduce((s, r) => s + (r.gananciaEntregados ?? 0), 0);
-                const perdidas = rows.reduce((s, r) => s + (r.perdidasDevoluciones ?? 0), 0);
-                const ganPend = rows.reduce((s, r) => s + (r.gananciaPendientes ?? 0), 0);
-                const pedidos = rows.reduce((s, r) => s + (r.pedidos ?? 0), 0);
-                const unidades = rows.reduce((s, r) => s + (r.unidades ?? 0), 0);
-                return (
-                  <Table.Summary.Row>
-                    <Table.Summary.Cell index={0}>
-                      <Text strong>Total general</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={1} align="right">
-                      <Text strong>{fmtInteger(pedidos)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={2} align="right">
-                      <Text strong>{fmtInteger(unidades)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={3} align="right">
-                      <Text strong>${fmtMoney(gasto)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={4} align="right">
-                      <Text strong>${fmtMoney(ganancia)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={5} align="right">
-                      <Text strong type={ganancia - gasto < 0 ? "danger" : undefined}>
-                        ${fmtMoney(ganancia - gasto)}
-                      </Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={6} align="right">
-                      <Text strong>${fmtMoney(ganEnt)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={7} align="right">
-                      <Text strong type={perdidas > 0 ? "danger" : undefined}>
-                        ${fmtMoney(perdidas)}
-                      </Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={8} align="right">
-                      <Text strong type={ganEnt - perdidas - gasto < 0 ? "danger" : undefined}>
-                        ${fmtMoney(ganEnt - perdidas - gasto)}
-                      </Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={9} align="right">
-                      <Text strong>${fmtMoney(ganPend)}</Text>
-                    </Table.Summary.Cell>
-                  </Table.Summary.Row>
-                );
-              }}
             />
           </Card>
         ) : null}

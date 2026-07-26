@@ -38,14 +38,15 @@ export type EntregaEstadoByProductRow = {
   pctPendientes: number;
 };
 
-/** Margen por producto (vista En proceso): ganancia de todos los pedidos + margen neto de entregados. */
-export type EnProcesoByProductRow = {
+/** Margen por producto del total de pedidos (entregados + en tránsito + devueltos; sin cancelados/rechazados). */
+export type TotalPedidosByProductRow = {
   productKey: string;
   productName: string;
-  /** Pedidos aún en tránsito. */
+  /** Pedidos activos del producto en el rango (sin cancelados/rechazados). */
   pedidos: number;
+  /** Unidades de esos pedidos activos. */
   unidades: number;
-  /** Suma de ganancia_calc de todos los pedidos del producto (entregados, en proceso y devueltos). */
+  /** Suma de ganancia_calc de todos los pedidos activos del producto. */
   gananciaEstimada: number;
   /** Gasto publicitario Meta del producto en el rango (se completa en dashboardMetrics). */
   gastoPublicitario: number;
@@ -103,7 +104,7 @@ export async function queryEntregaByProductBreakdown(
 ): Promise<{
   entregadosByProduct: EntregaEstadoByProductRow[];
   devolucionesByProduct: EntregaEstadoByProductRow[];
-  enProcesoByProduct: EnProcesoByProductRow[];
+  totalPedidosByProduct: TotalPedidosByProductRow[];
 }> {
   const dr = parseDateRange(opts.desde, opts.hasta);
   const sql = `
@@ -130,7 +131,7 @@ WHERE p.companyId = ?
 
   const lines = await prisma.$queryRawUnsafe<LineRow[]>(sql, ...args);
   if (lines.length === 0) {
-    return { entregadosByProduct: [], devolucionesByProduct: [], enProcesoByProduct: [] };
+    return { entregadosByProduct: [], devolucionesByProduct: [], totalPedidosByProduct: [] };
   }
 
   const variantKeys = lines.map((l) =>
@@ -152,6 +153,7 @@ WHERE p.companyId = ?
     unidadesEntregadas: number;
     unidadesDevueltas: number;
     unidadesPendientes: number;
+    unidadesActivas: number;
     gananciaTodos: number;
     gananciaEntregados: number;
     perdidasDevoluciones: number;
@@ -192,6 +194,7 @@ WHERE p.companyId = ?
         unidadesEntregadas: 0,
         unidadesDevueltas: 0,
         unidadesPendientes: 0,
+        unidadesActivas: 0,
         gananciaTodos: 0,
         gananciaEntregados: 0,
         perdidasDevoluciones: 0,
@@ -205,6 +208,7 @@ WHERE p.companyId = ?
 
     if (bucket !== "cancelado" && bucket !== "rechazado") {
       acc.enviados.add(pedidoId);
+      acc.unidadesActivas += qty;
 
       let mo = moneyOrders.get(pedidoId);
       if (!mo) {
@@ -256,7 +260,7 @@ WHERE p.companyId = ?
 
   const entregadosByProduct: EntregaEstadoByProductRow[] = [];
   const devolucionesByProduct: EntregaEstadoByProductRow[] = [];
-  const enProcesoByProduct: EnProcesoByProductRow[] = [];
+  const totalPedidosByProduct: TotalPedidosByProductRow[] = [];
 
   for (const [productKey, acc] of byProduct.entries()) {
     const enviados = acc.enviados.size;
@@ -287,16 +291,16 @@ WHERE p.companyId = ?
       });
     }
 
-    if (acc.pendientes.size > 0) {
+    if (enviados > 0) {
       const gananciaEstimada = Math.round(acc.gananciaTodos * 100) / 100;
       const gananciaEntregados = Math.round(acc.gananciaEntregados * 100) / 100;
       const perdidasDevoluciones = Math.round(acc.perdidasDevoluciones * 100) / 100;
       const gananciaPendientes = Math.round(acc.gananciaPendientes * 100) / 100;
-      enProcesoByProduct.push({
+      totalPedidosByProduct.push({
         productKey,
         productName: acc.productName,
-        pedidos: acc.pendientes.size,
-        unidades: acc.unidadesPendientes,
+        pedidos: enviados,
+        unidades: acc.unidadesActivas,
         gananciaEstimada,
         gastoPublicitario: 0,
         margen: gananciaEstimada,
@@ -310,7 +314,7 @@ WHERE p.companyId = ?
 
   entregadosByProduct.sort((a, b) => b.pedidos - a.pedidos);
   devolucionesByProduct.sort((a, b) => b.pedidos - a.pedidos);
-  enProcesoByProduct.sort((a, b) => b.gananciaEstimada - a.gananciaEstimada);
+  totalPedidosByProduct.sort((a, b) => b.gananciaEstimada - a.gananciaEstimada);
 
-  return { entregadosByProduct, devolucionesByProduct, enProcesoByProduct };
+  return { entregadosByProduct, devolucionesByProduct, totalPedidosByProduct };
 }
