@@ -673,8 +673,9 @@ export function DashboardPage() {
               Productos con pedidos en tránsito. <strong>Ganancia estimada</strong> suma ganancia_calc de todos
               los pedidos del producto (entregados, en proceso y devueltos). <strong>Margen</strong> = ganancia
               estimada − gasto Meta. Luego: ganancia solo de entregados, pérdidas por devoluciones
-              (|costo devolución|), lo <strong>pendiente por entregar</strong> (ganancia de pedidos aún en
-              tránsito) y <strong>margen entregados</strong> = ganancia entregados − pérdidas − gasto.
+              (|costo devolución|) y <strong>margen entregados</strong> = ganancia entregados − pérdidas −
+              gasto. Al final, <strong>pend. por entregar</strong> es solo informativo: lo que entraría si se
+              entregan los pedidos aún en tránsito.
             </Text>
             <Table
               size="small"
@@ -749,14 +750,6 @@ export function DashboardPage() {
                   ),
                 },
                 {
-                  title: "Pend. por entregar",
-                  dataIndex: "gananciaPendientes",
-                  key: "ganPend",
-                  align: "right",
-                  width: 130,
-                  render: (v: number) => `$${fmtMoney(v)}`,
-                },
-                {
                   title: "Margen entregados",
                   dataIndex: "margenEntregados",
                   key: "margenEnt",
@@ -767,6 +760,14 @@ export function DashboardPage() {
                       ${fmtMoney(v)}
                     </Text>
                   ),
+                },
+                {
+                  title: "Pend. por entregar",
+                  dataIndex: "gananciaPendientes",
+                  key: "ganPend",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
                 },
               ]}
               summary={() => {
@@ -810,12 +811,12 @@ export function DashboardPage() {
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={8} align="right">
-                      <Text strong>${fmtMoney(ganPend)}</Text>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={9} align="right">
                       <Text strong type={ganEnt - perdidas - gasto < 0 ? "danger" : undefined}>
                         ${fmtMoney(ganEnt - perdidas - gasto)}
                       </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={9} align="right">
+                      <Text strong>${fmtMoney(ganPend)}</Text>
                     </Table.Summary.Cell>
                   </Table.Summary.Row>
                 );
