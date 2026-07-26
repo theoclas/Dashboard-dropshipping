@@ -38,24 +38,32 @@ export type EntregaEstadoByProductRow = {
   pctPendientes: number;
 };
 
-/** Margen de pedidos en tránsito (en proceso) por producto. */
+/** Margen por producto (vista En proceso): ganancia de todos los pedidos + margen neto de entregados. */
 export type EnProcesoByProductRow = {
   productKey: string;
   productName: string;
+  /** Pedidos aún en tránsito. */
   pedidos: number;
   unidades: number;
-  /** Suma de ganancia_calc de pedidos en tránsito atribuidos a este producto. */
+  /** Suma de ganancia_calc de todos los pedidos del producto (entregados, en proceso y devueltos). */
   gananciaEstimada: number;
   /** Gasto publicitario Meta del producto en el rango (se completa en dashboardMetrics). */
   gastoPublicitario: number;
   /** gananciaEstimada − gastoPublicitario. */
   margen: number;
+  /** ganancia_calc solo de pedidos entregados. */
+  gananciaEntregados: number;
+  /** Pérdida por devoluciones (|costo_devolucion_estimado|). */
+  perdidasDevoluciones: number;
+  /** gananciaEntregados − perdidasDevoluciones − gastoPublicitario. */
+  margenEntregados: number;
 };
 
 type LineRow = {
   pedido_id_dropi: string;
   bucket: string;
   ganancia_calc: unknown;
+  costo_devolucion_estimado: unknown;
   producto_id: string | null;
   sku: string | null;
   variacion_id: string | null;
@@ -101,6 +109,7 @@ SELECT
   TRIM(p.id_dropi) AS pedido_id_dropi,
   (${SQL_ENTREGA_BUCKET}) AS bucket,
   p.ganancia_calc,
+  p.costo_devolucion_estimado,
   pd.producto_id,
   pd.sku,
   pd.variacion_id,
@@ -141,13 +150,21 @@ WHERE p.companyId = ?
     unidadesEntregadas: number;
     unidadesDevueltas: number;
     unidadesPendientes: number;
-    gananciaTransito: number;
+    gananciaTodos: number;
+    gananciaEntregados: number;
+    perdidasDevoluciones: number;
   };
   const byProduct = new Map<string, Acc>();
 
-  /** Pedido en tránsito → unidades totales y ganancia_calc (para repartir sin doble conteo). */
-  type TransitOrder = { totalUnits: number; ganancia: number; products: Map<string, number> };
-  const transitOrders = new Map<string, TransitOrder>();
+  /** Pedido activo → unidades y montos (para repartir sin doble conteo entre productos). */
+  type MoneyOrder = {
+    bucket: string;
+    totalUnits: number;
+    ganancia: number;
+    costoDevolucion: number;
+    products: Map<string, number>;
+  };
+  const moneyOrders = new Map<string, MoneyOrder>();
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!;
@@ -172,7 +189,9 @@ WHERE p.companyId = ?
         unidadesEntregadas: 0,
         unidadesDevueltas: 0,
         unidadesPendientes: 0,
-        gananciaTransito: 0,
+        gananciaTodos: 0,
+        gananciaEntregados: 0,
+        perdidasDevoluciones: 0,
       };
       byProduct.set(productKey, acc);
     }
@@ -182,6 +201,20 @@ WHERE p.companyId = ?
 
     if (bucket !== "cancelado" && bucket !== "rechazado") {
       acc.enviados.add(pedidoId);
+
+      let mo = moneyOrders.get(pedidoId);
+      if (!mo) {
+        mo = {
+          bucket,
+          totalUnits: 0,
+          ganancia: num(l.ganancia_calc),
+          costoDevolucion: num(l.costo_devolucion_estimado),
+          products: new Map(),
+        };
+        moneyOrders.set(pedidoId, mo);
+      }
+      mo.totalUnits += qty;
+      mo.products.set(productKey, (mo.products.get(productKey) ?? 0) + qty);
     }
     if (bucket === "entregado") {
       acc.entregados.add(pedidoId);
@@ -194,23 +227,23 @@ WHERE p.companyId = ?
     if (bucket === "transito") {
       acc.pendientes.add(pedidoId);
       acc.unidadesPendientes += qty;
-
-      let to = transitOrders.get(pedidoId);
-      if (!to) {
-        to = { totalUnits: 0, ganancia: num(l.ganancia_calc), products: new Map() };
-        transitOrders.set(pedidoId, to);
-      }
-      to.totalUnits += qty;
-      to.products.set(productKey, (to.products.get(productKey) ?? 0) + qty);
     }
   }
 
-  for (const to of transitOrders.values()) {
-    const den = to.totalUnits > 0 ? to.totalUnits : 1;
-    for (const [productKey, units] of to.products.entries()) {
+  for (const mo of moneyOrders.values()) {
+    const den = mo.totalUnits > 0 ? mo.totalUnits : 1;
+    for (const [productKey, units] of mo.products.entries()) {
       const acc = byProduct.get(productKey);
       if (!acc) continue;
-      acc.gananciaTransito += (to.ganancia * units) / den;
+      const share = units / den;
+      acc.gananciaTodos += mo.ganancia * share;
+      if (mo.bucket === "entregado") {
+        acc.gananciaEntregados += mo.ganancia * share;
+      }
+      if (mo.bucket === "devolucion") {
+        // costo_devolucion_estimado suele ser negativo; mostramos pérdida como monto positivo.
+        acc.perdidasDevoluciones += Math.abs(mo.costoDevolucion) * share;
+      }
     }
   }
 
@@ -248,7 +281,9 @@ WHERE p.companyId = ?
     }
 
     if (acc.pendientes.size > 0) {
-      const gananciaEstimada = Math.round(acc.gananciaTransito * 100) / 100;
+      const gananciaEstimada = Math.round(acc.gananciaTodos * 100) / 100;
+      const gananciaEntregados = Math.round(acc.gananciaEntregados * 100) / 100;
+      const perdidasDevoluciones = Math.round(acc.perdidasDevoluciones * 100) / 100;
       enProcesoByProduct.push({
         productKey,
         productName: acc.productName,
@@ -257,6 +292,9 @@ WHERE p.companyId = ?
         gananciaEstimada,
         gastoPublicitario: 0,
         margen: gananciaEstimada,
+        gananciaEntregados,
+        perdidasDevoluciones,
+        margenEntregados: gananciaEntregados - perdidasDevoluciones,
       });
     }
   }

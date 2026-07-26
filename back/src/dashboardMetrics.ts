@@ -142,7 +142,7 @@ export type DashboardMetricsPayload = {
   devolucionesByProduct: EntregaEstadoByProductRow[];
   enProceso: number;
   enProcesoPct: number;
-  /** Pedidos en tránsito por producto: ganancia_calc esperada y gasto Meta del producto. */
+  /** Pedidos en tránsito por producto: ganancia de todos los pedidos, gasto Meta y margen neto de entregados. */
   enProcesoByProduct: EnProcesoByProductRow[];
   totalVentas: number;
   gananciaTotal: number;
@@ -355,10 +355,14 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
   const enProcesoByProduct: EnProcesoByProductRow[] = enProcesoRaw.map((row) => {
     const gastoPublicitario = spendByProductId.get(row.productKey) ?? 0;
     const gananciaEstimada = row.gananciaEstimada;
+    const gananciaEntregados = row.gananciaEntregados;
+    const perdidasDevoluciones = row.perdidasDevoluciones;
     return {
       ...row,
       gastoPublicitario,
       margen: Math.round((gananciaEstimada - gastoPublicitario) * 100) / 100,
+      margenEntregados:
+        Math.round((gananciaEntregados - perdidasDevoluciones - gastoPublicitario) * 100) / 100,
     };
   });
   enProcesoByProduct.sort((a, b) => b.margen - a.margen);

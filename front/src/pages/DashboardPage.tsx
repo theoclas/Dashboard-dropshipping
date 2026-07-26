@@ -95,6 +95,9 @@ export type DashboardMetrics = {
     gananciaEstimada: number;
     gastoPublicitario: number;
     margen: number;
+    gananciaEntregados: number;
+    perdidasDevoluciones: number;
+    margenEntregados: number;
   }>;
   totalVentas: number;
   gananciaTotal: number;
@@ -666,24 +669,27 @@ export function DashboardPage() {
             }
           >
             <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
-              Pedidos en tránsito por producto: ganancia estimada (ganancia_calc que debería entrar si se
-              entregan) y gasto publicitario Meta del producto en el rango. Margen = ganancia − gasto.
+              Productos con pedidos en tránsito. <strong>Ganancia estimada</strong> suma ganancia_calc de todos
+              los pedidos del producto (entregados, en proceso y devueltos). <strong>Margen</strong> = ganancia
+              estimada − gasto Meta. Luego: ganancia solo de entregados, pérdidas por devoluciones
+              (|costo devolución|) y <strong>margen entregados</strong> = ganancia entregados − pérdidas − gasto.
             </Text>
             <Table
               size="small"
               rowKey="productKey"
               loading={loading}
               pagination={false}
+              scroll={{ x: 1100 }}
               locale={{ emptyText: "Sin pedidos en proceso con líneas de producto en este rango." }}
               dataSource={data?.enProcesoByProduct ?? []}
               columns={[
-                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true, width: 200 },
                 {
                   title: "Pedidos",
                   dataIndex: "pedidos",
                   key: "pedidos",
                   align: "right",
-                  width: 90,
+                  width: 80,
                   render: (v: number) => fmtInteger(v),
                 },
                 {
@@ -691,7 +697,7 @@ export function DashboardPage() {
                   dataIndex: "unidades",
                   key: "unidades",
                   align: "right",
-                  width: 90,
+                  width: 85,
                   render: (v: number) => fmtInteger(v),
                 },
                 {
@@ -699,7 +705,7 @@ export function DashboardPage() {
                   dataIndex: "gastoPublicitario",
                   key: "gasto",
                   align: "right",
-                  width: 140,
+                  width: 130,
                   render: (v: number) => `$${fmtMoney(v)}`,
                 },
                 {
@@ -707,7 +713,7 @@ export function DashboardPage() {
                   dataIndex: "gananciaEstimada",
                   key: "ganancia",
                   align: "right",
-                  width: 150,
+                  width: 140,
                   render: (v: number) => `$${fmtMoney(v)}`,
                 },
                 {
@@ -715,7 +721,37 @@ export function DashboardPage() {
                   dataIndex: "margen",
                   key: "margen",
                   align: "right",
+                  width: 110,
+                  render: (v: number) => (
+                    <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
+                      ${fmtMoney(v)}
+                    </Text>
+                  ),
+                },
+                {
+                  title: "Gan. entregados",
+                  dataIndex: "gananciaEntregados",
+                  key: "ganEnt",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Pérdidas devol.",
+                  dataIndex: "perdidasDevoluciones",
+                  key: "perd",
+                  align: "right",
                   width: 120,
+                  render: (v: number) => (
+                    <Text type={v > 0 ? "danger" : undefined}>${fmtMoney(v)}</Text>
+                  ),
+                },
+                {
+                  title: "Margen entregados",
+                  dataIndex: "margenEntregados",
+                  key: "margenEnt",
+                  align: "right",
+                  width: 140,
                   render: (v: number) => (
                     <Text type={v < 0 ? "danger" : undefined} strong={v >= 0}>
                       ${fmtMoney(v)}
@@ -728,6 +764,8 @@ export function DashboardPage() {
                 if (rows.length === 0) return null;
                 const gasto = rows.reduce((s, r) => s + (r.gastoPublicitario ?? 0), 0);
                 const ganancia = rows.reduce((s, r) => s + (r.gananciaEstimada ?? 0), 0);
+                const ganEnt = rows.reduce((s, r) => s + (r.gananciaEntregados ?? 0), 0);
+                const perdidas = rows.reduce((s, r) => s + (r.perdidasDevoluciones ?? 0), 0);
                 const pedidos = rows.reduce((s, r) => s + (r.pedidos ?? 0), 0);
                 const unidades = rows.reduce((s, r) => s + (r.unidades ?? 0), 0);
                 return (
@@ -748,7 +786,22 @@ export function DashboardPage() {
                       <Text strong>${fmtMoney(ganancia)}</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={5} align="right">
-                      <Text strong>${fmtMoney(ganancia - gasto)}</Text>
+                      <Text strong type={ganancia - gasto < 0 ? "danger" : undefined}>
+                        ${fmtMoney(ganancia - gasto)}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={6} align="right">
+                      <Text strong>${fmtMoney(ganEnt)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={7} align="right">
+                      <Text strong type={perdidas > 0 ? "danger" : undefined}>
+                        ${fmtMoney(perdidas)}
+                      </Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={8} align="right">
+                      <Text strong type={ganEnt - perdidas - gasto < 0 ? "danger" : undefined}>
+                        ${fmtMoney(ganEnt - perdidas - gasto)}
+                      </Text>
                     </Table.Summary.Cell>
                   </Table.Summary.Row>
                 );
