@@ -97,6 +97,7 @@ export type DashboardMetrics = {
     margen: number;
     gananciaEntregados: number;
     perdidasDevoluciones: number;
+    gananciaPendientes: number;
     margenEntregados: number;
   }>;
   totalVentas: number;
@@ -672,14 +673,15 @@ export function DashboardPage() {
               Productos con pedidos en tránsito. <strong>Ganancia estimada</strong> suma ganancia_calc de todos
               los pedidos del producto (entregados, en proceso y devueltos). <strong>Margen</strong> = ganancia
               estimada − gasto Meta. Luego: ganancia solo de entregados, pérdidas por devoluciones
-              (|costo devolución|) y <strong>margen entregados</strong> = ganancia entregados − pérdidas − gasto.
+              (|costo devolución|), lo <strong>pendiente por entregar</strong> (ganancia de pedidos aún en
+              tránsito) y <strong>margen entregados</strong> = ganancia entregados − pérdidas − gasto.
             </Text>
             <Table
               size="small"
               rowKey="productKey"
               loading={loading}
               pagination={false}
-              scroll={{ x: 1100 }}
+              scroll={{ x: 1250 }}
               locale={{ emptyText: "Sin pedidos en proceso con líneas de producto en este rango." }}
               dataSource={data?.enProcesoByProduct ?? []}
               columns={[
@@ -747,6 +749,14 @@ export function DashboardPage() {
                   ),
                 },
                 {
+                  title: "Pend. por entregar",
+                  dataIndex: "gananciaPendientes",
+                  key: "ganPend",
+                  align: "right",
+                  width: 130,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
                   title: "Margen entregados",
                   dataIndex: "margenEntregados",
                   key: "margenEnt",
@@ -766,6 +776,7 @@ export function DashboardPage() {
                 const ganancia = rows.reduce((s, r) => s + (r.gananciaEstimada ?? 0), 0);
                 const ganEnt = rows.reduce((s, r) => s + (r.gananciaEntregados ?? 0), 0);
                 const perdidas = rows.reduce((s, r) => s + (r.perdidasDevoluciones ?? 0), 0);
+                const ganPend = rows.reduce((s, r) => s + (r.gananciaPendientes ?? 0), 0);
                 const pedidos = rows.reduce((s, r) => s + (r.pedidos ?? 0), 0);
                 const unidades = rows.reduce((s, r) => s + (r.unidades ?? 0), 0);
                 return (
@@ -799,6 +810,9 @@ export function DashboardPage() {
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={8} align="right">
+                      <Text strong>${fmtMoney(ganPend)}</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={9} align="right">
                       <Text strong type={ganEnt - perdidas - gasto < 0 ? "danger" : undefined}>
                         ${fmtMoney(ganEnt - perdidas - gasto)}
                       </Text>

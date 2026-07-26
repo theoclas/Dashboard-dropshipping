@@ -55,6 +55,8 @@ export type EnProcesoByProductRow = {
   gananciaEntregados: number;
   /** Pérdida por devoluciones (|costo_devolucion_estimado|). */
   perdidasDevoluciones: number;
+  /** ganancia_calc de pedidos aún en tránsito (pendientes por entregar). */
+  gananciaPendientes: number;
   /** gananciaEntregados − perdidasDevoluciones − gastoPublicitario. */
   margenEntregados: number;
 };
@@ -153,6 +155,7 @@ WHERE p.companyId = ?
     gananciaTodos: number;
     gananciaEntregados: number;
     perdidasDevoluciones: number;
+    gananciaPendientes: number;
   };
   const byProduct = new Map<string, Acc>();
 
@@ -192,6 +195,7 @@ WHERE p.companyId = ?
         gananciaTodos: 0,
         gananciaEntregados: 0,
         perdidasDevoluciones: 0,
+        gananciaPendientes: 0,
       };
       byProduct.set(productKey, acc);
     }
@@ -244,6 +248,9 @@ WHERE p.companyId = ?
         // costo_devolucion_estimado suele ser negativo; mostramos pérdida como monto positivo.
         acc.perdidasDevoluciones += Math.abs(mo.costoDevolucion) * share;
       }
+      if (mo.bucket === "transito") {
+        acc.gananciaPendientes += mo.ganancia * share;
+      }
     }
   }
 
@@ -284,6 +291,7 @@ WHERE p.companyId = ?
       const gananciaEstimada = Math.round(acc.gananciaTodos * 100) / 100;
       const gananciaEntregados = Math.round(acc.gananciaEntregados * 100) / 100;
       const perdidasDevoluciones = Math.round(acc.perdidasDevoluciones * 100) / 100;
+      const gananciaPendientes = Math.round(acc.gananciaPendientes * 100) / 100;
       enProcesoByProduct.push({
         productKey,
         productName: acc.productName,
@@ -294,6 +302,7 @@ WHERE p.companyId = ?
         margen: gananciaEstimada,
         gananciaEntregados,
         perdidasDevoluciones,
+        gananciaPendientes,
         margenEntregados: gananciaEntregados - perdidasDevoluciones,
       });
     }
