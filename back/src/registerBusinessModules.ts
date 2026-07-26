@@ -88,7 +88,7 @@ const metaApiImportOptionsSchema = z.object({
 });
 
 export function registerBusinessModules(app: express.Application) {
-  app.get("/api/catalog-products", authRequired, companyRequired, requireAnyPermission(["moduleCatalogoProductos", "moduleCampanasMeta", "moduleCuentasPublicitarias"]), async (req, res) => {
+  app.get("/api/catalog-products", authRequired, companyRequired, requireAnyPermission(["moduleCatalogoProductos", "moduleCampanasMeta", "moduleCuentasPublicitarias", "moduleDashboard"]), async (req, res) => {
     const u = user(req);
     const list = await catalogProductService.listCatalogProducts(u.companyId);
     return res.json(list);

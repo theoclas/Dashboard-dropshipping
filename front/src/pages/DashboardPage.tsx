@@ -5,6 +5,7 @@ import {
   DatePicker,
   Flex,
   Row,
+  Select,
   Space,
   Table,
   Tooltip,
@@ -34,10 +35,11 @@ import {
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchCatalogProducts } from "../api";
 import { isDashboardCardVisible } from "../dashboardVisibility";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
+import type { CatalogProduct } from "../types";
 import { fmtInteger, fmtMoney, fmtPercent } from "../utils/format";
 
 const { RangePicker } = DatePicker;
@@ -133,6 +135,29 @@ export type DashboardMetrics = {
   pedidosNovedadPct: number;
 };
 
+type TotalPedidosMarginRow = DashboardMetrics["totalPedidosByProduct"][number];
+
+function emptyTotalPedidosMarginRow(
+  productKey: string,
+  productName: string,
+  gastoPublicitario: number,
+): TotalPedidosMarginRow {
+  const gasto = Math.round(gastoPublicitario * 100) / 100;
+  return {
+    productKey,
+    productName,
+    pedidos: 0,
+    unidades: 0,
+    gananciaEstimada: 0,
+    gastoPublicitario: gasto,
+    margen: Math.round((0 - gasto) * 100) / 100,
+    gananciaEntregados: 0,
+    perdidasDevoluciones: 0,
+    gananciaPendientes: 0,
+    margenEntregados: Math.round((0 - gasto) * 100) / 100,
+  };
+}
+
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <Text
@@ -216,6 +241,8 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
   const [entregaDetailOpen, setEntregaDetailOpen] = useState<"entregados" | "devoluciones" | "totalPedidos" | null>(null);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [selectedMarginProductIds, setSelectedMarginProductIds] = useState<string[]>([]);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -243,6 +270,57 @@ export function DashboardPage() {
   useEffect(() => {
     setMetaSpendDetailOpen(false);
   }, [range, data?.companyId]);
+
+  useEffect(() => {
+    if (entregaDetailOpen !== "totalPedidos") return;
+    let cancelled = false;
+    void fetchCatalogProducts()
+      .then((list) => {
+        if (!cancelled) setCatalogProducts(list);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          message.warning("No se pudo cargar el catálogo de productos para el filtro.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entregaDetailOpen]);
+
+  const marginProductOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of catalogProducts) {
+      if (p.isActive === false) continue;
+      map.set(p.id, p.name);
+    }
+    for (const r of data?.totalPedidosByProduct ?? []) {
+      if (!map.has(r.productKey)) map.set(r.productKey, r.productName);
+    }
+    for (const r of data?.gastoPublicitarioMetaByProduct ?? []) {
+      if (!map.has(r.productId)) map.set(r.productId, r.productName);
+    }
+    return [...map.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "es"));
+  }, [catalogProducts, data?.totalPedidosByProduct, data?.gastoPublicitarioMetaByProduct]);
+
+  const totalPedidosMarginRows = useMemo((): TotalPedidosMarginRow[] => {
+    const base = data?.totalPedidosByProduct ?? [];
+    if (selectedMarginProductIds.length === 0) return base;
+
+    const byKey = new Map(base.map((r) => [r.productKey, r]));
+    const spendById = new Map(
+      (data?.gastoPublicitarioMetaByProduct ?? []).map((r) => [r.productId, r.amount]),
+    );
+    const nameById = new Map(marginProductOptions.map((o) => [o.value, o.label]));
+
+    return selectedMarginProductIds.map((id) => {
+      const existing = byKey.get(id);
+      if (existing) return existing;
+      return emptyTotalPedidosMarginRow(id, nameById.get(id) ?? id, spendById.get(id) ?? 0);
+    });
+  }, [data?.totalPedidosByProduct, data?.gastoPublicitarioMetaByProduct, selectedMarginProductIds, marginProductOptions]);
 
   return (
     <Space direction="vertical" size={28} style={{ width: "100%" }}>
@@ -386,16 +464,33 @@ export function DashboardPage() {
               <strong>Margen</strong> = ganancia estimada − gasto Meta. Luego: ganancia solo de entregados,
               pérdidas por devoluciones (|costo devolución|) y <strong>margen entregados</strong> = ganancia
               entregados − pérdidas − gasto. Al final, <strong>pend. por entregar</strong> es solo informativo:
-              lo que entraría si se entregan los pedidos aún en tránsito.
+              lo que entraría si se entregan los pedidos aún en tránsito. Puedes filtrar uno o varios productos;
+              si no tuvieron ventas igual aparecen (con gasto Meta si aplica).
             </Text>
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Filtrar productos (vacío = todos los que tuvieron pedidos)"
+              value={selectedMarginProductIds}
+              onChange={(ids: string[]) => setSelectedMarginProductIds(ids)}
+              options={marginProductOptions}
+              style={{ width: "100%", marginBottom: 12 }}
+              maxTagCount="responsive"
+            />
             <Table
               size="small"
               rowKey="productKey"
               loading={loading}
               pagination={false}
               scroll={{ x: 1250 }}
-              locale={{ emptyText: "Sin pedidos con líneas de producto en este rango." }}
-              dataSource={data?.totalPedidosByProduct ?? []}
+              locale={{
+                emptyText: selectedMarginProductIds.length
+                  ? "Sin productos seleccionados con datos."
+                  : "Sin pedidos con líneas de producto en este rango.",
+              }}
+              dataSource={totalPedidosMarginRows}
               columns={[
                 { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true, width: 200 },
                 {
@@ -482,7 +577,7 @@ export function DashboardPage() {
                 },
               ]}
               summary={() => {
-                const rows = data?.totalPedidosByProduct ?? [];
+                const rows = totalPedidosMarginRows;
                 if (rows.length === 0) return null;
                 const gasto = rows.reduce((s, r) => s + (r.gastoPublicitario ?? 0), 0);
                 const ganancia = rows.reduce((s, r) => s + (r.gananciaEstimada ?? 0), 0);
