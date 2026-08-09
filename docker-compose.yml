@@ -1,12 +1,33 @@
+# ⚠️ NO apliques este archivo sobre un servidor con datos sin leer antes
+# `docs/07-seguridad-infra.md`.
+#
+# El contenedor anterior guardaba los datos en un volumen ANÓNIMO. Este archivo
+# declara uno con nombre, así que al recrear el contenedor MySQL arranca VACÍO.
+# Los datos no se migran solos: hay que respaldar, recrear y restaurar.
+
 services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: fersua_dashboard
-      MYSQL_USER: fersua
-      MYSQL_PASSWORD: fersua
+      # Valores por defecto = los que ya estaban en uso, para que nada se rompa.
+      # Definir estas variables en un `.env` en la raíz permite rotarlas sin
+      # tocar este archivo. Ver §4 de docs/07-seguridad-infra.md.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fersua_dashboard}
+      MYSQL_USER: ${MYSQL_USER:-fersua}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fersua}
     ports:
-      - "3307:3306"
+      # Atado a loopback. La app se conecta por 127.0.0.1 igual que antes, pero
+      # el puerto deja de ser alcanzable desde internet. Publicarlo como
+      # "3307:3306" lo expone a todo el mundo: Docker escribe sus reglas de
+      # iptables por debajo de ufw y las evita, así que el firewall no lo tapa.
+      - "127.0.0.1:3307:3306"
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      # Volumen con nombre: sobrevive a `docker compose down`, se puede
+      # inspeccionar y respaldar. Uno anónimo se pierde sin aviso.
+      - fersua_mysql_data:/var/lib/mysql
+
+volumes:
+  fersua_mysql_data:
