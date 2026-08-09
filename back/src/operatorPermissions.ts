@@ -13,11 +13,13 @@ export const OPERATOR_PERMISSION_KEYS = [
   "moduleCpa",
   "moduleCatalogoProductos",
   "moduleCampanasMeta",
+  "moduleAnuncios",
   "moduleCuentasPublicitarias",
   "moduleGastoOperacional",
   "actionCatalogoProductosCrud",
   "actionCampanasMetaCrud",
   "actionImportarAdvertisingCampaigns",
+  "actionImportarAnuncios",
   "actionEditarMetricasAdvertising",
   "actionCuentasPublicitariasCrud",
   "actionGastoOperacionalCrud",
@@ -59,6 +61,7 @@ export function defaultLectorPermissions(): Record<OperatorPermissionKey, boolea
   r.moduleCpa = true;
   r.moduleCatalogoProductos = true;
   r.moduleCampanasMeta = true;
+  r.moduleAnuncios = true;
   r.moduleCuentasPublicitarias = true;
   r.moduleGastoOperacional = true;
   return r;
@@ -89,6 +92,14 @@ export function mergeOperatorPermissions(
   // Compat: JSON guardado antes de moduleSalidasCartera hereda el switch de Importar.
   if (!Object.prototype.hasOwnProperty.call(overrides, "moduleSalidasCartera")) {
     merged.moduleSalidasCartera = merged.moduleImportaciones;
+  }
+  // Compat: JSON guardado antes del módulo Anuncios hereda lo de Campañas Meta,
+  // para que nadie gane acceso a un módulo nuevo por el simple hecho de crearlo.
+  if (!Object.prototype.hasOwnProperty.call(overrides, "moduleAnuncios")) {
+    merged.moduleAnuncios = merged.moduleCampanasMeta;
+  }
+  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportarAnuncios")) {
+    merged.actionImportarAnuncios = merged.actionImportarAdvertisingCampaigns;
   }
   return merged;
 }

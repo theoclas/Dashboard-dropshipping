@@ -12,6 +12,7 @@ export type PermissionMenuModuleId =
   | "cpa"
   | "cpaExperimental"
   | "campanasMeta"
+  | "anuncios"
   | "cuentasPublicitarias"
   | "gastoOperacional"
   | "salidasCartera"
@@ -141,6 +142,15 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
       },
     ],
     accessIncludes: ["Ver campañas, métricas y cuentas vinculadas (lectura)"],
+  },
+  {
+    id: "anuncios",
+    label: "Anuncios",
+    moduleKeys: ["moduleAnuncios"],
+    actions: [{ key: "actionImportarAnuncios" }],
+    accessIncludes: [
+      "Ver la jerarquía cuenta → campaña → conjunto → anuncio con métricas diarias (lectura)",
+    ],
   },
   {
     id: "cuentasPublicitarias",

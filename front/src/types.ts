@@ -24,11 +24,13 @@ export const OPERATOR_PERMISSION_KEYS = [
   "moduleCpa",
   "moduleCatalogoProductos",
   "moduleCampanasMeta",
+  "moduleAnuncios",
   "moduleCuentasPublicitarias",
   "moduleGastoOperacional",
   "actionCatalogoProductosCrud",
   "actionCampanasMetaCrud",
   "actionImportarAdvertisingCampaigns",
+  "actionImportarAnuncios",
   "actionEditarMetricasAdvertising",
   "actionCuentasPublicitariasCrud",
   "actionGastoOperacionalCrud",
@@ -223,6 +225,135 @@ export type AdvertisingAccount = {
   id: string;
   metaAccountId: string;
   businessName?: string | null;
+};
+
+/* ── Módulo Anuncios ─────────────────────────────────────────────────────── */
+
+export type AdLevel = "campaign" | "adset" | "ad";
+
+export type AdsHierarchy = {
+  accounts: Array<{ id: string; name: string; metaAccountId: string }>;
+  campaigns: Array<{ id: string; name: string; externalId: string; advertisingAccountId: string | null }>;
+  adSets: Array<{ id: string; name: string; externalId: string; campaignId: string }>;
+};
+
+export type AdVerdictCode =
+  | "SIN_SEÑAL"
+  | "SIN_CONVERSACION"
+  | "SIN_VENTA"
+  | "CTR_BAJO"
+  | "CPA_ALTO"
+  | "OK";
+
+export type AdVerdict = {
+  code: AdVerdictCode;
+  action: "matar" | "vigilar" | "dejar_correr" | "ok";
+  reason: string;
+};
+
+export type AdDailyRow = {
+  ymd: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  linkClicks: number;
+  conversations: number;
+  purchases: number;
+  conversionValue: number;
+  ctr: number | null;
+  cpm: number | null;
+  cpc: number | null;
+  costPerPurchase: number | null;
+  costPerConversation: number | null;
+  roas: number | null;
+};
+
+export type AdNodeRow = {
+  key: string;
+  level: AdLevel;
+  id: string;
+  externalId: string;
+  name: string;
+  accountName: string | null;
+  campaignName: string | null;
+  adSetName: string | null;
+  effectiveStatus: string | null;
+
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  linkClicks: number;
+  conversations: number;
+  purchases: number;
+  conversionValue: number;
+
+  ctr: number | null;
+  cpm: number | null;
+  cpc: number | null;
+  costPerPurchase: number | null;
+  costPerConversation: number | null;
+  roas: number | null;
+
+  daysWithData: number;
+  firstDay: string | null;
+  lastDay: string | null;
+
+  verdict: AdVerdict | null;
+  daily?: AdDailyRow[];
+};
+
+export type AdMetricsResponse = {
+  desde: string;
+  hasta: string;
+  level: AdLevel;
+  cpaObjetivo: number | null;
+  rows: AdNodeRow[];
+  totals: Omit<
+    AdNodeRow,
+    | "key"
+    | "level"
+    | "id"
+    | "externalId"
+    | "name"
+    | "accountName"
+    | "campaignName"
+    | "adSetName"
+    | "effectiveStatus"
+    | "verdict"
+    | "daily"
+  >;
+  notes: string[];
+};
+
+export type AdImportAccountResult = {
+  advertisingAccountId: string;
+  metaAccountId: string;
+  desde: string;
+  hasta: string;
+  rowsFetched: number;
+  pagesFetched: number;
+  campaignsCreated: number;
+  adSetsCreated: number;
+  adsCreated: number;
+  adMetricsWritten: number;
+  campaignMetricsWritten: number;
+  errors: string[];
+};
+
+export type AdImportResponse = {
+  desde: string;
+  hasta: string;
+  results: AdImportAccountResult[];
+  totals: {
+    campaignsCreated: number;
+    adSetsCreated: number;
+    adsCreated: number;
+    adMetricsWritten: number;
+    campaignMetricsWritten: number;
+  };
+  errors: string[];
 };
 
 export type AdvertisingCampaignRow = {

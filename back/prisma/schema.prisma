@@ -52,6 +52,9 @@ model Company {
   cpaExperimentalRecords     CpaExperimentalRecord[]
   dropiWithdrawals           DropiWithdrawal[]
   importBatches              ImportBatch[]
+  adSets                     AdSet[]
+  ads                        Ad[]
+  adMetrics                  AdMetric[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -69,6 +72,9 @@ model AdvertisingAccount {
   advertisingCampaigns AdvertisingCampaign[]
   catalogProductLinks  CatalogProductAdvertisingAccount[]
   cpaExperimentalRecords CpaExperimentalRecord[]
+  adSets               AdSet[]
+  ads                  Ad[]
+  adMetrics            AdMetric[]
 
   @@unique([companyId, metaAccountId])
   @@index([companyId])
@@ -314,10 +320,112 @@ model AdvertisingCampaign {
   advertisingAccount AdvertisingAccount?                 @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
   productLinks       CatalogProductAdvertisingCampaign[]
   metrics            AdvertisingCampaignMetric[]
+  adSets             AdSet[]
+  ads                Ad[]
+  adMetrics          AdMetric[]
 
   @@unique([companyId, externalCampaignId])
   @@index([advertisingAccountId])
   @@map("advertising_campaigns")
+}
+
+/// Conjunto de anuncios Meta (`adset`). Nivel intermedio entre campaña y anuncio.
+model AdSet {
+  id                   String   @id @default(cuid())
+  companyId            String   @map("company_id")
+  /// `adset_id` de Meta.
+  externalAdSetId      String   @map("external_adset_id") @db.VarChar(128)
+  name                 String?  @db.VarChar(255)
+  campaignId           String   @map("campaign_id")
+  advertisingAccountId String?  @map("advertising_account_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  campaign           AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount? @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  ads                Ad[]
+  adMetrics          AdMetric[]
+
+  @@unique([companyId, externalAdSetId])
+  @@index([campaignId])
+  @@index([advertisingAccountId])
+  @@map("meta_adsets")
+}
+
+/// Anuncio Meta (`ad`). Hoja de la jerarquía cuenta → campaña → conjunto → anuncio.
+model Ad {
+  id                   String   @id @default(cuid())
+  companyId            String   @map("company_id")
+  /// `ad_id` de Meta.
+  externalAdId         String   @map("external_ad_id") @db.VarChar(128)
+  name                 String?  @db.VarChar(255)
+  adSetId              String   @map("adset_id")
+  campaignId           String   @map("campaign_id")
+  advertisingAccountId String?  @map("advertising_account_id")
+  /// Último `effective_status` visto en la API (ACTIVE, PAUSED, ...).
+  effectiveStatus      String?  @map("effective_status") @db.VarChar(50)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  adSet              AdSet               @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  campaign           AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount? @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+  metrics            AdMetric[]
+
+  @@unique([companyId, externalAdId])
+  @@index([adSetId])
+  @@index([campaignId])
+  @@index([advertisingAccountId])
+  @@map("meta_ads")
+}
+
+/// Métricas diarias por anuncio (un registro por anuncio y día).
+/// A diferencia de `advertising_campaign_metrics`, las métricas de atención van en columnas
+/// reales (no enterradas en JSON) para poder filtrar y ordenar por CTR / CPM.
+model AdMetric {
+  id                   String   @id @default(cuid())
+  companyId            String   @map("company_id")
+  adId                 String   @map("ad_id")
+  adSetId              String   @map("adset_id")
+  campaignId           String   @map("campaign_id")
+  advertisingAccountId String?  @map("advertising_account_id")
+  recordDate           DateTime @map("record_date") @db.Date
+
+  spend       Decimal? @db.Decimal(14, 2)
+  impressions Int?
+  reach       Int?
+  clicks      Int?
+  linkClicks  Int?     @map("link_clicks")
+  /// Porcentaje tal cual lo entrega Meta (ej. 1.2345 = 1,2345 %).
+  ctr         Decimal? @db.Decimal(10, 4)
+  cpc         Decimal? @db.Decimal(14, 4)
+  cpm         Decimal? @db.Decimal(14, 4)
+
+  conversations   Int?     @map("conversations")
+  purchases       Int?
+  conversionValue Decimal? @map("conversion_value") @db.Decimal(14, 2)
+  roas            Decimal? @db.Decimal(10, 4)
+
+  /// Fila cruda de la API para auditoría/depuración.
+  rawSnapshot Json?    @map("raw_snapshot")
+  /// Momento en que se trajo el dato (Meta re-atribuye días recientes).
+  fetchedAt   DateTime @default(now()) @map("fetched_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ad                 Ad                  @relation(fields: [adId], references: [id], onDelete: Cascade)
+  adSet              AdSet               @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  campaign           AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertisingAccount AdvertisingAccount? @relation(fields: [advertisingAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([adId, recordDate])
+  @@index([companyId, recordDate])
+  @@index([campaignId, recordDate])
+  @@index([adSetId, recordDate])
+  @@map("meta_ad_metrics")
 }
 
 /// Cuentas publicitarias Meta asignadas a un producto del catálogo (N:N).

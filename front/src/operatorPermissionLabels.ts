@@ -13,11 +13,13 @@ export const OPERATOR_PERMISSION_LABELS: Record<OperatorPermissionKey, string> =
   moduleCpa: "CPA",
   moduleCatalogoProductos: "Catálogo de productos",
   moduleCampanasMeta: "Campañas Meta",
+  moduleAnuncios: "Anuncios",
   moduleCuentasPublicitarias: "Cuentas publicitarias",
   moduleGastoOperacional: "Gasto operacional",
   actionCatalogoProductosCrud: "Catálogo: crear/editar productos",
   actionCampanasMetaCrud: "Campañas: crear/editar/eliminar",
   actionImportarAdvertisingCampaigns: "Campañas: importar Excel",
+  actionImportarAnuncios: "Anuncios: importar desde API Meta",
   actionEditarMetricasAdvertising: "Campañas: editar métricas",
   actionCuentasPublicitariasCrud: "Cuentas publicitarias: alta/edición",
   actionGastoOperacionalCrud: "Gastos: alta/edición/borrar",
@@ -37,6 +39,7 @@ export const OPERATOR_ACTION_LABELS: Partial<Record<OperatorPermissionKey, strin
   actionCatalogoProductosCrud: "Crear/editar productos en catálogo",
   actionCampanasMetaCrud: "Crear/editar/eliminar campañas",
   actionImportarAdvertisingCampaigns: "Importar Excel de campañas y métricas",
+  actionImportarAnuncios: "Traer anuncios y métricas desde la API de Meta",
   actionEditarMetricasAdvertising: "Editar y eliminar métricas de campañas",
   actionCuentasPublicitariasCrud: "Alta y edición de cuentas publicitarias",
   actionGastoOperacionalCrud: "Alta, edición y borrado de gastos",
@@ -55,6 +58,8 @@ export const OPERATOR_ACTION_LABELS: Partial<Record<OperatorPermissionKey, strin
 export const OPERATOR_ACTION_HINTS: Partial<Record<OperatorPermissionKey, string>> = {
   actionEditarMetricasAdvertising: "Incluye editar clics, conversaciones, sesiones Shopify y borrar filas de métricas.",
   actionImportarAdvertisingCampaigns: "Vista previa e importación del Excel de métricas Meta.",
+  actionImportarAnuncios:
+    "Trae la jerarquía cuenta → campaña → conjunto → anuncio con métricas diarias. También actualiza el gasto por campaña que usa CPA.",
   actionCuentasPublicitariasCrud: "También permite crear cuentas desde el flujo de importación de campañas.",
   actionCampanasMetaCrud: "En Cuentas publicitarias permite altas si no tienes el permiso de cuentas.",
 };

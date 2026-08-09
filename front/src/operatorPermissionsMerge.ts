@@ -27,6 +27,7 @@ function defaultLectorPermissions(): Record<OperatorPermissionKey, boolean> {
   r.moduleCpa = true;
   r.moduleCatalogoProductos = true;
   r.moduleCampanasMeta = true;
+  r.moduleAnuncios = true;
   r.moduleCuentasPublicitarias = true;
   r.moduleGastoOperacional = true;
   return r;
@@ -56,6 +57,12 @@ export function mergeOperatorPermissions(
   const merged = { ...base, ...overrides };
   if (!Object.prototype.hasOwnProperty.call(overrides, "moduleSalidasCartera")) {
     merged.moduleSalidasCartera = merged.moduleImportaciones;
+  }
+  if (!Object.prototype.hasOwnProperty.call(overrides, "moduleAnuncios")) {
+    merged.moduleAnuncios = merged.moduleCampanasMeta;
+  }
+  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportarAnuncios")) {
+    merged.actionImportarAnuncios = merged.actionImportarAdvertisingCampaigns;
   }
   return merged;
 }
