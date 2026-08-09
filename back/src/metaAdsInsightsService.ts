@@ -33,7 +33,7 @@ const INSIGHT_FIELDS = [
 
 import { resolveMetaAccessToken } from "./metaAdsTokenResolver";
 
-function metaApiVersion(): string {
+export function metaApiVersion(): string {
   return (process.env.META_API_VERSION?.trim() || DEFAULT_API_VERSION).replace(/^\/+|\/+$/g, "");
 }
 
@@ -105,13 +105,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type GraphInsightsResponse = {
+export type GraphInsightsResponse = {
   data?: MetaInsightApiRow[];
   paging?: { next?: string };
   error?: { message?: string; type?: string; code?: number };
 };
 
-async function fetchJsonWithRetry(url: string, accessToken: string, attempt = 0): Promise<GraphInsightsResponse> {
+export async function fetchJsonWithRetry(url: string, accessToken: string, attempt = 0): Promise<GraphInsightsResponse> {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
