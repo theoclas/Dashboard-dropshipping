@@ -1,5 +1,9 @@
 import axios from "axios";
 import type {
+  AdImportResponse,
+  AdLevel,
+  AdMetricsResponse,
+  AdsHierarchy,
   AdvertisingAccount,
   AdvertisingAccountOperationalExpensesResponse,
   AdvertisingAccountWithStats,
@@ -961,5 +965,53 @@ export async function patchOrdersTableConfig(
     "/auth/me/orders-table-config",
     ordersTableConfig,
   );
+  return data;
+}
+
+/* ── Módulo Anuncios ─────────────────────────────────────────────────────── */
+
+export async function fetchAdsHierarchy(): Promise<AdsHierarchy> {
+  const { data } = await api.get<AdsHierarchy>("/ads/hierarchy");
+  return data;
+}
+
+export async function fetchAdMetrics(params: {
+  desde: string;
+  hasta: string;
+  level: AdLevel;
+  daily?: boolean;
+  cpaObjetivo?: number | null;
+  advertisingAccountIds?: string[];
+  campaignIds?: string[];
+  adSetIds?: string[];
+}): Promise<AdMetricsResponse> {
+  const { data } = await api.get<AdMetricsResponse>("/ads/metrics", {
+    params: {
+      desde: params.desde,
+      hasta: params.hasta,
+      level: params.level,
+      ...(params.daily ? { daily: "true" } : {}),
+      ...(params.cpaObjetivo ? { cpaObjetivo: params.cpaObjetivo } : {}),
+      ...(params.advertisingAccountIds?.length
+        ? { advertisingAccountIds: params.advertisingAccountIds.join(",") }
+        : {}),
+      ...(params.campaignIds?.length ? { campaignIds: params.campaignIds.join(",") } : {}),
+      ...(params.adSetIds?.length ? { adSetIds: params.adSetIds.join(",") } : {}),
+    },
+  });
+  return data;
+}
+
+export async function importAdsFromMetaApi(body: {
+  advertisingAccountIds: string[];
+  desde: string;
+  hasta: string;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+}): Promise<AdImportResponse> {
+  // El import trae un rango entero en una sola llamada por cuenta; puede tardar.
+  const { data } = await api.post<AdImportResponse>("/ads/import/meta-api", body, {
+    timeout: 180000,
+  });
   return data;
 }

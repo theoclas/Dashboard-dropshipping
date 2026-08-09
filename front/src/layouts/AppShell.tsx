@@ -19,6 +19,7 @@ import {
   TruckOutlined,
   ApiOutlined,
   BankOutlined,
+  PictureOutlined,
   AppstoreOutlined,
   SettingOutlined,
   ExportOutlined,
@@ -101,6 +102,7 @@ function readStoredOpenKeys(): string[] | null {
 
 const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
+  if (pathname.startsWith("/app/anuncios")) return "/app/anuncios";
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
@@ -172,6 +174,7 @@ export function AppShell() {
   const canMapeo = usePermission("moduleMapeo");
   const canCpa = usePermission("moduleCpa");
   const canCampanas = usePermission("moduleCampanasMeta");
+  const canAnuncios = usePermission("moduleAnuncios");
   const canCuentas = usePermission("moduleCuentasPublicitarias");
   const canGastoOp = usePermission("moduleGastoOperacional");
   const canConfig = usePermission("moduleConfiguracion");
@@ -234,6 +237,13 @@ export function AppShell() {
             key: "/app/campanas-meta",
             icon: <FundProjectionScreenOutlined />,
             label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
+          }
+        : null,
+      canAnuncios
+        ? {
+            key: "/app/anuncios",
+            icon: <PictureOutlined />,
+            label: <Link to="/app/anuncios">Anuncios</Link>,
           }
         : null,
       canCuentas

@@ -22,6 +22,7 @@ import { AdminMetaAdsUsersPage } from "./pages/admin/AdminMetaAdsUsersPage";
 import { CompaniesPage } from "./pages/CompaniesPage";
 import { LogisticsPage } from "./pages/LogisticsPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
+import { AdsPage } from "./pages/AdsPage";
 import { AdvertisingAccountsPage } from "./pages/AdvertisingAccountsPage";
 import { OperationalExpensesPage } from "./pages/OperationalExpensesPage";
 import { CarteraSalidasPage } from "./pages/CarteraSalidasPage";
@@ -124,6 +125,14 @@ export function AppRoutes() {
           element={
             <Perm perm="moduleCampanasMeta">
               <CampaignsPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="anuncios"
+          element={
+            <Perm perm="moduleAnuncios">
+              <AdsPage />
             </Perm>
           }
         />
