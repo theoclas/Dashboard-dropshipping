@@ -62,6 +62,10 @@ export type AdNodeRow = {
   campaignName: string | null;
   adSetName: string | null;
   effectiveStatus: string | null;
+  /** Solo en nivel `ad`. URL del CDN de Meta: puede caducar, la UI debe tolerarlo. */
+  creativeThumbUrl: string | null;
+  creativeImageUrl: string | null;
+  creativeObjectType: string | null;
 
   spend: number;
   impressions: number;
@@ -93,7 +97,23 @@ export type AdQueryResult = {
   level: AdLevel;
   cpaObjetivo: number | null;
   rows: AdNodeRow[];
-  totals: Omit<AdNodeRow, "key" | "level" | "id" | "externalId" | "name" | "accountName" | "campaignName" | "adSetName" | "effectiveStatus" | "verdict" | "daily">;
+  totals: Omit<
+    AdNodeRow,
+    | "key"
+    | "level"
+    | "id"
+    | "externalId"
+    | "name"
+    | "accountName"
+    | "campaignName"
+    | "adSetName"
+    | "effectiveStatus"
+    | "creativeThumbUrl"
+    | "creativeImageUrl"
+    | "creativeObjectType"
+    | "verdict"
+    | "daily"
+  >;
   notes: string[];
 };
 
@@ -296,7 +316,16 @@ export async function queryAdMetrics(
       adId: true,
       adSetId: true,
       campaignId: true,
-      ad: { select: { externalAdId: true, name: true, effectiveStatus: true } },
+      ad: {
+        select: {
+          externalAdId: true,
+          name: true,
+          effectiveStatus: true,
+          creativeThumbUrl: true,
+          creativeImageUrl: true,
+          creativeObjectType: true,
+        },
+      },
       adSet: { select: { externalAdSetId: true, name: true, campaignId: true } },
       campaign: {
         select: {
@@ -317,6 +346,9 @@ export async function queryAdMetrics(
     campaignName: string | null;
     adSetName: string | null;
     effectiveStatus: string | null;
+    creativeThumbUrl: string | null;
+    creativeImageUrl: string | null;
+    creativeObjectType: string | null;
     parentKey: string;
     acc: Acc;
     byDay: Map<string, Acc>;
@@ -335,6 +367,9 @@ export async function queryAdMetrics(
     let name: string;
     let parentKey: string;
     let effectiveStatus: string | null = null;
+    let creativeThumbUrl: string | null = null;
+    let creativeImageUrl: string | null = null;
+    let creativeObjectType: string | null = null;
 
     if (opts.level === "campaign") {
       id = m.campaignId;
@@ -352,6 +387,9 @@ export async function queryAdMetrics(
       name = m.ad.name ?? m.ad.externalAdId;
       parentKey = m.adSetId;
       effectiveStatus = m.ad.effectiveStatus;
+      creativeThumbUrl = m.ad.creativeThumbUrl;
+      creativeImageUrl = m.ad.creativeImageUrl;
+      creativeObjectType = m.ad.creativeObjectType;
     }
 
     let node = nodes.get(id);
@@ -364,6 +402,9 @@ export async function queryAdMetrics(
         campaignName,
         adSetName,
         effectiveStatus,
+        creativeThumbUrl,
+        creativeImageUrl,
+        creativeObjectType,
         parentKey,
         acc: emptyAcc(),
         byDay: new Map(),
@@ -461,6 +502,9 @@ export async function queryAdMetrics(
       campaignName: node.campaignName,
       adSetName: node.adSetName,
       effectiveStatus: node.effectiveStatus,
+      creativeThumbUrl: node.creativeThumbUrl,
+      creativeImageUrl: node.creativeImageUrl,
+      creativeObjectType: node.creativeObjectType,
 
       spend: round(node.acc.spend)!,
       impressions: node.acc.impressions,

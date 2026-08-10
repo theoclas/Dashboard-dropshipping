@@ -2,8 +2,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import * as advertisingAccountService from "./advertisingAccountService";
 import {
-  fetchAdEffectiveStatuses,
   fetchAdInsightsForAccountRange,
+  fetchAdMetadata,
   validateAdApiDateRange,
 } from "./metaAdsAdInsightsService";
 import {
@@ -180,12 +180,14 @@ export async function importAdsForAccount(
   }
 
   // ── 3. Anuncios ────────────────────────────────────────────────────────────
-  const statusRes = await fetchAdEffectiveStatuses(account.metaAccountId, {
+  const metaRes = await fetchAdMetadata(account.metaAccountId, {
     metaAdsAppId: opts.metaAdsAppId,
     metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });
-  if (statusRes.error) {
-    errors.push(`No se pudo leer el estado de los anuncios (se importa igual): ${statusRes.error}`);
+  if (metaRes.error) {
+    errors.push(
+      `No se pudo leer el estado ni el creativo de los anuncios (se importa igual): ${metaRes.error}`,
+    );
   }
 
   const adInfoByExt = new Map<string, { name: string | null; adSetExt: string; campaignExt: string }>();
@@ -204,7 +206,19 @@ export async function importAdsForAccount(
     const adSetId = adSetIdByExt.get(info.adSetExt);
     const campaignId = campaignIdByExt.get(info.campaignExt);
     if (!adSetId || !campaignId) continue;
-    const effectiveStatus = statusRes.byAdId.get(ext) ?? null;
+    const meta = metaRes.byAdId.get(ext);
+
+    // Solo se pisa el creativo si Meta devolvió algo: si la llamada falló, es
+    // mejor conservar la miniatura vieja que dejar la fila sin imagen.
+    const creativeData = meta?.creativeId
+      ? {
+          creativeId: meta.creativeId,
+          creativeThumbUrl: meta.creativeThumbUrl,
+          creativeImageUrl: meta.creativeImageUrl,
+          creativeObjectType: meta.creativeObjectType,
+          creativeUpdatedAt: new Date(),
+        }
+      : {};
 
     const existing = await prisma.ad.findUnique({
       where: { companyId_externalAdId: { companyId, externalAdId: ext } },
@@ -219,7 +233,8 @@ export async function importAdsForAccount(
           adSetId,
           campaignId,
           advertisingAccountId,
-          ...(effectiveStatus ? { effectiveStatus } : {}),
+          ...(meta?.effectiveStatus ? { effectiveStatus: meta.effectiveStatus } : {}),
+          ...creativeData,
         },
       });
     } else {
@@ -231,7 +246,8 @@ export async function importAdsForAccount(
           adSetId,
           campaignId,
           advertisingAccountId,
-          effectiveStatus,
+          effectiveStatus: meta?.effectiveStatus ?? null,
+          ...creativeData,
         },
         select: { id: true },
       });

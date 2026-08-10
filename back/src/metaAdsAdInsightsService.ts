@@ -153,21 +153,48 @@ export async function fetchAdInsightsForAccountRange(
   return { rows, desde: v.desde, hasta: v.hasta, accountId: actId, pagesFetched, errors };
 }
 
-type AdStatusResponse = {
-  data?: Array<{ id?: string; effective_status?: string }>;
+/** Ancho de la miniatura que pedimos a Meta; suficiente para reconocer el creativo en una tabla. */
+const THUMBNAIL_SIZE = 256;
+
+type AdCreativeRaw = {
+  id?: string;
+  thumbnail_url?: string;
+  image_url?: string;
+  object_type?: string;
+};
+
+type AdMetaResponse = {
+  data?: Array<{
+    id?: string;
+    effective_status?: string;
+    creative?: AdCreativeRaw;
+  }>;
   paging?: { next?: string };
   error?: { message?: string; code?: number };
 };
 
+export type AdMetadata = {
+  effectiveStatus: string | null;
+  creativeId: string | null;
+  creativeThumbUrl: string | null;
+  creativeImageUrl: string | null;
+  creativeObjectType: string | null;
+};
+
 /**
- * Estado actual de cada anuncio (`ACTIVE`, `PAUSED`, ...). No viene en `/insights`, así que es
- * una llamada aparte. Si falla no se corta el import: el estado es informativo, no un dato de negocio.
+ * Estado actual y creativo de cada anuncio. Nada de esto viene en `/insights`, así que va en
+ * una llamada aparte al edge `/ads` — pero es **una sola** por cuenta, no una por anuncio.
+ *
+ * Las URLs de imagen son del CDN de Meta y llevan firma que caduca; por eso se refrescan en
+ * cada import y la UI tiene que tolerar que una miniatura no cargue.
+ *
+ * Si esta llamada falla, el import sigue: el creativo es contexto, no un dato de negocio.
  */
-export async function fetchAdEffectiveStatuses(
+export async function fetchAdMetadata(
   metaAccountId: string,
   opts?: { metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
-): Promise<{ byAdId: Map<string, string>; error: string | null }> {
-  const byAdId = new Map<string, string>();
+): Promise<{ byAdId: Map<string, AdMetadata>; error: string | null }> {
+  const byAdId = new Map<string, AdMetadata>();
   try {
     const actId = toMetaActAccountId(metaAccountId);
     const accessToken = await resolveMetaAccessToken({
@@ -175,16 +202,30 @@ export async function fetchAdEffectiveStatuses(
       metaAdsSystemUserId: opts?.metaAdsSystemUserId,
     });
 
+    const fields = [
+      "id",
+      "effective_status",
+      `creative{id,object_type,image_url,thumbnail_url.width(${THUMBNAIL_SIZE}).height(${THUMBNAIL_SIZE})}`,
+    ].join(",");
+
     let url: string | null =
       `https://graph.facebook.com/${metaApiVersion()}/${actId}/ads?` +
-      new URLSearchParams({ fields: "id,effective_status", limit: "500" }).toString();
+      new URLSearchParams({ fields, limit: "500" }).toString();
 
     let pages = 0;
     while (url && pages < MAX_PAGES) {
       pages += 1;
-      const page = (await fetchJsonWithRetry(url, accessToken)) as unknown as AdStatusResponse;
+      const page = (await fetchJsonWithRetry(url, accessToken)) as unknown as AdMetaResponse;
       for (const item of page.data ?? []) {
-        if (item.id && item.effective_status) byAdId.set(String(item.id), String(item.effective_status));
+        if (!item.id) continue;
+        const c = item.creative ?? {};
+        byAdId.set(String(item.id), {
+          effectiveStatus: item.effective_status ? String(item.effective_status) : null,
+          creativeId: c.id ? String(c.id) : null,
+          creativeThumbUrl: c.thumbnail_url ? String(c.thumbnail_url) : null,
+          creativeImageUrl: c.image_url ? String(c.image_url) : null,
+          creativeObjectType: c.object_type ? String(c.object_type) : null,
+        });
       }
       url = page.paging?.next ?? null;
     }

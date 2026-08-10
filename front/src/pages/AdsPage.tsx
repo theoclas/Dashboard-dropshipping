@@ -6,6 +6,7 @@ import {
   Col,
   DatePicker,
   Divider,
+  Image,
   InputNumber,
   Row,
   Select,
@@ -72,6 +73,43 @@ function colTitle(short: string, full: string) {
     <Tooltip title={full}>
       <span style={{ cursor: "default" }}>{short}</span>
     </Tooltip>
+  );
+}
+
+/**
+ * Miniatura del creativo. Las URLs vienen firmadas del CDN de Meta y caducan,
+ * así que si falla la carga se muestra un marcador en vez de romper la fila.
+ */
+function CreativeThumb({ row }: { row: AdNodeRow }) {
+  const src = row.creativeThumbUrl;
+  if (!src) {
+    return (
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 6,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(255,255,255,0.06)",
+          fontSize: 10,
+          opacity: 0.6,
+        }}
+      >
+        sin img
+      </div>
+    );
+  }
+  return (
+    <Image
+      src={src}
+      preview={row.creativeImageUrl ? { src: row.creativeImageUrl } : true}
+      width={56}
+      height={56}
+      style={{ objectFit: "cover", borderRadius: 6 }}
+      fallback="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1NiIgaGVpZ2h0PSI1NiI+PHJlY3Qgd2lkdGg9IjU2IiBoZWlnaHQ9IjU2IiBmaWxsPSIjMjQzMDQ0IiByeD0iNiIvPjx0ZXh0IHg9IjI4IiB5PSIzMiIgZmlsbD0iIzg4OSIgZm9udC1zaXplPSI5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5jYWR1Y8OzPC90ZXh0Pjwvc3ZnPg=="
+    />
   );
 }
 
@@ -272,7 +310,21 @@ export function AdsPage() {
     const nameTitle =
       level === "campaign" ? "Campaña" : level === "adset" ? "Conjunto" : "Anuncio";
 
-    const cols: ColumnsType<AdNodeRow> = [
+    const cols: ColumnsType<AdNodeRow> = [];
+
+    // La imagen solo existe a nivel anuncio: un conjunto o una campaña agrupan varios creativos.
+    if (level === "ad") {
+      cols.push({
+        title: "",
+        key: "thumb",
+        width: 72,
+        fixed: "left",
+        align: "center",
+        render: (_: unknown, row) => <CreativeThumb row={row} />,
+      });
+    }
+
+    cols.push(
       {
         title: nameTitle,
         dataIndex: "name",
@@ -375,7 +427,7 @@ export function AdsPage() {
         width: 80,
         render: fmtInteger,
       },
-    ];
+    );
     return cols;
   }, [level]);
 
@@ -630,7 +682,7 @@ export function AdsPage() {
           loading={loading}
           dataSource={data?.rows ?? []}
           columns={columns}
-          scroll={{ x: 1700 }}
+          scroll={{ x: level === "ad" ? 1780 : 1700 }}
           pagination={{ pageSize: 50, showSizeChanger: true }}
           expandable={
             showDaily

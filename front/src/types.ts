@@ -279,6 +279,10 @@ export type AdNodeRow = {
   campaignName: string | null;
   adSetName: string | null;
   effectiveStatus: string | null;
+  /** Solo en nivel `ad`. URL del CDN de Meta: puede caducar. */
+  creativeThumbUrl: string | null;
+  creativeImageUrl: string | null;
+  creativeObjectType: string | null;
 
   spend: number;
   impressions: number;
@@ -321,6 +325,9 @@ export type AdMetricsResponse = {
     | "campaignName"
     | "adSetName"
     | "effectiveStatus"
+    | "creativeThumbUrl"
+    | "creativeImageUrl"
+    | "creativeObjectType"
     | "verdict"
     | "daily"
   >;

@@ -365,6 +365,16 @@ model Ad {
   advertisingAccountId String?  @map("advertising_account_id")
   /// Último `effective_status` visto en la API (ACTIVE, PAUSED, ...).
   effectiveStatus      String?  @map("effective_status") @db.VarChar(50)
+
+  /// Creativo del anuncio. Las URLs son del CDN de Meta y pueden caducar,
+  /// así que se refrescan en cada import; la UI debe tolerar que fallen.
+  creativeId         String?   @map("creative_id") @db.VarChar(128)
+  creativeThumbUrl   String?   @map("creative_thumb_url") @db.Text
+  creativeImageUrl   String?   @map("creative_image_url") @db.Text
+  /// IMAGE, VIDEO, SHARE, ... tal como lo reporta Meta.
+  creativeObjectType String?   @map("creative_object_type") @db.VarChar(50)
+  creativeUpdatedAt  DateTime? @map("creative_updated_at")
+
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
