@@ -76,3 +76,82 @@ contra $22.945 — 17% mejor, pero es cálculo retrospectivo, no resultado.
 
 1. **Consolidar conjuntos** para dejar de competir contra uno mismo y bajar el CPM.
 2. **Bajar las devoluciones del 20% al 12%** — sube el equilibrio a ~$30.000 sin tocar publicidad.
+
+---
+
+## 2026-08-15 — Collar Girasol CajaRosa
+
+### CPA objetivo
+
+**$17.695 por pedido generado** (julio: 61 pedidos, 70,5% entrega, **26,2% devoluciones**,
+$31.337 por pedido entregado). Más ajustado que el shampoo y con peor tasa de devolución.
+
+### Estado de la campaña principal (`CAJAROSA 14/07`, 1-14 ago)
+
+$819.366 · CPM $5.857 · 493 conversaciones a $1.662 · 89 compras · cierre 18,1% ·
+**$9.206 por compra → gana $8.489 por venta.** Rentable incluso castigándola por el
+sobrerreporte de Meta.
+
+| Conjunto | CPM | Costo/conv | Cierre | Costo/compra |
+|---|---:|---:|---:|---:|
+| 1. Caliente | $4.728 | $1.363 | 19,6% | **$6.956** |
+| 3. Frio | $6.469 | $1.757 | 17,7% | $9.914 |
+| 2. Tibio | $8.071 | $2.364 | 14,1% | $16.744 |
+
+Estructura limpia: **un anuncio por conjunto**. Probablemente por eso el CPM es un tercio del
+que paga el shampoo, que tenía 3-5 anuncios por conjunto y 12 conjuntos compitiendo.
+
+### El cambio del 14 de agosto y su resultado
+
+Se apagó Tibio (−$14.564/día) y se subió a los otros dos (+$7.510/día).
+
+| | 13 ago | 14 ago | |
+|---|---:|---:|---|
+| Gasto | $58.523 | $51.469 | −12% |
+| Conversaciones | 32 | 34 | +6% |
+| Compras | 8 | 8 | igual |
+| **Costo/compra** | $7.315 | **$6.433** | **−12%** |
+
+Frio absorbió el aumento muy bien (costo/conv de $1.756 a **$1.126**); Caliente empeoró ese día
+($1.297 → $2.068). **La causa probable no fue el presupuesto sino la campaña INT**, que ese mismo
+día gastó $18.125 sobre las mismas audiencias. Al pausarla, el 15 los dos bajaron de CPM.
+
+### La campaña INT: objetivo equivocado, no creativos malos
+
+`CAMPAÑA INT ABO GIRASOL CAJAROSA 11/08` estaba optimizada por **interacciones**. Por eso tenía
+mejor CTR (2,19% vs 1,64%) y el triple de costo por conversación ($5.126 vs $1.662): Meta buscaba
+gente que reacciona, no que escribe.
+
+**Su data no sirve para elegir creativos ganadores** — Meta le dio el 80,7% del presupuesto al
+anuncio de *menor* CTR, porque optimizaba por reacciones y comentarios, no por clics. Cada creativo
+recibió una sub-audiencia distinta.
+
+Pausada el 14. Los creativos se reutilizan tal cual en una campaña nueva de ventas: nunca tuvieron
+una prueba justa.
+
+### Decisiones tomadas el 15 de agosto
+
+- Subido Caliente a ~$32.000/día y Frio a ~$26.000/día. Aumentos bajo el 20% para no reactivar la
+  fase de aprendizaje.
+- **Test de creativos aplazado al martes 18.** El lunes 17 es festivo en Colombia y se comporta
+  como domingo; el primer día hábil normal es el martes. La regla de "no testear en fin de semana"
+  aplica al test, no a escalar una campaña ya madura — y los datos propios no muestran castigo de
+  fin de semana ($7.210 por compra el finde contra $7.285 entre semana).
+
+### Qué falta verificar
+
+- Efecto del aumento: revisar el martes con el lunes ya cerrado. **Sábado, domingo y festivo son
+  tres días atípicos seguidos** — no sacar conclusiones duras de esa ventana.
+- Si el CPM de Caliente vuelve a $4.500-5.000, confirma que el problema del 14 era la INT y se
+  puede subir otro 30%. Si se queda sobre $5.500, es techo de audiencia.
+- El test de creativos volverá a competir por la audiencia Caliente (~30% del gasto). Ese es el
+  precio de testear; hay que mirarlo en el CPM de la principal.
+- La campaña de **VIDEOS del Girasol Giratorio**, pausada el 5 de agosto, iba en $14.652 contra un
+  objetivo de $21.026 — era rentable. Su debilidad era el cierre (9,7% contra 18,1%), no el
+  tráfico: tiene el CPM más bajo de toda la cuenta ($4.362). Vale revisarla.
+
+### Nota sobre el módulo
+
+Una campaña creada pero sin entregar **no aparece en el dashboard**: el import se alimenta de
+`/insights`, que solo devuelve campañas con entrega. Mejora pendiente: leer también los edges
+`/campaigns`, `/adsets` y `/ads` para ver la estructura antes del primer peso gastado.
