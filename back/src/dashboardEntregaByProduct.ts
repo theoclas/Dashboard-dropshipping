@@ -1,7 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { dropiVariantKey, mapVariantKeysToCatalogLinks } from "./catalogProductService";
 
-const SQL_ENTREGA_BUCKET = `(CASE
+/** Clasifica un pedido en su estado de entrega leyendo las cuatro columnas de estado de Dropi. */
+export const SQL_ENTREGA_BUCKET = `(CASE
   WHEN LOWER(COALESCE(p.estado_unificado,'')) LIKE '%cancel%'
     OR LOWER(COALESCE(p.estado_operativo,'')) LIKE '%cancel%'
     OR LOWER(COALESCE(p.estatus_original,'')) LIKE '%cancel%'

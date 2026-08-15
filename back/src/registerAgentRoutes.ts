@@ -7,6 +7,7 @@ import { queryAdMetrics, type AdLevel } from "./adAnalyticsService";
 import { listCpaExperimental } from "./cpaExperimentalService";
 import { queryEntregaByProductBreakdown } from "./dashboardEntregaByProduct";
 import { getMetaAdvertisingSpendSummary } from "./metaCampaignSpend";
+import { queryEntregasPorUbicacion, type GeoDimension } from "./agentGeoService";
 
 /**
  * API de solo lectura pensada para que un agente externo analice el negocio.
@@ -122,6 +123,10 @@ export function registerAgentRoutes(app: express.Express): void {
           { ruta: "GET /api/agent/ads/daily", que: "Anuncios día a día por nivel campaign/adset/ad." },
           { ruta: "GET /api/agent/cpa/daily", que: "CPA por producto y día (gasto, ventas, margen aproximado)." },
           { ruta: "GET /api/agent/delivery/by-product", que: "Entregados, devueltos y en tránsito por producto." },
+          {
+            ruta: "GET /api/agent/delivery/by-location",
+            que: "Entregas y devoluciones por ciudad o departamento, filtrable por producto (?dimension=ciudad|departamento&productId=&minPedidos=). Para decidir qué ubicaciones excluir de la segmentación.",
+          },
           { ruta: "GET /api/agent/spend/by-product", que: "Gasto publicitario Meta agrupado por producto." },
         ],
         comoLeerEstosDatos: [
@@ -252,6 +257,42 @@ export function registerAgentRoutes(app: express.Express): void {
         });
       } catch (e) {
         return res.status(400).json({ message: e instanceof Error ? e.message : "Error al consultar entregas." });
+      }
+    },
+  );
+
+  /**
+   * Entregas y devoluciones por departamento o ciudad, filtrable por producto.
+   * Sirve para decidir qué ubicaciones excluir de la segmentación: una ciudad que
+   * devuelve el 40% se lleva la plata aunque el anuncio funcione.
+   */
+  app.get(
+    "/api/agent/delivery/by-location",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleDashboard", "moduleReportes"]),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = rangeSchema.partial().safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Parámetros inválidos." });
+      }
+      const dimRaw = String(req.query.dimension ?? "ciudad");
+      const dimension: GeoDimension = dimRaw === "departamento" ? "departamento" : "ciudad";
+
+      try {
+        const data = await queryEntregasPorUbicacion(prisma, u.companyId, {
+          dimension,
+          desde: parsed.data.desde,
+          hasta: parsed.data.hasta,
+          catalogProductId: req.query.productId ? String(req.query.productId) : undefined,
+          minPedidos: numOrNull(req.query.minPedidos) ?? undefined,
+        });
+        return res.json(data);
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ message: e instanceof Error ? e.message : "Error al consultar entregas por ubicación." });
       }
     },
   );
