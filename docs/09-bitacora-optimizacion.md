@@ -155,3 +155,88 @@ una prueba justa.
 Una campaña creada pero sin entregar **no aparece en el dashboard**: el import se alimenta de
 `/insights`, que solo devuelve campañas con entrega. Mejora pendiente: leer también los edges
 `/campaigns`, `/adsets` y `/ads` para ver la estructura antes del primer peso gastado.
+
+---
+
+## 2026-08-18 — Segunda ronda: shampoo y collar
+
+### Shampoo — resultado de la ronda 1 (apagados del 15)
+
+Validada. Sobre días hábiles comparables el CPA real pasó de **$25.025 a $18.352** (−27%), y el
+martes 18 cerró en **$16.544 por venta**, el mejor día del producto.
+
+La semana completa quedó en $26.549 contra un equilibrio de $26.493 — cero neto — porque el
+domingo 16 y el festivo 17 costaron **$267.159 para 6 ventas ($44.527 cada una)**. Dos días
+borraron la ganancia de cuatro. Vigilar si se repite el domingo 23.
+
+Hallazgo estructural: **entre el 12 y el 18 el CPM subió en todos los conjuntos** aunque el gasto
+diario cayó 40%. No es concentración de presupuesto — la audiencia del producto se agota en bloque.
+El único que aguantó fue `4.1 RECOMPRA POR PACKS` (+14% de CPM contra +29% a +110% del resto).
+
+### Shampoo — ronda 2, aplicada el 18 a las 18:00
+
+- `4.1 RECOMPRA` de $17.000 a **$21.000** (+23,5%)
+- `3.2 VIAJES` de $12.000 a **$15.000**
+- Apagados: `4.3 ADIÓS A TANTAS BOTELLAS` y **los tres conjuntos FRIO de la cuenta 3**
+
+Los cuatro apagados alcanzaron a gastar $29.880 ese día — el 35% del gasto del martes — con CPM
+entre $29.527 y $40.781 contra los $14.425 de 4.1.
+
+Gasto diario del shampoo: de ~$112.700 a **~$72.000 (−36%)**. La cuenta 3 sale completa del producto.
+
+**Presupuesto compartido, confirmado.** Por eso los conjuntos gastan por encima de su asignación
+individual y por eso subir a dos conjuntos le quita a los otros tres sin tocarlos.
+
+### Collar CajaRosa — el aumento del 15 funcionó
+
+| | Antes (8–13) | Después (16–17) | |
+|---|---|---|---|
+| Gasto/día | $45.908 | $67.014 | **+46%** |
+| Conversaciones/día | 34,5 | 47,5 | +38% |
+| Compras/día | 6,2 | 8,5 | +37% |
+| Costo/compra | $7.405 | $7.884 | +6% |
+
+**Absorbió 46% más presupuesto con el costo por venta subiendo solo 6%.** CPM de Caliente +8%,
+el de Frio **−2%**. Frecuencia entre 1,14 y 1,23 sin moverse.
+
+Con pedidos reales: 23 ventas del 15 al 18 a **$10.110** contra un objetivo de $17.695 —
+unos **$174.000 de utilidad en cuatro días**, incluyendo domingo y festivo, que en este producto
+no hacen daño.
+
+Los dos conjuntos estaban **topando su presupuesto** (Caliente gastó 125% de su asignación, Frio
+114%): limitados por plata, no por audiencia.
+
+### Collar — aumento aplicado el 18
+
+- `1. Caliente` de $30.000 a **$39.000**
+- `3. Frio` de $28.000 a **$36.400**
+- Total activo: de $58.000 a **$75.400/día**
+
+`2. Tibio` y `4. Cliente` siguen apagados y así deben seguir: Tibio gastó $200.928 para 12 compras
+con cierre del 14,1%; los conjuntos Cliente, $86.816 para 2 compras con cierre del 3,9%.
+
+### Campaña nueva de ventas — primer día
+
+`🟡 CAMPAÑA Vent ABO GIRASOL CAJAROSA 17 08 2026`, arrancó el 18 con arranque parcial (Meta no
+activó algunos anuncios). Cinco anuncios corriendo: uno de video y cuatro en el conjunto Frio.
+
+| | Campaña principal | **Campaña nueva** |
+|---|---|---|
+| CPM | $5.473 | **$1.480** |
+| CTR | 1,86% | **4,03%** |
+| **Clic → conversación** | **22%** | **0,46%** |
+| Costo/conversación | $1.337 | **$8.038** |
+
+CPM 73% más barato y CTR el doble, pero **la conversión de clic a conversación es 48 veces peor**.
+Es la firma del tráfico basura: clics baratos y abundantes que no escriben. Primer sospechoso:
+las ubicaciones (Audience Network y similares).
+
+Un día y con arranque roto, así que no se juzga todavía. **Umbral: si al tercer día el costo por
+conversación sigue sobre $4.000, revisar ubicaciones antes que creativos.**
+
+### Qué falta
+
+- Revisar el **viernes 21** con miércoles y jueves cerrados en los tres frentes.
+- Construir el **job diario** de import y el **registro de cambios desde Meta** (`/activities`),
+  para no depender de que los movimientos se recuerden a mano.
+- Traer los **presupuestos** al módulo, para medir aprovechamiento real.
