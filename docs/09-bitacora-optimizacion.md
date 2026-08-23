@@ -337,3 +337,74 @@ sobre $26.493**, o cuando llega a $53.000 **sin vender**. Sin excepciones improv
   siendo el umbral correcto para esta mezcla.
 - **Reabrir prospección fría.** Con el producto dejando ~$57.000 diarios hay margen para
   financiarla. Ese es el próximo movimiento, no escalar lo existente.
+
+---
+
+## 2026-08-22 — Collar: el techo de la campaña principal y la autopsia del test
+
+### La campaña de test (`Vent ABO GIRASOL CAJAROSA 17 08`): $143.139 para cero ventas
+
+Apagada tras tres días por decisión del dueño (falta de caja acelerando una decisión que los
+números ya pedían).
+
+| | Test | Principal |
+|---|---:|---:|
+| Gasto | $143.139 | — |
+| CPM | **$1.518** | $5.500–7.900 |
+| CTR | **4,22%** | ~1,8% |
+| **Clic → conversación** | **0,93%** | **~22%** |
+| Costo/conversación | $3.869 | ~$1.500 |
+| **Compras** | **0** | — |
+
+Compró 3.979 clics y sacó 37 conversaciones. **Tráfico basura**: un CPM de $1.518 con CTR del
+4,22% y conversión a conversación 24 veces peor que la campaña sana es la firma de ubicaciones
+automáticas (Audience Network). El umbral fijado el 18 —"si al tercer día el costo por conversación
+sigue sobre $4.000, revisar ubicaciones"— se cumplió exacto: cerró en $3.869 con cero compras.
+
+Los 17 creativos **siguen sin evaluar**: nunca compitieron en condiciones justas. Al reabrir el
+test, usar **ubicaciones manuales** (Facebook e Instagram, feed y stories, sin Audience Network).
+Señal de que va bien: que el CPM suba de $1.518 a $4.000-5.000, porque significa comprar gente real.
+
+### La campaña principal encontró su techo
+
+El aumento del 18 (Caliente $30.000 → $39.000, Frio $28.000 → $36.400) se midió del 19 al 22:
+
+| | Antes (12–17) | Después (19–22) |
+|---|---:|---:|
+| Gasto/día | $59.024 | $68.650 |
+| CPM | ~$5.493 | $6.354 → **$7.906** |
+| Impresiones/día | ~11.700 | 12.133 → **6.740** |
+| Ventas reales/día | 5,00 | 5,25 |
+| **CPA real** | **$11.805** | **$13.076** |
+
+Sigue por debajo del objetivo de $17.695 — el producto gana plata. Pero **el aumento agregó $9.626
+diarios y produjo 0,25 ventas diarias más: $38.504 por venta marginal**, contra un objetivo de
+$17.695. Descartando el sábado por parcial, el marginal queda en $24.079: igual por encima.
+
+Los días 21 y 22 el test ya estaba apagado, así que el CPM de $7.906 **no es competencia interna**:
+es la campaña sola pagando más por menos alcance.
+
+El aumento fue una apuesta razonable con la evidencia que había (CPM plano, frecuencia plana,
+topando presupuesto al 125%). Lo que hizo fue **encontrar el techo**, que es información valiosa.
+
+### Decisión tomada el 22 de agosto
+
+**Presupuestos devueltos a Caliente $31.000 y Frio $29.000** (~$60.000/día, el nivel donde el CPA
+era $11.805 con 5 ventas diarias). Se espera más utilidad gastando menos: ~$29.450/día contra
+~$24.250/día.
+
+### El número que resume el mes
+
+| Campaña | Gasto (12–22) | Ventas |
+|---|---:|---:|
+| Principal | $693.791 | 57 |
+| INT (interacciones) | $68.265 | 0 |
+| Test (Vent) | $143.139 | 0 |
+
+La principal dejó **~$315.000 de utilidad** en once días. Las dos campañas experimentales quemaron
+**$211.404**: **los experimentos se comieron dos tercios de la ganancia del collar.**
+
+Las dos fallaron por lo mismo — **objetivo de campaña mal puesto**. Una compraba interacciones, la
+otra clics baratos; ninguna compraba conversaciones. Chequeo para el próximo test: **¿el costo por
+conversación se parece al de la campaña que funciona (~$1.500)?** Si a los dos días va en $4.000,
+apagar sin esperar el tercero.
