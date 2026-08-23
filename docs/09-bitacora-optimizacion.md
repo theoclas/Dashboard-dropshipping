@@ -390,7 +390,10 @@ topando presupuesto al 125%). Lo que hizo fue **encontrar el techo**, que es inf
 ### Decisión tomada el 22 de agosto
 
 **Presupuestos devueltos a Caliente $31.000 y Frio $29.000** (~$60.000/día, el nivel donde el CPA
-era $11.805 con 5 ventas diarias). Se espera más utilidad gastando menos: ~$29.450/día contra
+era $11.805 con 5 ventas diarias), aplicados el **22 de agosto a las 19:40**. El sábado 22 corrió
+casi entero con el presupuesto alto, así que el primer día completo al nivel nuevo es el domingo 23
+— que además es el día atípico que había que probar. **El domingo mide dos cosas a la vez** y por
+eso no es concluyente para ninguna: el primer día hábil limpio es el lunes 24. Se espera más utilidad gastando menos: ~$29.450/día contra
 ~$24.250/día.
 
 ### El número que resume el mes
