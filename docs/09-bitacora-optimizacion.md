@@ -240,3 +240,100 @@ conversación sigue sobre $4.000, revisar ubicaciones antes que creativos.**
 - Construir el **job diario** de import y el **registro de cambios desde Meta** (`/activities`),
   para no depender de que los movimientos se recuerden a mano.
 - Traer los **presupuestos** al módulo, para medir aprovechamiento real.
+
+---
+
+## 2026-08-22 — Shampoo: la poda funcionó, y dos correcciones importantes
+
+Primera entrada en la que las conclusiones se sometieron a **verificación adversarial** antes de
+recomendar mover presupuesto: cuatro escépticos independientes intentaron refutarlas. **Las cuatro
+cayeron**, y con razón. Lo que sigue es la versión corregida.
+
+### Corrección 1 — la semana del 12 al 18 no quedó en cero: se perdió plata
+
+El cálculo anterior ($26.549) usaba el gasto que registra `cpa_experimental`, que solo cuenta
+campañas vinculadas al producto. El correcto usa **todo** el gasto de Meta:
+
+**$906.810 ÷ 33 pedidos reales = $27.479 por pedido**, contra un equilibrio de $26.493.
+Pérdida de la semana: **~$32.500**.
+
+### Corrección 2 — el pixel de Meta no sirve como cifra de decisión
+
+Se había concluido que el pixel era buen proxy porque en 12-18 marcó 35 compras contra 33 reales
+(~6% de diferencia). **Es falso**: ese 6% es un neto que cancela errores opuestos.
+
+- Error absoluto acumulado: 8 sobre 33 = **24%**. Por día llega a **+150%** (17 ago: pixel 5,
+  reales 2) y **−40%** (18 ago: pixel 3, reales 5).
+- **3 de 7 días el pixel manda la decisión contraria** respecto al equilibrio.
+- Con 35 vs 33 conteos, el IC95 del cociente va de 0,66 a 1,71: no hay poder para detectar sesgos
+  menores al 40%.
+- Y volvió a fallar en la ventana siguiente: reportó 17 compras del 19 al 22 y hubo **19 reales**
+  (−12%, al revés que la semana anterior).
+
+Ver la nota de memoria `meta-sobrereporta-compras`, ya corregida.
+
+### El resultado real de la poda
+
+Pedidos reales de Dropi:
+
+| | Antes (12–18) | Después (19–22) |
+|---|---:|---:|
+| Gasto | $906.810 | $271.854 |
+| Ventas reales | 33 | 19 |
+| **CPA real** | **$27.479** | **$14.308** |
+| Resultado | −$32.500 | **+$231.500** |
+
+Día a día del período nuevo: $26.303 (mié 19, primer día tras el cambio, aún en aprendizaje) →
+$13.604 → $14.218 → **$8.973** (sáb 22).
+
+**El dato que lo demuestra todo: ventas por día antes 4,71, después 4,75.** Se vende exactamente lo
+mismo gastando la mitad. Los ~$70.000 diarios recortados **no producían ni una venta adicional**.
+
+Significancia: si la eficiencia anterior se hubiera mantenido, $271.854 debían producir 9,9 ventas;
+produjeron 19 (2,9 sigma, **p ≈ 0,002**). Excluyendo el sábado por si está parcial: 13 contra 7,9
+esperadas, p ≈ 0,036. Sigue significativo.
+
+### Lo que los escépticos dejaron en pie y hay que respetar
+
+- **El CPM es una tendencia, no un escalón**: $15.419 (12 ago) → $23.518 (22 ago), **+53% en diez
+  días mientras el gasto caía a la mitad**. Descarta que sea por concentrar presupuesto: es
+  agotamiento del pool. Deja una o dos semanas de margen.
+- **La mejora de CTR y clic-a-compra es un escalón de una sola vez** — efecto aritmético de apagar
+  16 de 40 anuncios. Un escalón no puede seguir compensando una tendencia.
+- **Riesgo estructural no contabilizado**: 11 de 17 compras vienen de audiencias de lista de
+  clientes (4.1 RECOMPRA, 4.2 CLIENTE) y el 18 se apagó toda la prospección FRÍO. Se está
+  cosechando la base sin reponerla — eso explica a la vez el buen CPA y el CPM en alza.
+- **Los rankings por conjunto a este volumen son ruido**: 4.2 pasó de peor conjunto del 15-18
+  ($51.727/compra) a mejor del 19-22 ($11.177) sin ningún cambio de configuración. Regresión a la
+  media con n=4.
+- **El umbral de $26.493 se calculó sobre la mezcla de julio.** La mezcla actual es mayoritariamente
+  recompra, que plausiblemente entrega mejor. Cada temperatura podría tener su propio equilibrio.
+
+### Decisiones tomadas el 22 de agosto
+
+- **Capado `3.3 MENOS PLÁSTICO`** a la mitad. Único corte con base estadística que no depende de
+  ninguna conversión: peor CPM de la cuenta ($26.582, +101%) y **CPC de $997, un 47% por encima**
+  del $678 de 4.1, medido sobre 1.613 impresiones.
+- **NO se apagó `3.1 REEMPLAZA LA BOTELLA`.** Se iba a recomendar y habría sido un error: su CPC es
+  $682 —prácticamente idéntico al $678 del mejor conjunto— y tiene el **CTR más alto de los cinco**
+  (2,89%). Toda su desventaja vive en un único evento de conversión. Además la regla escrita el 15
+  dice que un conjunto muere a los $53.000 **sin vender**, y 3.1 va en $49.148 **con** una venta.
+- **NO se escaló nada.** Antes se justificaba por el CPM; ahora hay prueba directa: el dinero
+  recortado producía cero ventas, así que devolverlo produciría cero.
+
+### Regla de corte, escrita antes de volver a mirar la tabla
+
+Un conjunto se apaga cuando **acumula ≥3 conversiones y su costo por pedido real (Dropi) se mantiene
+sobre $26.493**, o cuando llega a $53.000 **sin vender**. Sin excepciones improvisadas.
+
+### Qué falta
+
+- **El domingo 23 es la prueba pendiente.** El domingo 16 y el festivo 17 costaron $267.263 para 6
+  ventas ($44.544 cada una). La configuración nueva no ha pasado un domingo. Si vuelve a costar el
+  triple, programar la campaña para no correr domingos.
+- **Pedidos reales por conjunto.** `cpa_experimental` es por producto y día, no por conjunto, así
+  que las decisiones a nivel conjunto siguen apoyándose en CPM y CPC. Es la limitación de fondo.
+- **Entrega y devolución de agosto por temperatura de audiencia**, para saber si $26.493 sigue
+  siendo el umbral correcto para esta mezcla.
+- **Reabrir prospección fría.** Con el producto dejando ~$57.000 diarios hay margen para
+  financiarla. Ese es el próximo movimiento, no escalar lo existente.
