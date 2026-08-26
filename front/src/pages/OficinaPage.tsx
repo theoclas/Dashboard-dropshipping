@@ -3,7 +3,9 @@ import {
   Button,
   DatePicker,
   Input,
+  Popconfirm,
   Space,
+  Switch,
   Table,
   Tabs,
   Tooltip,
@@ -13,6 +15,8 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import {
   DownloadOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
   ReloadOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
@@ -23,6 +27,7 @@ import {
   fetchOrdersPage,
   fetchProductosDetalle,
   patchOficinaTableConfig,
+  setOrdersOficinaExclude,
   updateOrder,
 } from "../api";
 import { useAuth } from "../contexts/AuthContext";
@@ -249,6 +254,9 @@ export function OficinaPage() {
   const [exporting, setExporting] = useState(false);
   const [columnsDrawerOpen, setColumnsDrawerOpen] = useState(false);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  /** Lista los marcados como «no es de oficina» para poder restaurarlos. */
+  const [showExcluded, setShowExcluded] = useState(false);
+  const [excluding, setExcluding] = useState(false);
   const [filters, setFilters] = useState({
     ...initialColumnFilters,
     cartera_ok: "" as "" | "ok" | "no",
@@ -264,6 +272,7 @@ export function OficinaPage() {
       sortField,
       sortOrder,
       direccion: OFICINA_DIRECCION,
+      excluir_oficina: showExcluded ? true : false,
     };
     if (carrierTab !== TAB_TODAS) params.transportadora = carrierTab;
     if (startDate && endDate) {
@@ -271,12 +280,13 @@ export function OficinaPage() {
       params.endDate = endDate;
     }
     return params;
-  }, [sortField, sortOrder, carrierTab, startDate, endDate]);
+  }, [sortField, sortOrder, carrierTab, startDate, endDate, showExcluded]);
 
   const loadCarriers = useCallback(async () => {
     try {
       const res = await fetchOficinaCarriers({
         ...(startDate && endDate ? { startDate, endDate } : {}),
+        excluir_oficina: showExcluded,
       });
       setCarriers(res.carriers);
       setCarrierTab((prev) =>
@@ -286,7 +296,7 @@ export function OficinaPage() {
       message.warning("No se pudieron cargar las transportadoras de oficina.");
       setCarriers([]);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, showExcluded]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -326,6 +336,29 @@ export function OficinaPage() {
       message.error("Error al exportar a Excel");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleOficinaExclude = async (excluir: boolean) => {
+    if (selectedRowKeys.length === 0) {
+      message.warning("Selecciona al menos un pedido.");
+      return;
+    }
+    setExcluding(true);
+    try {
+      const res = await setOrdersOficinaExclude(selectedRowKeys.map(String), excluir);
+      message.success(
+        excluir
+          ? `${res.updated} pedido(s) ocultados de Oficina`
+          : `${res.updated} pedido(s) restaurados en Oficina`,
+      );
+      setSelectedRowKeys([]);
+      await loadCarriers();
+      await fetchData();
+    } catch {
+      message.error(excluir ? "No se pudo ocultar de Oficina" : "No se pudo restaurar en Oficina");
+    } finally {
+      setExcluding(false);
     }
   };
 
@@ -489,8 +522,9 @@ export function OficinaPage() {
             Oficina
           </Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            Pedidos cuya dirección contiene «oficina», segmentados por transportadora. Arrastra el borde
-            derecho del encabezado para ensanchar un poco la columna (máx. +{COL_RESIZE_MAX_EXTRA}px).
+            Pedidos cuya dirección contiene «oficina», segmentados por transportadora. Si alguno no va a
+            oficina, selecciónalo y ocúltalo. Arrastra el borde derecho del encabezado para ensanchar un
+            poco la columna (máx. +{COL_RESIZE_MAX_EXTRA}px).
           </Text>
         </div>
         <Space wrap>
@@ -515,6 +549,47 @@ export function OficinaPage() {
               setPage(1);
             }}
           />
+          <Space size={8}>
+            <Switch
+              checked={showExcluded}
+              onChange={(checked) => {
+                setShowExcluded(checked);
+                setPage(1);
+                setSelectedRowKeys([]);
+              }}
+              checkedChildren={<EyeInvisibleOutlined />}
+              unCheckedChildren={<EyeOutlined />}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {showExcluded ? "Viendo excluidos" : "Viendo activos"}
+            </Text>
+          </Space>
+          {canEditPedidos && selectedRowKeys.length > 0 ? (
+            showExcluded ? (
+              <Popconfirm
+                title={`¿Restaurar ${selectedRowKeys.length} pedido(s) en Oficina?`}
+                onConfirm={() => void handleOficinaExclude(false)}
+                okText="Restaurar"
+                cancelText="Cancelar"
+              >
+                <Button icon={<EyeOutlined />} loading={excluding}>
+                  Volver a Oficina ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Popconfirm
+                title={`¿Ocultar ${selectedRowKeys.length} pedido(s) de Oficina?`}
+                description="Dejarán de aparecer aquí; la dirección no se modifica."
+                onConfirm={() => void handleOficinaExclude(true)}
+                okText="Ocultar"
+                cancelText="Cancelar"
+              >
+                <Button danger icon={<EyeInvisibleOutlined />} loading={excluding}>
+                  No es de oficina ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+            )
+          ) : null}
           <Button icon={<SettingOutlined />} onClick={() => setColumnsDrawerOpen(true)}>
             Columnas
           </Button>
@@ -647,7 +722,11 @@ export function OficinaPage() {
             }
           }
         }}
-        locale={{ emptyText: "Sin pedidos con «oficina» en la dirección para este filtro." }}
+        locale={{
+          emptyText: showExcluded
+            ? "No hay pedidos excluidos de Oficina con estos filtros."
+            : "Sin pedidos con «oficina» en la dirección para este filtro.",
+        }}
       />
     </div>
   );

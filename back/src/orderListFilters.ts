@@ -100,6 +100,21 @@ export const orderListQuerySchema = z.object({
       const s = String(v).trim().toLowerCase();
       return s === "1" || s === "true" || s === "yes";
     }),
+  /**
+   * Módulo Oficina: `false`/`0`/`no` = solo activos (no excluidos);
+   * `true`/`1`/`ok` = solo marcados como «no es de oficina».
+   */
+  excluir_oficina: z
+    .union([z.string(), z.number(), z.boolean()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === "boolean") return v;
+      const s = String(v).trim().toLowerCase();
+      if (s === "1" || s === "true" || s === "ok" || s === "yes" || s === "si") return true;
+      if (s === "0" || s === "false" || s === "no") return false;
+      return undefined;
+    }),
 });
 
 export type OrderListQueryParsed = z.infer<typeof orderListQuerySchema>;
@@ -268,6 +283,12 @@ export function buildPrismaOrderWhere(
     and.push({
       OR: [{ guia: null }, { guia: "" }],
     });
+  }
+
+  if (f.excluir_oficina === true) {
+    and.push({ excluirOficina: true });
+  } else if (f.excluir_oficina === false) {
+    and.push({ excluirOficina: false });
   }
 
   const qt = f.q?.trim();

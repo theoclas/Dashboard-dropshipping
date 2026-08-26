@@ -275,8 +275,19 @@ export async function fetchOrdersPage(params: Record<string, unknown>): Promise<
 export async function fetchOficinaCarriers(params?: {
   startDate?: string;
   endDate?: string;
+  /** `true` = pestañas de transportadoras solo con pedidos excluidos. */
+  excluir_oficina?: boolean;
 }): Promise<{ carriers: string[] }> {
   const { data } = await api.get<{ carriers: string[] }>("/orders/oficina-carriers", { params });
+  return data;
+}
+
+/** Marca o restaura pedidos en Oficina (false positivos de «oficina» en dirección). */
+export async function setOrdersOficinaExclude(ids: string[], excluir: boolean): Promise<{ updated: number }> {
+  const { data } = await api.post<{ updated: number; excluir: boolean }>("/orders/oficina-exclude", {
+    ids,
+    excluir,
+  });
   return data;
 }
 

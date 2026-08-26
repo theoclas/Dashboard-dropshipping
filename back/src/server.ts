@@ -744,6 +744,7 @@ function serializeOrder(o: Order) {
     numero_pedido_tienda: o.numeroPedidoTienda,
     usuario_generacion_guia: o.usuarioGeneracionGuia,
     fecha_generacion_guia: o.fechaGeneracionGuia?.toISOString() ?? null,
+    excluir_oficina: o.excluirOficina,
     created_at: o.createdAt.toISOString(),
     updated_at: o.updatedAt.toISOString(),
   };
@@ -820,11 +821,16 @@ app.get(
         typeof req.query.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate.trim())
           ? req.query.endDate.trim()
           : undefined;
+      const showExcluded =
+        typeof req.query.excluir_oficina === "string"
+          ? ["1", "true", "ok", "yes", "si"].includes(req.query.excluir_oficina.trim().toLowerCase())
+          : false;
 
       const and: Prisma.OrderWhereInput[] = [
         { companyId: user.companyId },
         { direccion: { contains: "oficina" } },
         { transportadora: { not: null } },
+        { excluirOficina: showExcluded },
       ];
       if (startDate && endDate) {
         const [y0, m0, d0] = startDate.split("-").map(Number);
@@ -852,6 +858,41 @@ app.get(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[GET /api/orders/oficina-carriers]", err);
+      return res.status(500).json({ message: msg });
+    }
+  },
+);
+
+/** Marca o restaura pedidos en el módulo Oficina (dirección con «oficina» pero no van a oficina). */
+app.post(
+  "/api/orders/oficina-exclude",
+  authRequired,
+  companyRequired,
+  requirePermission("actionPedidosEditar"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    if (user.role === Role.LECTOR) {
+      return res.status(403).json({ message: "No autorizado." });
+    }
+    const schema = z.object({
+      ids: z.array(z.string().min(1)).min(1).max(500),
+      excluir: z.boolean(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });
+
+    try {
+      const result = await prisma.order.updateMany({
+        where: {
+          companyId: user.companyId,
+          id: { in: parsed.data.ids },
+        },
+        data: { excluirOficina: parsed.data.excluir },
+      });
+      return res.json({ updated: result.count, excluir: parsed.data.excluir });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[POST /api/orders/oficina-exclude]", err);
       return res.status(500).json({ message: msg });
     }
   },

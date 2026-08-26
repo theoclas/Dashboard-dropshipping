@@ -144,6 +144,8 @@ model Order {
   numeroPedidoTienda      String?   @map("numero_pedido_tienda") @db.VarChar(100)
   usuarioGeneracionGuia   String?   @map("usuario_generacion_guia") @db.VarChar(255)
   fechaGeneracionGuia     DateTime? @map("fecha_generacion_guia")
+  /// Si true, no aparece en el módulo Oficina aunque la dirección contenga «oficina».
+  excluirOficina          Boolean   @default(false) @map("excluir_oficina")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -153,6 +155,7 @@ model Order {
   @@unique([companyId, externalOrderId])
   @@index([companyId, estadoUnificado])
   @@index([companyId, guia])
+  @@index([companyId, excluirOficina])
   @@map("pedidos")
 }
 
