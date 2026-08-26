@@ -7,7 +7,7 @@ type LogoMarkCropProps = {
 };
 
 /**
- * Login: logo horizontal Allset E-Group a tamaño legible.
+ * Login: logo Allset E-Group a tamaño legible.
  * Sider: versión compacta.
  */
 export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
@@ -22,14 +22,13 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
         style={{
           position: "relative",
           width: "100%",
-          maxWidth: 560,
+          maxWidth: 620,
           marginInline: "auto",
-          padding: "28px 20px",
-          backgroundColor: "#000000",
+          overflow: "hidden",
           borderRadius: 22,
           flexShrink: 0,
           boxShadow:
-            "0 0 0 1px rgba(148,163,184,0.1), 0 28px 56px -18px rgba(0,0,0,0.65), 0 0 100px -24px rgba(34,211,238,0.2)",
+            "0 0 0 1px rgba(148,163,184,0.12), 0 28px 56px -18px rgba(0,0,0,0.65), 0 0 100px -24px rgba(34,211,238,0.22)",
         }}
       >
         <img
@@ -41,8 +40,10 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
             display: "block",
             width: "100%",
             height: "auto",
-            maxHeight: "min(42vh, 320px)",
+            maxHeight: "min(58vh, 460px)",
             objectFit: "contain",
+            objectPosition: "center",
+            backgroundColor: "#1a1a1a",
             pointerEvents: "none",
           }}
         />
@@ -62,10 +63,10 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
         height: 56,
         overflow: "hidden",
         borderRadius: 6,
-        backgroundColor: "#000000",
+        backgroundColor: "#111827",
         backgroundImage: `url(${BRANDING_LOGO_SRC})`,
         backgroundRepeat: "no-repeat",
-        backgroundSize: "contain",
+        backgroundSize: "cover",
         backgroundPosition: "center",
         flexShrink: 0,
       }}
