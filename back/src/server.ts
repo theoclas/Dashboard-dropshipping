@@ -236,6 +236,7 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     operatorPerms,
     dashboardConfig: user.dashboardConfig,
     ordersTableConfig: user.ordersTableConfig,
+    oficinaTableConfig: user.oficinaTableConfig,
     companySettings,
     companies: user.memberships.map((m) => ({
       companyId: m.companyId,
@@ -296,6 +297,24 @@ app.patch(
       data: { ordersTableConfig: parsed.data as Prisma.InputJsonValue },
     });
     return res.json({ ordersTableConfig: parsed.data });
+  },
+);
+
+app.patch(
+  "/api/auth/me/oficina-table-config",
+  authRequired,
+  requirePermission("modulePedidos"),
+  async (req, res) => {
+    const userPayload = (req as express.Request & { user?: JwtPayload }).user!;
+    const parsed = ordersTableConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Payload inválido." });
+    }
+    await prisma.user.update({
+      where: { id: userPayload.userId },
+      data: { oficinaTableConfig: parsed.data as Prisma.InputJsonValue },
+    });
+    return res.json({ oficinaTableConfig: parsed.data });
   },
 );
 
@@ -783,6 +802,60 @@ app.get("/api/orders", authRequired, companyRequired, requirePermission("moduleP
     return res.status(500).json({ message: msg });
   }
 });
+
+/** Transportadoras con pedidos cuya dirección contiene «oficina». */
+app.get(
+  "/api/orders/oficina-carriers",
+  authRequired,
+  companyRequired,
+  requirePermission("modulePedidos"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    try {
+      const startDate =
+        typeof req.query.startDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.startDate.trim())
+          ? req.query.startDate.trim()
+          : undefined;
+      const endDate =
+        typeof req.query.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate.trim())
+          ? req.query.endDate.trim()
+          : undefined;
+
+      const and: Prisma.OrderWhereInput[] = [
+        { companyId: user.companyId },
+        { direccion: { contains: "oficina" } },
+        { transportadora: { not: null } },
+      ];
+      if (startDate && endDate) {
+        const [y0, m0, d0] = startDate.split("-").map(Number);
+        const [y1, m1, d1] = endDate.split("-").map(Number);
+        const start = new Date(Date.UTC(y0!, m0! - 1, d0!, 0, 0, 0, 0));
+        const end = new Date(Date.UTC(y1!, m1! - 1, d1!, 23, 59, 59, 999));
+        and.push({ fecha: { gte: start, lte: end } });
+      }
+
+      const groups = await prisma.order.groupBy({
+        by: ["transportadora"],
+        where: { AND: and },
+        orderBy: { transportadora: "asc" },
+      });
+
+      const carriers = [
+        ...new Set(
+          groups
+            .map((g) => (g.transportadora ?? "").trim())
+            .filter((t) => t.length > 0),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "es"));
+
+      return res.json({ carriers });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[GET /api/orders/oficina-carriers]", err);
+      return res.status(500).json({ message: msg });
+    }
+  },
+);
 
 app.patch("/api/orders/:id", authRequired, companyRequired, requirePermission("actionPedidosEditar"), async (req, res) => {
   const user = (req as express.Request & { user?: JwtPayload }).user!;

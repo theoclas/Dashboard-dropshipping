@@ -67,6 +67,8 @@ export type AuthUser = {
   dashboardConfig?: Record<string, boolean> | null;
   /** Columnas del módulo Pedidos (`User.orders_table_config`). */
   ordersTableConfig?: OrdersTableConfig | null;
+  /** Columnas del módulo Oficina (`User.oficina_table_config`). */
+  oficinaTableConfig?: OrdersTableConfig | null;
   companySettings?: {
     id: string;
     name: string;

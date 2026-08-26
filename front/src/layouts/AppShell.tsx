@@ -24,6 +24,7 @@ import {
   SettingOutlined,
   ExportOutlined,
   ImportOutlined,
+  ShopOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
 import { BRANDING_LOGO_SIDER_SRC } from "../branding";
@@ -61,6 +62,7 @@ function openSubmenusForPath(pathname: string): string[] {
   }
   if (
     pathname.startsWith("/app/pedidos") ||
+    pathname.startsWith("/app/oficina") ||
     pathname.startsWith("/app/productos") ||
     pathname.startsWith("/app/logistica")
   ) {
@@ -108,6 +110,7 @@ const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
   if (pathname.startsWith("/app/entradas-cartera")) return "/app/entradas-cartera";
   if (pathname.startsWith("/app/pedidos")) return "/app/pedidos";
+  if (pathname.startsWith("/app/oficina")) return "/app/oficina";
   if (pathname.startsWith("/app/productos")) return "/app/productos";
   if (pathname.startsWith("/app/logistica")) return "/app/logistica";
   if (pathname.startsWith("/app/importar")) return "/app/importar";
@@ -196,6 +199,13 @@ export function AppShell() {
             key: "/app/pedidos",
             icon: <ShoppingOutlined />,
             label: <Link to="/app/pedidos">Pedidos</Link>,
+          }
+        : null,
+      canPedidos
+        ? {
+            key: "/app/oficina",
+            icon: <ShopOutlined />,
+            label: <Link to="/app/oficina">Oficina</Link>,
           }
         : null,
       canPedidos

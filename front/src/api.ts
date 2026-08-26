@@ -271,6 +271,15 @@ export async function fetchOrdersPage(params: Record<string, unknown>): Promise<
   return data;
 }
 
+/** Transportadoras con pedidos cuya dirección contiene «oficina». */
+export async function fetchOficinaCarriers(params?: {
+  startDate?: string;
+  endDate?: string;
+}): Promise<{ carriers: string[] }> {
+  const { data } = await api.get<{ carriers: string[] }>("/orders/oficina-carriers", { params });
+  return data;
+}
+
 /** Mismos filtros que el listado (sin paginación en el cuerpo). */
 export async function downloadOrdersExport(filters: Record<string, unknown> = {}): Promise<void> {
   const response = await api.post("/orders/export", filters, {
@@ -964,6 +973,16 @@ export async function patchOrdersTableConfig(
   const { data } = await api.patch<{ ordersTableConfig: OrdersTableConfig }>(
     "/auth/me/orders-table-config",
     ordersTableConfig,
+  );
+  return data;
+}
+
+export async function patchOficinaTableConfig(
+  oficinaTableConfig: OrdersTableConfig,
+): Promise<{ oficinaTableConfig: OrdersTableConfig }> {
+  const { data } = await api.patch<{ oficinaTableConfig: OrdersTableConfig }>(
+    "/auth/me/oficina-table-config",
+    oficinaTableConfig,
   );
   return data;
 }

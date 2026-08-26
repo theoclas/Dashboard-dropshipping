@@ -21,6 +21,8 @@ model User {
   dashboardConfig            Json?                @map("dashboard_config")
   /// Columnas visibles/orden/fijado en módulo Pedidos (`OrdersTableConfig` v1).
   ordersTableConfig          Json?                @map("orders_table_config")
+  /// Columnas visibles/orden/fijado en módulo Oficina (`OrdersTableConfig` v1).
+  oficinaTableConfig         Json?                @map("oficina_table_config")
   operationalExpensesCreated OperationalExpense[] @relation("OperationalExpenseCreatedBy")
 }
 

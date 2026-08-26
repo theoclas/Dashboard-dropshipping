@@ -7,6 +7,7 @@ import { RequireRoles } from "./layouts/RequireRoles";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { OficinaPage } from "./pages/OficinaPage";
 import { ProductosPedidosPage } from "./pages/ProductosPedidosPage";
 import { ImportPage } from "./pages/ImportPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -59,6 +60,14 @@ export function AppRoutes() {
           element={
             <Perm perm="modulePedidos">
               <OrdersPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="oficina"
+          element={
+            <Perm perm="modulePedidos">
+              <OficinaPage />
             </Perm>
           }
         />

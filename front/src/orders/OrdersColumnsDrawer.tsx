@@ -15,17 +15,34 @@ type Props = {
   savedConfig: OrdersTableConfig | null | undefined;
   onClose: () => void;
   onSave: (config: OrdersTableConfig) => Promise<void>;
+  /** Título del drawer (por defecto: Configurar columnas). */
+  title?: string;
+  /** Merge de config guardada; por defecto el de Pedidos. */
+  mergeConfig?: (saved: unknown) => OrdersTableConfig;
+  /** Labels de columnas; por defecto los de Pedidos. */
+  labels?: Record<string, string>;
+  /** Config al pulsar «Restaurar predeterminado». */
+  defaultConfig?: OrdersTableConfig;
 };
 
-export function OrdersColumnsDrawer({ open, savedConfig, onClose, onSave }: Props) {
+export function OrdersColumnsDrawer({
+  open,
+  savedConfig,
+  onClose,
+  onSave,
+  title = "Configurar columnas",
+  mergeConfig = mergeOrdersTableConfig,
+  labels = ORDERS_COLUMN_LABELS,
+  defaultConfig = DEFAULT_ORDERS_TABLE_CONFIG,
+}: Props) {
   const [draft, setDraft] = useState<OrdersTableColumnEntry[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const merged = mergeOrdersTableConfig(savedConfig ?? null);
+    const merged = mergeConfig(savedConfig ?? null);
     setDraft(merged.columns.map((c) => ({ ...c })));
-  }, [open, savedConfig]);
+  }, [open, savedConfig, mergeConfig]);
 
   const move = (index: number, delta: number) => {
     const next = [...draft];
@@ -60,12 +77,12 @@ export function OrdersColumnsDrawer({ open, savedConfig, onClose, onSave }: Prop
   };
 
   const handleReset = () => {
-    setDraft(DEFAULT_ORDERS_TABLE_CONFIG.columns.map((c) => ({ ...c })));
+    setDraft(defaultConfig.columns.map((c) => ({ ...c })));
   };
 
   return (
     <Drawer
-      title="Configurar columnas"
+      title={title}
       open={open}
       onClose={onClose}
       width={420}
@@ -116,7 +133,7 @@ export function OrdersColumnsDrawer({ open, savedConfig, onClose, onSave }: Prop
                 disabled={isAcciones}
                 onChange={(e) => updateEntry(col.key, { visible: e.target.checked })}
               >
-                {ORDERS_COLUMN_LABELS[col.key] ?? col.key}
+                {labels[col.key] ?? col.key}
               </Checkbox>
               <Select
                 size="small"
