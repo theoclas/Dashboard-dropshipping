@@ -390,7 +390,7 @@ export function AppShell() {
       >
         <div
           style={{
-            padding: collapsed ? "12px 8px" : "14px 12px",
+            padding: collapsed ? "10px 8px" : "10px 10px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -405,9 +405,9 @@ export function AppShell() {
               draggable={false}
               style={{
                 width: "100%",
-                maxWidth: collapsed ? 44 : 200,
+                maxWidth: collapsed ? 48 : 220,
                 height: "auto",
-                maxHeight: collapsed ? 40 : 48,
+                maxHeight: collapsed ? 44 : 64,
                 objectFit: "contain",
                 objectPosition: "center",
                 display: "block",
