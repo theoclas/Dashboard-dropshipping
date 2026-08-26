@@ -411,3 +411,66 @@ Las dos fallaron por lo mismo — **objetivo de campaña mal puesto**. Una compr
 otra clics baratos; ninguna compraba conversaciones. Chequeo para el próximo test: **¿el costo por
 conversación se parece al de la campaña que funciona (~$1.500)?** Si a los dos días va en $4.000,
 apagar sin esperar el tercero.
+
+---
+
+## 2026-08-26 — Validación día a día del 19 al 25: los dos frentes en verde, con matices
+
+Datos: CPA experimental recargado por Fernando esta mañana — y ahora su gasto **coincide peso a
+peso con todo el gasto Meta del producto los 7 días**. La Corrección 1 del 22 quedó arreglada en la
+fuente. Advertencia de cobertura: el nivel anuncio del **lunes 24 está a medias** (los conjuntos
+suman $39.156 contra $68.919 reales del día) y el **martes 25 no existe a nivel anuncio**; el día a
+día de abajo usa gasto de campaña + pedidos Dropi, que sí están completos.
+
+### Shampoo — mejor semana del producto: $494.719, 33 ventas, CPA $14.991
+
+Día a día (equilibrio $26.493): mié $26.303 · jue $13.604 · vie $14.218 · sáb $11.379 ·
+**dom $10.668** · lun $17.230 · mar $21.613. Utilidad de la semana **~$380.000** (la del 12-18
+perdió $32.500).
+
+- **El domingo 23 pasó la prueba pendiente**: 7 ventas, el mejor día de la semana. La maldición del
+  16-17 era de la configuración vieja, no del día. No programar pausas de fin de semana.
+- **Pero el CPA subió tres días seguidos** (dom→mar). Con 3-4 ventas/día es ruido individualmente;
+  la dirección coincide con lo estructural y es lo primero a mirar el viernes.
+- **El CPM dejó de subir pero quedó en meseta alta**: blended diario $22.072 → $19.058 → $20.953 →
+  $21.570 → $21.439. La tendencia +53% se frenó; el nivel sigue siendo 4× el del collar.
+- **Se sigue cosechando la base**: 4.1+4.2 (listas de clientes) llevan el 47% del gasto y 13 de 24
+  compras pixel de los días completos. FRÍO sigue apagado desde el 18.
+- **Devoluciones de agosto: 7,2%** (8 de 111, con 24% en tránsito) contra 20% de julio. Si
+  consolida cerca del 12%, el equilibrio sube a ~$30.000. Probable efecto mezcla-recompra.
+
+Por conjunto, días completos (19-23): 4.1 RECOMPRA $107.281 CPM $17.256 CPC $701 (9 compras px) ·
+3.1 REEMPLAZA $68.770 CPM $20.072 **CPC $620** (6) · 3.2 VIAJES $74.181 CPM $23.357 CPC $843 (4) ·
+4.2 MENOS ESPACIO $60.317 CPM $24.450 CPC $815 (4) · 3.3 MENOS PLÁSTICO $50.263 **CPM $26.567,
+CPC $1.069** (1).
+
+- **No apagar 3.1 el 22 fue correcto**: despertó con 3+3 compras el fin de semana y tiene el mejor
+  CPC de la campaña.
+- **El capado de 3.3 no funcionó**: tras el capado su CPM *empeoró* ($33.636 el domingo, CTR 1,82%)
+  y lleva 1 compra pixel en $50.263. Recomendación: **apagarlo del todo**, y la plata no va a los
+  conjuntos existentes (la extra ahí no compraba ventas) sino a **financiar la reapertura de FRÍO**:
+  ubicaciones manuales, un anuncio por conjunto, CTR >2% y frecuencia <2 como criterios de entrada.
+
+### Collar — la devolución de presupuesto del 22 quedó validada
+
+Día a día real: mié $11.652 (12 ventas, incluye test) · jue $58.064 (2) · vie $23.852 (3) ·
+sáb $16.682 (4) · dom — (0 ventas) · lun **$8.095** (8) · mar $10.030 (6). El test Vent está en
+**$0 de gasto desde el 21**: no revivió.
+
+Desde el nivel nuevo de ~$60.000/día: **$186.573 para 14 ventas = $13.327**, contra objetivo de
+$17.695 — ~$61.000 de utilidad en tres días. El domingo de 0 ventas no fue un mal día sino un
+desfase: sus 39 conversaciones costaron $1.580 (la firma sana) y cerraron el lunes. Costo por
+conversación estable en $1.580-$1.660 y 38-39 conversaciones/día los tres días.
+
+**Decisión: no tocar nada.** El techo ya se encontró una vez; $60.000/día es el nivel.
+
+Vigilar: devoluciones de agosto del collar en **28,4% de los resueltos** (25 de 88) contra 26,2%
+de julio. Con 25% pendiente no es concluyente, pero aprieta el objetivo, no lo afloja.
+
+### Qué falta
+
+- **Reimportar 24 y 25 a nivel anuncio** antes de la revisión del viernes; hoy 26 aún sin datos.
+- Si el CPA del shampoo cierra un cuarto y quinto día por encima de $20.000 con los conjuntos
+  actuales, la meseta de CPM dejó de ser sostenible: acelerar FRÍO en vez de recortar más.
+- El umbral del shampoo puede estar quedando corto por las devoluciones de agosto: recalcular el
+  equilibrio cuando maduren los pendientes (~primera semana de septiembre).
