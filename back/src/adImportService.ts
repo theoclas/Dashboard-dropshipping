@@ -75,6 +75,7 @@ export async function importAdsForAccount(
   if (!v.ok) throw new Error(v.message);
 
   const fetched = await fetchAdInsightsForAccountRange(account.metaAccountId, {
+    companyId,
     desde: v.desde,
     hasta: v.hasta,
     metaAdsAppId: opts.metaAdsAppId,
@@ -181,6 +182,7 @@ export async function importAdsForAccount(
 
   // ── 3. Anuncios ────────────────────────────────────────────────────────────
   const metaRes = await fetchAdMetadata(account.metaAccountId, {
+    companyId,
     metaAdsAppId: opts.metaAdsAppId,
     metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });

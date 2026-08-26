@@ -4,24 +4,28 @@ import {
 } from "./metaAdsSystemUserService";
 
 export type MetaAccessTokenResolveInput = {
+  /** Obligatorio para resolver tokens de BD (aislamiento multiempresa). */
+  companyId: string;
   metaAdsAppId?: string | null;
   metaAdsSystemUserId?: string | null;
 };
 
-export async function resolveMetaAccessToken(input?: MetaAccessTokenResolveInput | string | null): Promise<string> {
-  const opts: MetaAccessTokenResolveInput =
-    typeof input === "string" || input == null ? { metaAdsSystemUserId: input } : input;
+export async function resolveMetaAccessToken(input: MetaAccessTokenResolveInput): Promise<string> {
+  const companyId = input.companyId?.trim();
+  if (!companyId) {
+    throw new Error("Falta companyId para resolver el token Meta Ads.");
+  }
 
-  const appId = opts.metaAdsAppId?.trim();
-  const userId = opts.metaAdsSystemUserId?.trim();
+  const appId = input.metaAdsAppId?.trim();
+  const userId = input.metaAdsSystemUserId?.trim();
 
   if (appId && userId) {
-    const fromPair = await getMetaAdsSystemUserAppToken(userId, appId);
+    const fromPair = await getMetaAdsSystemUserAppToken(companyId, userId, appId);
     if (fromPair) return fromPair;
     throw new Error("No hay token para esa combinación de app y usuario Meta Ads.");
   }
 
-  const fromDefault = await resolveDefaultMetaAdsAccessToken();
+  const fromDefault = await resolveDefaultMetaAdsAccessToken(companyId);
   if (fromDefault) return fromDefault;
 
   const fromEnv =

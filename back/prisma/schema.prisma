@@ -57,6 +57,7 @@ model Company {
   adSets                     AdSet[]
   ads                        Ad[]
   adMetrics                  AdMetric[]
+  metaAdsSystemUsers         MetaAdsSystemUser[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -635,9 +636,10 @@ model MetaAdsApp {
   @@map("meta_ads_apps")
 }
 
-/// Usuario del sistema Meta (sin token; tokens por app en el join).
+/// Usuario del sistema Meta (sin token; tokens por app en el join). Por empresa.
 model MetaAdsSystemUser {
   id               String   @id @default(cuid())
+  companyId        String   @map("company_id")
   name             String   @db.VarChar(128)
   metaSystemUserId String?  @map("meta_system_user_id") @db.VarChar(32)
   notes            String?  @db.Text
@@ -645,8 +647,10 @@ model MetaAdsSystemUser {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
+  company   Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   appAccess MetaAdsSystemUserAppAccess[]
 
+  @@index([companyId, isActive])
   @@index([isActive])
   @@map("meta_ads_system_users")
 }

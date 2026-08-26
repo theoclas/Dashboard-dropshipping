@@ -57,6 +57,7 @@ async function fetchForAdvertisingAccount(companyId: string, opts: MetaBillingAp
   if (!acc) throw new Error("Cuenta publicitaria no encontrada.");
 
   const fetchResult = await fetchMetaBillingActivitiesForAccount(acc.metaAccountId, {
+    companyId,
     metaAdsAppId: opts.metaAdsAppId,
     metaAdsSystemUserId: opts.metaAdsSystemUserId,
     since: opts.since,

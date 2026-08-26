@@ -158,17 +158,19 @@ function buildInsightsUrl(actId: string, reportDate: string): string {
 
 export async function fetchCampaignInsightsForAccount(
   metaAccountId: string,
-  opts?: {
+  opts: {
+    companyId: string;
     reportDate?: string | null;
     metaAdsAppId?: string | null;
     metaAdsSystemUserId?: string | null;
   },
 ): Promise<FetchCampaignInsightsResult> {
-  const date = resolveMetaReportDate(opts?.reportDate);
+  const date = resolveMetaReportDate(opts.reportDate);
   const actId = toMetaActAccountId(metaAccountId);
   const accessToken = await resolveMetaAccessToken({
-    metaAdsAppId: opts?.metaAdsAppId,
-    metaAdsSystemUserId: opts?.metaAdsSystemUserId,
+    companyId: opts.companyId,
+    metaAdsAppId: opts.metaAdsAppId,
+    metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });
   const errors: string[] = [];
   const rows: MetaInsightApiRow[] = [];

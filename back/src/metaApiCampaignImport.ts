@@ -33,7 +33,10 @@ export async function fetchMetaApiParsedRowsForAccount(
     throw new Error("Cuenta publicitaria no encontrada.");
   }
 
-  const fetchResult = await fetchCampaignInsightsForAccount(acc.metaAccountId, opts);
+  const fetchResult = await fetchCampaignInsightsForAccount(acc.metaAccountId, {
+    companyId,
+    ...opts,
+  });
   const { rows, errors: mapErrors } = mapInsightsToParsedRows(fetchResult.rows, fetchResult.reportDate);
   const errors = [...fetchResult.errors, ...mapErrors];
 

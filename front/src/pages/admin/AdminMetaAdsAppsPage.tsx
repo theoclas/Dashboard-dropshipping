@@ -166,7 +166,7 @@ export function AdminMetaAdsAppsPage() {
           Apps Meta
         </Title>
         <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          Catálogo de aplicaciones de Meta Developers (ej. FersuaStore Reportes). Asigna apps a usuarios del sistema en{" "}
+          Catálogo de aplicaciones de Meta Developers (ej. Allset Reportes). Asigna apps a usuarios del sistema en{" "}
           <Link to="/app/admin/meta-ads-usuarios">Usuarios Meta Ads</Link>; cada par usuario + app tiene su propio token.
         </Paragraph>
       </div>
@@ -224,7 +224,7 @@ export function AdminMetaAdsAppsPage() {
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Nombre" rules={[{ required: true, message: "Requerido" }]}>
-            <Input placeholder="FersuaStore Reportes" />
+            <Input placeholder="Allset Reportes" />
           </Form.Item>
           <Form.Item name="metaAppId" label="App ID (opcional)">
             <Input placeholder="ID numérico de la app en Meta" />

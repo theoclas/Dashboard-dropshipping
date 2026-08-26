@@ -27,7 +27,7 @@ import {
   ShopOutlined,
 } from "@ant-design/icons";
 import { api } from "../api";
-import { BRANDING_LOGO_SIDER_SRC } from "../branding";
+import { BRAND_NAME, BRANDING_LOGO_SIDER_SRC } from "../branding";
 import { useAuth } from "../contexts/AuthContext";
 import { useFirstAllowedAppPath, usePermission } from "../hooks/usePermission";
 
@@ -400,7 +400,7 @@ export function AppShell() {
           <Link to={homePath} style={{ display: "flex", justifyContent: "center", width: "100%", lineHeight: 0 }}>
             <img
               src={BRANDING_LOGO_SIDER_SRC}
-              alt="Fersua Analytics (FSA)"
+              alt={BRAND_NAME}
               decoding="async"
               draggable={false}
               style={{
@@ -436,7 +436,7 @@ export function AppShell() {
           }}
         >
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            Fersua Analytics (FSA)
+            {BRAND_NAME}
           </Typography.Text>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <Typography.Text>

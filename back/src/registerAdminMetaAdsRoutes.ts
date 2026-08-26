@@ -1,7 +1,7 @@
-import express from "express";
+import express, { type Request } from "express";
 import { z } from "zod";
 import { Role } from "@prisma/client";
-import { authRequired, requirePermission, requireRoles } from "./middleware";
+import { authRequired, companyRequired, requirePermission, requireRoles } from "./middleware";
 import {
   createMetaAdsApp,
   deleteMetaAdsApp,
@@ -18,6 +18,11 @@ import {
   listMetaAdsSystemUsers,
   updateMetaAdsSystemUser,
 } from "./metaAdsSystemUserService";
+import type { JwtPayload } from "./types";
+
+function reqCompanyId(req: Request): string {
+  return (req as Request & { user?: JwtPayload }).user!.companyId;
+}
 
 const appAccessSchema = z.object({
   appId: z.string().min(1),
@@ -136,9 +141,10 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
   app.get(
     "/api/admin/meta-ads-system-users",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
-    async (_req, res) => {
-      const list = await listMetaAdsSystemUsers();
+    async (req, res) => {
+      const list = await listMetaAdsSystemUsers(reqCompanyId(req));
       return res.json(list);
     },
   );
@@ -146,9 +152,10 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
   app.get(
     "/api/admin/meta-ads-system-users/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const row = await getMetaAdsSystemUser(String(req.params.id));
+      const row = await getMetaAdsSystemUser(reqCompanyId(req), String(req.params.id));
       if (!row) return res.status(404).json({ message: "No encontrado." });
       return res.json(row);
     },
@@ -157,12 +164,14 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
   app.post(
     "/api/admin/meta-ads-system-users",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
       const parsed = createUserSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
       try {
         const row = await createMetaAdsSystemUser({
+          companyId: reqCompanyId(req),
           name: parsed.data.name,
           metaSystemUserId: parsed.data.metaSystemUserId,
           notes: parsed.data.notes,
@@ -179,12 +188,13 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
   app.patch(
     "/api/admin/meta-ads-system-users/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
       const parsed = updateUserSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
       try {
-        const row = await updateMetaAdsSystemUser(String(req.params.id), {
+        const row = await updateMetaAdsSystemUser(reqCompanyId(req), String(req.params.id), {
           name: parsed.data.name,
           metaSystemUserId: parsed.data.metaSystemUserId,
           notes: parsed.data.notes,
@@ -203,9 +213,10 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
   app.delete(
     "/api/admin/meta-ads-system-users/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const ok = await deleteMetaAdsSystemUser(String(req.params.id));
+      const ok = await deleteMetaAdsSystemUser(reqCompanyId(req), String(req.params.id));
       if (!ok) return res.status(404).json({ message: "No encontrado." });
       return res.status(204).send();
     },
@@ -227,10 +238,11 @@ export function registerMetaAdsOptionsRoutes(app: express.Application) {
   app.get(
     "/api/meta-ads-system-users/options",
     authRequired,
+    companyRequired,
     requirePermission("moduleCampanasMeta"),
     async (req, res) => {
       const appId = typeof req.query.appId === "string" ? req.query.appId : undefined;
-      const list = await listMetaAdsSystemUserOptions(appId);
+      const list = await listMetaAdsSystemUserOptions(reqCompanyId(req), appId);
       return res.json(list);
     },
   );

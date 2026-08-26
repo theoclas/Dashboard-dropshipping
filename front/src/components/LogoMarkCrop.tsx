@@ -1,4 +1,4 @@
-import { BRANDING_LOGO_SRC } from "../branding";
+import { BRAND_NAME, BRANDING_LOGO_SRC } from "../branding";
 
 type LogoMarkCropProps = {
   /** Login: bloque grande; sider: franja compacta bajo el menú. */
@@ -7,8 +7,8 @@ type LogoMarkCropProps = {
 };
 
 /**
- * Login: muestra el PNG con más altura para que se vea también la franja inferior (p. ej. ANALYTICS).
- * Sider: recorte compacto.
+ * Login: logo horizontal Allset E-Group a tamaño legible.
+ * Sider: versión compacta.
  */
 export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
   const isLogin = variant === "login";
@@ -17,16 +17,15 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
     return (
       <div
         role="img"
-        aria-label="Fersua Analytics (FSA)"
+        aria-label={BRAND_NAME}
         className={className}
         style={{
           position: "relative",
           width: "100%",
-          maxWidth: 520,
+          maxWidth: 560,
           marginInline: "auto",
-          /* Más alto + centrado vertical del arte: se ve más la parte de abajo sin perder tanto el FSA. */
-          height: "clamp(360px, 54vh, 620px)",
-          overflow: "hidden",
+          padding: "28px 20px",
+          backgroundColor: "#000000",
           borderRadius: 22,
           flexShrink: 0,
           boxShadow:
@@ -35,18 +34,15 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
       >
         <img
           src={BRANDING_LOGO_SRC}
-          alt=""
+          alt={BRAND_NAME}
           decoding="async"
           draggable={false}
           style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
+            display: "block",
             width: "100%",
             height: "auto",
-            minWidth: "100%",
-            display: "block",
-            transform: "translate(-50%, -50%)",
+            maxHeight: "min(42vh, 320px)",
+            objectFit: "contain",
             pointerEvents: "none",
           }}
         />
@@ -57,7 +53,7 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
   return (
     <div
       role="img"
-      aria-label="Fersua Analytics (FSA)"
+      aria-label={BRAND_NAME}
       className={className}
       style={{
         width: "100%",
@@ -66,11 +62,11 @@ export function LogoMarkCrop({ variant, className }: LogoMarkCropProps) {
         height: 56,
         overflow: "hidden",
         borderRadius: 6,
-        backgroundColor: "rgba(0,0,0,0.18)",
+        backgroundColor: "#000000",
         backgroundImage: `url(${BRANDING_LOGO_SRC})`,
         backgroundRepeat: "no-repeat",
-        backgroundSize: "cover",
-        backgroundPosition: "50% 0%",
+        backgroundSize: "contain",
+        backgroundPosition: "center",
         flexShrink: 0,
       }}
     />

@@ -2,8 +2,7 @@ import type { CSSProperties } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button, Card, Col, Form, Input, Row, Typography, message, Spin } from "antd";
 import { api } from "../api";
-import { FERSUA_STORE_SITE_URL } from "../branding";
-import { FsaMark } from "../components/FsaMark";
+import { BRAND_NAME, BRAND_TAGLINE, BRANDING_LOGO_SRC } from "../branding";
 import { LogoMarkCrop } from "../components/LogoMarkCrop";
 import { useAuth } from "../contexts/AuthContext";
 import type { AuthUser } from "../types";
@@ -77,7 +76,7 @@ export function LoginPage() {
               pointerEvents: "none",
             }}
           />
-          <div style={{ position: "relative", width: "100%", maxWidth: 520, margin: "0 auto" }}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 560, margin: "0 auto" }}>
             <LogoMarkCrop variant="login" />
           </div>
         </Col>
@@ -95,7 +94,18 @@ export function LoginPage() {
           }}
         >
           <div className="fs-login-mobile-mark">
-            <FsaMark size={72} rounded />
+            <img
+              src={BRANDING_LOGO_SRC}
+              alt={BRAND_NAME}
+              decoding="async"
+              style={{
+                display: "block",
+                width: "min(260px, 78vw)",
+                height: "auto",
+                borderRadius: 12,
+                backgroundColor: "#000",
+              }}
+            />
           </div>
           <Card className="fs-login-card" title="Iniciar sesión" variant="borderless" style={{ width: "100%", maxWidth: 400 }}>
             <Form layout="vertical" onFinish={onFinish} requiredMark="optional">
@@ -104,7 +114,7 @@ export function LoginPage() {
                 name="username"
                 rules={[{ required: true, message: "Indica tu usuario." }]}
               >
-                <Input size="large" autoComplete="username" placeholder="ej. fercho" />
+                <Input size="large" autoComplete="username" placeholder="ej. admin" />
               </Form.Item>
               <Form.Item label="Contraseña" name="password" rules={[{ required: true }]}>
                 <Input.Password size="large" autoComplete="current-password" />
@@ -114,19 +124,12 @@ export function LoginPage() {
               </Button>
             </Form>
             <div className="fs-login-company-foot">
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.55 }}>
-                Este panel es uso interno de <Typography.Text strong>Fersua Analytics (FSA)</Typography.Text>, alineado
-                con las operaciones de{" "}
-                <Typography.Text strong>FersuaStore</Typography.Text>: pago contra entrega y envíos seguros.
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 4, fontSize: 12, lineHeight: 1.55 }}>
+                Panel operativo de <Typography.Text strong>{BRAND_NAME}</Typography.Text>.
               </Typography.Paragraph>
-              <Typography.Link
-                href={FERSUA_STORE_SITE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 12, fontWeight: 500 }}
-              >
-                fersuastore.fersuastudio.com
-              </Typography.Link>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                {BRAND_TAGLINE}
+              </Typography.Text>
             </div>
           </Card>
         </Col>

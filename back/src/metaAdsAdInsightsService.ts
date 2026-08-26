@@ -113,6 +113,7 @@ function buildAdInsightsUrl(actId: string, desde: string, hasta: string): string
 export async function fetchAdInsightsForAccountRange(
   metaAccountId: string,
   opts: {
+    companyId: string;
     desde: string;
     hasta: string;
     metaAdsAppId?: string | null;
@@ -124,6 +125,7 @@ export async function fetchAdInsightsForAccountRange(
 
   const actId = toMetaActAccountId(metaAccountId);
   const accessToken = await resolveMetaAccessToken({
+    companyId: opts.companyId,
     metaAdsAppId: opts.metaAdsAppId,
     metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });
@@ -192,14 +194,19 @@ export type AdMetadata = {
  */
 export async function fetchAdMetadata(
   metaAccountId: string,
-  opts?: { metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
+  opts: {
+    companyId: string;
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+  },
 ): Promise<{ byAdId: Map<string, AdMetadata>; error: string | null }> {
   const byAdId = new Map<string, AdMetadata>();
   try {
     const actId = toMetaActAccountId(metaAccountId);
     const accessToken = await resolveMetaAccessToken({
-      metaAdsAppId: opts?.metaAdsAppId,
-      metaAdsSystemUserId: opts?.metaAdsSystemUserId,
+      companyId: opts.companyId,
+      metaAdsAppId: opts.metaAdsAppId,
+      metaAdsSystemUserId: opts.metaAdsSystemUserId,
     });
 
     const fields = [

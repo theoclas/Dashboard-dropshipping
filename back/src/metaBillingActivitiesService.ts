@@ -232,13 +232,14 @@ export type FetchMetaBillingActivitiesResult = {
 
 export async function fetchMetaBillingActivitiesForAccount(
   metaAccountId: string,
-  opts?: MetaAccessTokenResolveInput & { since?: string | null; until?: string | null },
+  opts: MetaAccessTokenResolveInput & { since?: string | null; until?: string | null },
 ): Promise<FetchMetaBillingActivitiesResult> {
-  const range = resolveMetaBillingDateRange(opts?.since, opts?.until);
+  const range = resolveMetaBillingDateRange(opts.since, opts.until);
   const actId = toMetaActAccountId(metaAccountId);
   const accessToken = await resolveMetaAccessToken({
-    metaAdsAppId: opts?.metaAdsAppId,
-    metaAdsSystemUserId: opts?.metaAdsSystemUserId,
+    companyId: opts.companyId,
+    metaAdsAppId: opts.metaAdsAppId,
+    metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });
 
   const errors: string[] = [];

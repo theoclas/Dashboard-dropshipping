@@ -1,4 +1,4 @@
-import { BRANDING_ICON_SRC } from "../branding";
+import { BRAND_NAME, BRANDING_LOGO_SRC } from "../branding";
 
 type FsaMarkProps = {
   size?: number;
@@ -6,14 +6,14 @@ type FsaMarkProps = {
   rounded?: boolean;
 };
 
-/** Icono FSA (`icon.png`) para sidebar colapsado y usos compactos. */
+/** Marca compacta (login móvil / sidebar colapsado). */
 export function FsaMark({ size = 40, rounded = true }: FsaMarkProps) {
   const radius = rounded ? Math.max(6, Math.round(size * 0.2)) : 0;
 
   return (
     <img
-      src={BRANDING_ICON_SRC}
-      alt="Fersua Analytics (FSA)"
+      src={BRANDING_LOGO_SRC}
+      alt={BRAND_NAME}
       width={size}
       height={size}
       decoding="async"
@@ -21,9 +21,11 @@ export function FsaMark({ size = 40, rounded = true }: FsaMarkProps) {
         width: size,
         height: size,
         objectFit: "contain",
+        objectPosition: "left center",
         display: "block",
         flexShrink: 0,
         borderRadius: radius,
+        backgroundColor: "#000000",
       }}
     />
   );
