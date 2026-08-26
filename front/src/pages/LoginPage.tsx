@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button, Card, Col, Form, Input, Row, Typography, message, Spin } from "antd";
 import { api } from "../api";
-import { BRAND_NAME, BRAND_TAGLINE, BRANDING_LOGO_SRC } from "../branding";
+import { BRAND_NAME, BRAND_TAGLINE, BRANDING_ICON_SRC } from "../branding";
 import { LogoMarkCrop } from "../components/LogoMarkCrop";
 import { useAuth } from "../contexts/AuthContext";
 import type { AuthUser } from "../types";
@@ -95,15 +95,15 @@ export function LoginPage() {
         >
           <div className="fs-login-mobile-mark">
             <img
-              src={BRANDING_LOGO_SRC}
+              src={BRANDING_ICON_SRC}
               alt={BRAND_NAME}
               decoding="async"
               style={{
                 display: "block",
-                width: "min(260px, 78vw)",
-                height: "auto",
-                borderRadius: 12,
-                backgroundColor: "#000",
+                width: 64,
+                height: 64,
+                objectFit: "contain",
+                filter: "drop-shadow(0 8px 18px rgba(34,211,238,0.25))",
               }}
             />
           </div>
