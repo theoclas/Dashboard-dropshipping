@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction, type ThHTMLAttributes } from "react";
 import {
   Button,
   DatePicker,
@@ -6,9 +6,11 @@ import {
   Space,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   message,
 } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
   DownloadOutlined,
   ReloadOutlined,
@@ -48,6 +50,160 @@ const { Title, Text } = Typography;
 
 const OFICINA_DIRECCION = "oficina";
 const TAB_TODAS = "__todas__";
+/** Cuánto puede crecer una columna respecto a su ancho base. */
+const COL_RESIZE_MAX_EXTRA = 100;
+/** Cuánto puede encogerse respecto al base. */
+const COL_RESIZE_MAX_SHRINK = 40;
+
+type ResizableThProps = ThHTMLAttributes<HTMLTableCellElement> & {
+  width?: number;
+  onResize?: (width: number) => void;
+};
+
+function OficinaResizableTitle({ width, onResize, children, style, ...rest }: ResizableThProps) {
+  if (width == null || !onResize) {
+    return (
+      <th {...rest} style={style}>
+        {children}
+      </th>
+    );
+  }
+
+  return (
+    <th {...rest} style={{ ...style, position: "relative", overflow: "visible" }}>
+      {children}
+      <span
+        role="separator"
+        aria-orientation="vertical"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const startX = e.clientX;
+          const startW = width;
+          const onMove = (ev: MouseEvent) => {
+            onResize(startW + (ev.clientX - startX));
+          };
+          const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }}
+        style={{
+          position: "absolute",
+          right: -2,
+          top: 0,
+          bottom: 0,
+          width: 8,
+          cursor: "col-resize",
+          userSelect: "none",
+          zIndex: 2,
+        }}
+      />
+    </th>
+  );
+}
+
+function clampColumnWidth(base: number, next: number): number {
+  const min = Math.max(64, base - COL_RESIZE_MAX_SHRINK);
+  const max = base + COL_RESIZE_MAX_EXTRA;
+  return Math.min(max, Math.max(min, Math.round(next)));
+}
+
+function withOficinaResizableColumns(
+  columns: ColumnsType<Pedido>,
+  widths: Record<string, number>,
+  setWidths: Dispatch<SetStateAction<Record<string, number>>>,
+): ColumnsType<Pedido> {
+  return columns.map((col) => {
+    if (!col || typeof col !== "object") return col;
+    const key = "key" in col && typeof col.key === "string" ? col.key : null;
+    if (!key || key === "acciones") return col;
+
+    const base = typeof col.width === "number" ? col.width : 120;
+    const width = widths[key] ?? base;
+    const prevOnHeaderCell = col.onHeaderCell;
+
+    return {
+      ...col,
+      width,
+      onHeaderCell: (c) => {
+        const prev =
+          typeof prevOnHeaderCell === "function"
+            ? (prevOnHeaderCell(c) as ResizableThProps)
+            : ((prevOnHeaderCell ?? {}) as ResizableThProps);
+        return {
+          ...prev,
+          width,
+          onResize: (next: number) => {
+            const clamped = clampColumnWidth(base, next);
+            setWidths((prevMap) =>
+              prevMap[key] === clamped ? prevMap : { ...prevMap, [key]: clamped },
+            );
+          },
+        };
+      },
+    };
+  });
+}
+
+/** Previsualiza el valor completo al hover (celdas truncadas). */
+function withOficinaCellPreview(
+  columns: ColumnsType<Pedido>,
+  editingId: string | null,
+): ColumnsType<Pedido> {
+  return columns.map((col) => {
+    if (!col || typeof col !== "object") return col;
+    const key = "key" in col && typeof col.key === "string" ? col.key : null;
+    if (!key || key === "acciones") return col;
+
+    const dataIndex =
+      "dataIndex" in col && typeof col.dataIndex === "string" ? col.dataIndex : null;
+    const prevRender = "render" in col ? col.render : undefined;
+
+    return {
+      ...col,
+      ellipsis: { showTitle: false },
+      render: (value: unknown, record: Pedido, index: number) => {
+        const content = prevRender
+          ? (prevRender as (v: unknown, r: Pedido, i: number) => ReactNode)(value, record, index)
+          : (value as ReactNode);
+
+        // Mientras se edita la fila, no envolver (evita cortar el Input).
+        if (editingId && record.id === editingId) return content;
+
+        let tip = "";
+        if (dataIndex) {
+          const raw = record[dataIndex as keyof Pedido];
+          if (raw != null && String(raw).trim() !== "") tip = String(raw);
+        } else if (typeof value === "string" || typeof value === "number") {
+          tip = String(value);
+        }
+
+        if (!tip || tip === "-" || tip === "—") return content;
+
+        return (
+          <Tooltip title={<span style={{ whiteSpace: "pre-wrap" }}>{tip}</span>} placement="topLeft" mouseEnterDelay={0.25}>
+            <span
+              style={{
+                display: "inline-block",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
+            >
+              {content}
+            </span>
+          </Tooltip>
+        );
+      },
+    };
+  });
+}
 
 function pedidoMapeoPrefillPath(p: Pedido): string {
   const q = new URLSearchParams();
@@ -92,6 +248,7 @@ export function OficinaPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [exporting, setExporting] = useState(false);
   const [columnsDrawerOpen, setColumnsDrawerOpen] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [filters, setFilters] = useState({
     ...initialColumnFilters,
     cartera_ok: "" as "" | "ok" | "no",
@@ -269,8 +426,13 @@ export function OficinaPage() {
 
   const columnDefs = useMemo(() => createOrdersColumnDefs(columnCtx), [columnCtx]);
   const columns = useMemo(
-    () => buildVisibleOficinaColumns(tableConfig, columnDefs),
-    [tableConfig, columnDefs],
+    () =>
+      withOficinaResizableColumns(
+        withOficinaCellPreview(buildVisibleOficinaColumns(tableConfig, columnDefs), editingId),
+        columnWidths,
+        setColumnWidths,
+      ),
+    [tableConfig, columnDefs, editingId, columnWidths],
   );
 
   const handleSaveColumnsConfig = async (config: OrdersTableConfig) => {
@@ -327,7 +489,8 @@ export function OficinaPage() {
             Oficina
           </Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            Pedidos cuya dirección contiene «oficina», segmentados por transportadora.
+            Pedidos cuya dirección contiene «oficina», segmentados por transportadora. Arrastra el borde
+            derecho del encabezado para ensanchar un poco la columna (máx. +{COL_RESIZE_MAX_EXTRA}px).
           </Text>
         </div>
         <Space wrap>
@@ -404,6 +567,11 @@ export function OficinaPage() {
         loading={loading}
         size="small"
         scroll={{ x: scrollX }}
+        components={{
+          header: {
+            cell: OficinaResizableTitle,
+          },
+        }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys),
