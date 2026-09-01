@@ -53,13 +53,17 @@ import {
   fetchMetaAdsSystemUserOptions,
   fetchProductAdvertisingAccounts,
   importAdvertisingCampaignMetrics,
+  importAdvertisingCampaignMetricsAll,
   importMetaApiCampaignMetrics,
+  importMetaApiCampaignMetricsAll,
   patchAdvertisingCampaign,
   patchAdvertisingMetric,
   postAdvertisingCampaign,
   postMetaCampaignAdvertisingAccount,
   previewAdvertisingCampaignImport,
+  previewAdvertisingCampaignImportAll,
   previewMetaApiCampaignImport,
+  previewMetaApiCampaignImportAll,
 } from "../api";
 import { usePermission } from "../hooks/usePermission";
 import type {
@@ -68,11 +72,32 @@ import type {
   AdvertisingCampaignRow,
   CatalogProduct,
   ImportAdvertisingPreviewResponse,
+  BulkProductImportResult,
   MetaAdsAppOption,
   MetaAdsSystemUserOption,
 } from "../types";
 
 const { Title, Text } = Typography;
+
+const ALL_CATALOG_PRODUCTS_ID = "__all__";
+
+function isAllCatalogProducts(productId?: string): boolean {
+  return productId === ALL_CATALOG_PRODUCTS_ID;
+}
+
+function showBulkImportSummary(res: BulkProductImportResult, title: string) {
+  message.success(
+    `${res.productsImported} producto(s) importados, ${res.productsSkipped} omitidos. Campañas +${res.imported}, métricas +${res.metricsCreated}/~${res.metricsUpdated}.`,
+  );
+  const skipped = res.details.filter((d) => d.skipped);
+  if (skipped.length > 0 || res.errors.length > 0) {
+    const lines = [
+      ...skipped.map((d) => `${d.productName}: ${d.skipReason ?? "omitido"}`),
+      ...res.errors.slice(0, 30),
+    ];
+    Modal.warning({ title, content: lines.join("\n") });
+  }
+}
 
 function formatMetricSnapshotValue(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
@@ -143,7 +168,7 @@ export function CampaignsPage() {
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [accounts, setAccounts] = useState<AdvertisingAccount[]>([]);
-  const [productId, setProductId] = useState<string | undefined>();
+  const [productId, setProductId] = useState<string>(ALL_CATALOG_PRODUCTS_ID);
   const [campaigns, setCampaigns] = useState<AdvertisingCampaignRow[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<AdvertisingCampaignRow | null>(null);
   const [metrics, setMetrics] = useState<AdvertisingCampaignMetricRow[]>([]);
@@ -281,14 +306,24 @@ export function CampaignsPage() {
     void loadMetaSystemUsers(metaAdsAppId);
   }, [canModule, metaAdsAppId, loadMetaSystemUsers]);
 
+  const isAllProducts = isAllCatalogProducts(productId);
+
+  const productOptions = useMemo(
+    () => [
+      { value: ALL_CATALOG_PRODUCTS_ID, label: "Todos los productos" },
+      ...products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ""}` })),
+    ],
+    [products],
+  );
+
   useEffect(() => {
-    if (productId) void loadCampaigns(productId);
+    if (!isAllProducts && productId) void loadCampaigns(productId);
     else {
       setCampaigns([]);
       setSelectedCampaign(null);
       setMetrics([]);
     }
-  }, [productId, loadCampaigns]);
+  }, [productId, isAllProducts, loadCampaigns]);
 
   useEffect(() => {
     if (selectedCampaign) void loadMetrics(selectedCampaign.id);
@@ -300,20 +335,20 @@ export function CampaignsPage() {
   }, [selectedCampaign]);
 
   useEffect(() => {
-    if (!productId) {
+    if (!productId || isAllProducts) {
       setProductLinkedAccountIds([]);
       return;
     }
     void fetchProductAdvertisingAccounts(productId)
       .then((list) => setProductLinkedAccountIds(list.map((a) => a.id)))
       .catch(() => setProductLinkedAccountIds([]));
-  }, [productId]);
+  }, [productId, isAllProducts]);
 
   const filteredAccounts = useMemo(() => {
-    if (productLinkedAccountIds.length === 0) return accounts;
+    if (isAllProducts || productLinkedAccountIds.length === 0) return accounts;
     const set = new Set(productLinkedAccountIds);
     return accounts.filter((a) => set.has(a.id));
-  }, [accounts, productLinkedAccountIds]);
+  }, [accounts, productLinkedAccountIds, isAllProducts]);
 
   const accountOptions = useMemo(
     () =>
@@ -366,7 +401,7 @@ export function CampaignsPage() {
 
   const linkPreviewCampaignToProduct = useCallback(
     async (externalId: string) => {
-      if (!productId || !canCrud) return;
+      if (!productId || isAllProducts || !canCrud) return;
       setLinkingCampaignId(externalId);
       try {
         await postAdvertisingCampaign(productId, {
@@ -387,7 +422,7 @@ export function CampaignsPage() {
         setLinkingCampaignId(null);
       }
     },
-    [productId, canCrud, campaignDisplayNames, primaryImportAccountId, loadCampaigns],
+    [productId, isAllProducts, canCrud, campaignDisplayNames, primaryImportAccountId, loadCampaigns],
   );
 
   const toggleImportCampaignSelection = useCallback((externalId: string, checked: boolean) => {
@@ -405,7 +440,9 @@ export function CampaignsPage() {
     setImportPreviewLoading(true);
     setImportPreviewError(null);
     try {
-      const res = await previewAdvertisingCampaignImport(productId, importFile);
+      const res = isAllProducts
+        ? await previewAdvertisingCampaignImportAll(importFile)
+        : await previewAdvertisingCampaignImport(productId, importFile);
       setImportPreview(res);
       mergeShopifyPreview(res);
       return true;
@@ -416,7 +453,7 @@ export function CampaignsPage() {
     } finally {
       setImportPreviewLoading(false);
     }
-  }, [productId, importFile, mergeShopifyPreview]);
+  }, [productId, isAllProducts, importFile, mergeShopifyPreview]);
 
   const fetchMetaApiPreview = useCallback(async (): Promise<boolean> => {
     if (!productId || importAccountIds.length === 0) return false;
@@ -473,12 +510,19 @@ export function CampaignsPage() {
         );
         if (step > 1) await sleep(META_API_DAY_DELAY_MS);
         try {
-          const res = await previewMetaApiCampaignImport(productId, {
-            advertisingAccountId,
-            metaAdsAppId: metaAdsAppId ?? null,
-            metaAdsSystemUserId: metaAdsSystemUserId ?? null,
-            reportDate,
-          });
+          const res = isAllProducts
+            ? await previewMetaApiCampaignImportAll({
+                advertisingAccountId,
+                metaAdsAppId: metaAdsAppId ?? null,
+                metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+                reportDate,
+              })
+            : await previewMetaApiCampaignImport(productId, {
+                advertisingAccountId,
+                metaAdsAppId: metaAdsAppId ?? null,
+                metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+                reportDate,
+              });
           const defaultSelected = res.defaultSelectedCampaignIds ?? res.uniqueCampaignIds ?? [];
           const sessionsForDay = shopifySessionsByDate[reportDate];
           const dayRow: MetaApiBatchDay = {
@@ -533,6 +577,7 @@ export function CampaignsPage() {
     return false;
   }, [
     productId,
+    isAllProducts,
     importAccountIds,
     metaAdsAppId,
     metaAdsSystemUserId,
@@ -629,7 +674,7 @@ export function CampaignsPage() {
         return false;
       const previousStatus = day.status;
       const previewIds = day.preview.uniqueCampaignIds ?? [];
-      if (previewIds.length > 1 && day.selectedCampaignIds.length === 0) {
+      if (!isAllProducts && previewIds.length > 1 && day.selectedCampaignIds.length === 0) {
         message.warning(`Marca al menos una campaña para importar el día ${day.reportDate}.`);
         return false;
       }
@@ -638,7 +683,7 @@ export function CampaignsPage() {
         shopifyMap = buildShopifySessionsMapFromInputs(day.shopifySessionsInput);
       }
       const allowedOpts =
-        previewIds.length > 1
+        !isAllProducts && previewIds.length > 1
           ? { allowedCampaignIds: day.selectedCampaignIds.map((id) => normalizeMetaCampaignKey(id)) }
           : {};
 
@@ -651,6 +696,27 @@ export function CampaignsPage() {
       );
 
       try {
+        if (isAllProducts) {
+          const res = await importMetaApiCampaignMetricsAll({
+            advertisingAccountId: day.advertisingAccountId,
+            metaAdsAppId: metaAdsAppId ?? null,
+            metaAdsSystemUserId: metaAdsSystemUserId ?? null,
+            reportDate: day.reportDate,
+            useShopifySessions: useShopify,
+            shopifySessionsByCampaignId: shopifyMap,
+            applyAdvertisingAccount: true,
+          });
+          setMetaApiBatchDays((prev) =>
+            prev.map((d) =>
+              d.reportDate === day.reportDate && d.advertisingAccountId === day.advertisingAccountId
+                ? { ...d, status: "imported" }
+                : d,
+            ),
+          );
+          showBulkImportSummary(res, `Import masivo (${day.reportDate})`);
+          return true;
+        }
+
         const res = await importMetaApiCampaignMetrics(productId, {
           advertisingAccountId: day.advertisingAccountId,
           metaAdsAppId: metaAdsAppId ?? null,
@@ -696,7 +762,7 @@ export function CampaignsPage() {
         return false;
       }
     },
-    [productId, metaAdsAppId, metaAdsSystemUserId, useShopify, loadCampaigns, selectedCampaign, loadMetrics],
+    [productId, isAllProducts, metaAdsAppId, metaAdsSystemUserId, useShopify, loadCampaigns, selectedCampaign, loadMetrics],
   );
 
   const handleImportAllBatchDays = useCallback(async () => {
@@ -861,12 +927,6 @@ export function CampaignsPage() {
       setImportSelectedCampaignIds([]);
       return;
     }
-    if (!productId) {
-      setImportPreview(null);
-      setImportPreviewError(null);
-      setImportPreviewLoading(false);
-      return;
-    }
     void fetchImportPreview();
   }, [importFile, productId, importSource, fetchImportPreview]);
 
@@ -1022,13 +1082,14 @@ export function CampaignsPage() {
     if (importSource === "meta-api" && activeBatchDay && !isMetaApiBatchDayImportable(activeBatchDay.status)) {
       return false;
     }
-    if (importPreview.uniqueCampaignIds.length > 1 && importSelectedCampaignIds.length === 0) return false;
+    if (importPreview.uniqueCampaignIds.length > 1 && !isAllProducts && importSelectedCampaignIds.length === 0) return false;
     return true;
   }, [
     importSource,
     importFile,
     importAccountIds,
     productId,
+    isAllProducts,
     importPreviewLoading,
     importPreviewError,
     metaApiBatchImporting,
@@ -1038,13 +1099,9 @@ export function CampaignsPage() {
   ]);
 
   const handleRefreshImportPreview = async () => {
-    if (!productId) {
-      message.warning("Selecciona producto del catálogo.");
-      return;
-    }
     if (importSource === "file") {
       if (!importFile) {
-        message.warning("Selecciona producto y archivo (Excel o CSV).");
+        message.warning("Selecciona un archivo (Excel o CSV).");
         return;
       }
       const ok = await fetchImportPreview();
@@ -1090,10 +1147,6 @@ export function CampaignsPage() {
   }, []);
 
   const handleImport = async () => {
-    if (!productId) {
-      message.warning("Selecciona producto del catálogo.");
-      return;
-    }
     if (importSource === "meta-api") {
       const days = getBatchDaysWithActivePersisted();
       const day =
@@ -1111,7 +1164,7 @@ export function CampaignsPage() {
       return;
     }
     const previewIds = importPreview?.uniqueCampaignIds ?? [];
-    if (previewIds.length > 1 && importSelectedCampaignIds.length === 0) {
+    if (!isAllProducts && previewIds.length > 1 && importSelectedCampaignIds.length === 0) {
       message.warning("Marca al menos una campaña para importar a este producto.");
       return;
     }
@@ -1120,11 +1173,23 @@ export function CampaignsPage() {
       shopifyMap = buildShopifySessionsMapFromInputs(shopifySessionsInput);
     }
     const allowedOpts =
-      previewIds.length > 1
+      !isAllProducts && previewIds.length > 1
         ? { allowedCampaignIds: importSelectedCampaignIds.map((id) => normalizeMetaCampaignKey(id)) }
         : {};
 
     try {
+      if (isAllProducts) {
+        const res = await importAdvertisingCampaignMetricsAll(importFile!, {
+          useShopifySessions: useShopify,
+          shopifySessionsByCampaignId: shopifyMap,
+          applyAdvertisingAccount: importAccountIds.length > 0,
+          advertisingAccountId: primaryImportAccountId ?? null,
+        });
+        showBulkImportSummary(res, "Import masivo desde archivo");
+        clearImportForm(false);
+        return;
+      }
+
       const res = await importAdvertisingCampaignMetrics(productId, importFile!, {
         useShopifySessions: useShopify,
         shopifySessionsByCampaignId: shopifyMap,
@@ -1435,10 +1500,19 @@ export function CampaignsPage() {
               optionFilterProp="label"
               placeholder="Selecciona un producto"
               style={{ width: "100%" }}
-              options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ""}` }))}
+              options={productOptions}
               value={productId}
               onChange={setProductId}
             />
+            {isAllProducts ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 12 }}
+                message="Modo todos los productos"
+                description="Al importar, cada producto usará sus campañas vinculadas. Los productos sin campañas configuradas se omitirán."
+              />
+            ) : null}
           </Card>
         </Col>
         <Col xs={24} lg={12}>
@@ -1546,29 +1620,12 @@ export function CampaignsPage() {
             </>
           )}
 
-          {importSource === "file" && importFile && !productId ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Selecciona el producto del catálogo (arriba) para ver la vista previa de lo que se importará."
-            />
-          ) : null}
-
-          {importSource === "meta-api" && !productId ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Selecciona el producto del catálogo (arriba) para importar métricas desde la API."
-            />
-          ) : null}
-
-          {importSource === "meta-api" && productId && importAccountIds.length === 0 ? (
+          {importSource === "meta-api" && importAccountIds.length === 0 ? (
             <Alert type="warning" showIcon message="Selecciona al menos una cuenta publicitaria para consultar Meta API." />
           ) : null}
 
-          {(importSource === "file" && importFile && productId) ||
+          {(importSource === "file" && importFile) ||
           (importSource === "meta-api" &&
-            productId &&
             importAccountIds.length > 0 &&
             (importPreview || importPreviewLoading || importPreviewError || metaApiBatchDays.length > 0)) ? (
             <div style={{ width: "100%" }}>
@@ -1648,11 +1705,17 @@ export function CampaignsPage() {
                         Cuenta Meta: <strong>{importPreview.metaAccountId}</strong>.
                       </>
                     ) : null}
-                    {importPreview.uniqueCampaignIds.length > 1 ? (
+                  {importPreview.uniqueCampaignIds.length > 1 && !isAllProducts ? (
                       <>
                         {" "}
                         Con las campañas marcadas abajo se importarán{" "}
                         <strong>{selectedAggregatedRowCount}</strong> de esas filas para el producto elegido.
+                      </>
+                    ) : isAllProducts ? (
+                      <>
+                        {" "}
+                        En modo <strong>todos los productos</strong>, cada producto importará solo sus campañas
+                        vinculadas.
                       </>
                     ) : null}{" "}
                     Muestra de las primeras <strong>{displayedSampleRows.length}</strong> visibles (fecha, ID campaña, ID
@@ -1666,7 +1729,8 @@ export function CampaignsPage() {
                     ) : null}
                   </Text>
                   {importPreview.defaultSelectedCampaignIds &&
-                  importPreview.uniqueCampaignIds.length > 1 ? (
+                  importPreview.uniqueCampaignIds.length > 1 &&
+                  !isAllProducts ? (
                     <Alert
                       type="info"
                       showIcon
@@ -1675,7 +1739,7 @@ export function CampaignsPage() {
                       description="Las campañas marcadas coinciden con las vinculadas a este producto. Puedes ajustar la selección antes de importar."
                     />
                   ) : null}
-                  {importPreview.uniqueCampaignIds.length >= 1 ? (
+                  {importPreview.uniqueCampaignIds.length >= 1 && !isAllProducts ? (
                     <div style={{ marginBottom: 14 }}>
                       <Text strong style={{ display: "block", marginBottom: 6 }}>
                         Campañas en la vista previa
@@ -1956,7 +2020,7 @@ export function CampaignsPage() {
               <Button
                 type="default"
                 onClick={() => void handleRefreshImportPreview()}
-                disabled={!productId || importAccountIds.length === 0 || importPreviewLoading || metaApiBatchImporting}
+                disabled={importAccountIds.length === 0 || importPreviewLoading || metaApiBatchImporting}
                 loading={importPreviewLoading}
               >
                 Traer desde API
@@ -1964,7 +2028,7 @@ export function CampaignsPage() {
             ) : (
               <Button
                 onClick={() => void handleRefreshImportPreview()}
-                disabled={!productId || !importFile || importPreviewLoading}
+                disabled={!importFile || importPreviewLoading}
               >
                 Actualizar vista previa
               </Button>
@@ -1974,7 +2038,6 @@ export function CampaignsPage() {
                 onClick={() => void handleImportAllBatchDays()}
                 disabled={
                   !canImport ||
-                  !productId ||
                   importAccountIds.length === 0 ||
                   importPreviewLoading ||
                   metaApiBatchImporting
@@ -1989,7 +2052,6 @@ export function CampaignsPage() {
               onClick={handleImport}
               disabled={
                 !canImport ||
-                !productId ||
                 !importPreviewReady ||
                 (importSource === "file" ? !importFile : importAccountIds.length === 0) ||
                 metaApiBatchImporting
@@ -2008,27 +2070,35 @@ export function CampaignsPage() {
       <Card
         title="Campañas"
         extra={
-          canCrud && productId ? (
+          canCrud && productId && !isAllProducts ? (
             <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setManualCampaignOpen(true)}>
               Agregar campaña
             </Button>
           ) : null
         }
       >
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={campaigns}
-          columns={campaignColumns}
-          pagination={{ pageSize: 12 }}
-          onRow={(row) => ({
-            onClick: () => setSelectedCampaign(row),
-            style: { cursor: "pointer" },
-          })}
-          rowClassName={(record) =>
-            selectedCampaign?.id === record.id ? "fs-campaign-row-selected" : ""
-          }
-        />
+        {isAllProducts ? (
+          <Alert
+            type="info"
+            showIcon
+            message="Selecciona un producto específico para ver y gestionar sus campañas."
+          />
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            dataSource={campaigns}
+            columns={campaignColumns}
+            pagination={{ pageSize: 12 }}
+            onRow={(row) => ({
+              onClick: () => setSelectedCampaign(row),
+              style: { cursor: "pointer" },
+            })}
+            rowClassName={(record) =>
+              selectedCampaign?.id === record.id ? "fs-campaign-row-selected" : ""
+            }
+          />
+        )}
         <style>{`
           .fs-campaign-row-selected > td {
             background: ${token.colorPrimaryBg} !important;

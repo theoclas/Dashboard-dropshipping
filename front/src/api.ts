@@ -25,6 +25,7 @@ import type {
   DropiWithdrawalRow,
   ImportAdvertisingCampaignMetricsResult,
   ImportAdvertisingPreviewResponse,
+  BulkProductImportResult,
   ImportMetaBillingResult,
   MetaBillingApiImportResult,
   MetaAdsApp,
@@ -628,6 +629,17 @@ export async function previewAdvertisingCampaignImport(
   return data;
 }
 
+export async function previewAdvertisingCampaignImportAll(file: File): Promise<ImportAdvertisingPreviewResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const { data } = await api.post<ImportAdvertisingPreviewResponse>(
+    "/advertising-campaigns/import/preview",
+    fd,
+    { timeout: 120_000 },
+  );
+  return data;
+}
+
 export async function importAdvertisingCampaignMetrics(
   productId: string,
   file: File,
@@ -648,6 +660,24 @@ export async function importAdvertisingCampaignMetrics(
     fd,
     { timeout: 300_000 },
   );
+  return data;
+}
+
+export async function importAdvertisingCampaignMetricsAll(
+  file: File,
+  options: {
+    useShopifySessions?: boolean;
+    shopifySessionsByCampaignId?: Record<string, number>;
+    applyAdvertisingAccount?: boolean;
+    advertisingAccountId?: string | null;
+  },
+): Promise<BulkProductImportResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("options", JSON.stringify(options));
+  const { data } = await api.post<BulkProductImportResult>("/advertising-campaigns/import", fd, {
+    timeout: 300_000,
+  });
   return data;
 }
 
@@ -683,6 +713,37 @@ export async function importMetaApiCampaignMetrics(
 ): Promise<ImportAdvertisingCampaignMetricsResult> {
   const { data } = await api.post<ImportAdvertisingCampaignMetricsResult>(
     `/catalog-products/${productId}/advertising-campaigns/import/meta-api`,
+    options,
+    { timeout: 300_000 },
+  );
+  return data;
+}
+
+export async function previewMetaApiCampaignImportAll(options: {
+  advertisingAccountId: string;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+  reportDate?: string | null;
+}): Promise<ImportAdvertisingPreviewResponse> {
+  const { data } = await api.post<ImportAdvertisingPreviewResponse>(
+    "/advertising-campaigns/import/meta-api/preview",
+    options,
+    { timeout: 120_000 },
+  );
+  return data;
+}
+
+export async function importMetaApiCampaignMetricsAll(options: {
+  advertisingAccountId: string;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+  reportDate?: string | null;
+  useShopifySessions?: boolean;
+  shopifySessionsByCampaignId?: Record<string, number>;
+  applyAdvertisingAccount?: boolean;
+}): Promise<BulkProductImportResult> {
+  const { data } = await api.post<BulkProductImportResult>(
+    "/advertising-campaigns/import/meta-api",
     options,
     { timeout: 300_000 },
   );

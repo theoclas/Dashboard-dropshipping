@@ -26,6 +26,7 @@ import {
   fetchMetaApiParsedRowsForAccount,
   previewMetaApiCampaignImport,
 } from "./metaApiCampaignImport";
+import { importFileForAllProducts, importMetaApiForAllProducts } from "./bulkProductCampaignImport";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -490,6 +491,144 @@ export function registerBusinessModules(app: express.Application) {
       const ok = await advertisingCampaignMetricService.deleteAdvertisingCampaignMetric(u.companyId, metricId);
       if (!ok) return res.status(404).json({ message: "Métrica no encontrada." });
       return res.status(204).send();
+    },
+  );
+
+  app.post(
+    "/api/advertising-campaigns/import/meta-api/preview",
+    authRequired,
+    companyRequired,
+    requirePermission("moduleCampanasMeta"),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = metaApiImportOptionsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido: se requiere advertisingAccountId." });
+
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, parsed.data.advertisingAccountId);
+      if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
+
+      try {
+        const preview = await previewMetaApiCampaignImport(
+          u.companyId,
+          parsed.data.advertisingAccountId,
+          {
+            metaAdsAppId: parsed.data.metaAdsAppId,
+            metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+            reportDate: parsed.data.reportDate,
+          },
+        );
+        return res.json({
+          ...preview,
+          sampleRows: preview.sampleRows.map((r) => ({
+            ...r,
+            recordDate: r.recordDate instanceof Date ? r.recordDate.toISOString() : String(r.recordDate),
+          })),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error al consultar Meta API.";
+        return res.status(502).json({ message: msg });
+      }
+    },
+  );
+
+  app.post(
+    "/api/advertising-campaigns/import/meta-api",
+    authRequired,
+    companyRequired,
+    requirePermission("actionImportarAdvertisingCampaigns"),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = metaApiImportOptionsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ message: "Payload inválido: se requiere advertisingAccountId." });
+
+      const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, parsed.data.advertisingAccountId);
+      if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
+
+      const shopifyMap = normalizeShopifySessionsMap(parsed.data.shopifySessionsByCampaignId);
+
+      try {
+        const result = await importMetaApiForAllProducts(u.companyId, {
+          advertisingAccountId: parsed.data.advertisingAccountId,
+          metaAdsAppId: parsed.data.metaAdsAppId,
+          metaAdsSystemUserId: parsed.data.metaAdsSystemUserId,
+          reportDate: parsed.data.reportDate,
+          useShopifySessions: parsed.data.useShopifySessions,
+          shopifySessionsByCampaignId: shopifyMap,
+          applyAdvertisingAccount: parsed.data.applyAdvertisingAccount,
+        });
+        return res.json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error al importar desde Meta API.";
+        return res.status(502).json({ message: msg });
+      }
+    },
+  );
+
+  app.post(
+    "/api/advertising-campaigns/import/preview",
+    authRequired,
+    companyRequired,
+    requirePermission("moduleCampanasMeta"),
+    upload.single("file"),
+    async (req, res) => {
+      const u = user(req);
+      const file = req.file;
+      if (!file?.buffer) return res.status(400).json({ message: "Archivo requerido." });
+      const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer, {
+        sourceFilename: file.originalname,
+      });
+      const payload = buildImportPreviewPayload(rows, errors, { source: "file" });
+      return res.json({
+        ...payload,
+        sampleRows: payload.sampleRows.map((r) => ({
+          ...r,
+          recordDate: r.recordDate instanceof Date ? r.recordDate.toISOString() : String(r.recordDate),
+        })),
+      });
+    },
+  );
+
+  app.post(
+    "/api/advertising-campaigns/import",
+    authRequired,
+    companyRequired,
+    requirePermission("actionImportarAdvertisingCampaigns"),
+    upload.single("file"),
+    async (req, res) => {
+      const u = user(req);
+      const file = req.file;
+      if (!file?.buffer) return res.status(400).json({ message: "Archivo requerido." });
+
+      let optionsRaw: unknown = req.body?.options;
+      if (typeof optionsRaw === "string") {
+        try {
+          optionsRaw = JSON.parse(optionsRaw) as unknown;
+        } catch {
+          return res.status(400).json({ message: "options JSON inválido." });
+        }
+      }
+      const parsed = importOptionsSchema.safeParse(optionsRaw ?? {});
+      if (!parsed.success) return res.status(400).json({ message: "Opciones inválidas." });
+
+      const shopifyMap = normalizeShopifySessionsMap(parsed.data.shopifySessionsByCampaignId);
+
+      let advertisingAccountId: string | null = parsed.data.advertisingAccountId ?? null;
+      if (parsed.data.applyAdvertisingAccount && advertisingAccountId) {
+        const acc = await advertisingAccountService.getAdvertisingAccount(u.companyId, advertisingAccountId);
+        if (!acc) return res.status(400).json({ message: "Cuenta publicitaria no encontrada." });
+      }
+
+      const { rows, errors } = parseMetaCampaignMetricsExcel(file.buffer, {
+        sourceFilename: file.originalname,
+      });
+
+      const result = await importFileForAllProducts(u.companyId, rows, errors, {
+        advertisingAccountId: parsed.data.applyAdvertisingAccount ? advertisingAccountId : null,
+        useShopifySessions: parsed.data.useShopifySessions,
+        shopifySessionsByCampaignId: shopifyMap,
+        applyAdvertisingAccount: parsed.data.applyAdvertisingAccount,
+      });
+      return res.json(result);
     },
   );
 

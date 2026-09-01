@@ -425,6 +425,26 @@ export type ImportAdvertisingCampaignMetricsResult = {
   errors: string[];
 };
 
+export type BulkProductImportDetail = {
+  catalogProductId: string;
+  productName: string;
+  skipped: boolean;
+  skipReason?: string;
+  result?: ImportAdvertisingCampaignMetricsResult;
+};
+
+export type BulkProductImportResult = {
+  productsTotal: number;
+  productsImported: number;
+  productsSkipped: number;
+  imported: number;
+  campaignsUpdated: number;
+  metricsCreated: number;
+  metricsUpdated: number;
+  errors: string[];
+  details: BulkProductImportDetail[];
+};
+
 export type OperationalExpenseCategory = "SOFTWARE" | "COMUNICACIONES" | "OTRO";
 
 export type OperationalExpenseRow = {
