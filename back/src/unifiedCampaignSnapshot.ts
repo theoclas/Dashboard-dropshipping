@@ -122,6 +122,13 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Un gasto sirve si `spendFromMetaExcelSnapshot` sabrá sacarle un número. */
+function esGastoUtil(v: SnapshotValue): boolean {
+  if (v === null || v === undefined || String(v).trim() === "") return false;
+  const n = toNumberLoose(v);
+  return n !== undefined && !Number.isNaN(n);
+}
+
 export type UnifiedBucketInput = {
   externalCampaignId: string;
   campaignName: string | null;
@@ -298,9 +305,10 @@ export function mergeCampaignSnapshot(
   const prev = previous as Record<string, unknown>;
   const kept: CampaignSnapshot = {};
 
-  // Solo se purga el gasto anterior si el nuevo trae uno que lo sustituya. Purgar a
-  // ciegas dejaría la fila sin gasto si `next` no lo incluyera, y el dashboard bajaría.
-  const nextTraeGasto = Object.keys(next).some(isSpendHeaderKey);
+  // Solo se purga el gasto anterior si el nuevo trae uno **utilizable** que lo sustituya.
+  // No basta con que exista la clave: un archivo con la celda vacía, o un `null`, la trae
+  // igualmente, y purgar entonces dejaba la fila sin gasto legible y el dashboard bajaba.
+  const nextTraeGasto = Object.entries(next).some(([k, v]) => isSpendHeaderKey(k) && esGastoUtil(v));
 
   for (const [k, v] of Object.entries(prev)) {
     if (nextTraeGasto && isSpendHeaderKey(k)) continue;
@@ -314,7 +322,15 @@ export function mergeCampaignSnapshot(
     }
   }
 
-  const merged: CampaignSnapshot = { ...kept, ...next };
+  // Un gasto inservible del snapshot nuevo tampoco puede pisar al anterior al superponer:
+  // conservarlo en `kept` no sirve de nada si luego el `null` cae encima.
+  const nextUtil: CampaignSnapshot = {};
+  for (const [k, v] of Object.entries(next)) {
+    if (isSpendHeaderKey(k) && !esGastoUtil(v)) continue;
+    nextUtil[k] = v;
+  }
+
+  const merged: CampaignSnapshot = { ...kept, ...nextUtil };
 
   // Deja constancia de qué se reemplazó, para poder leerlo en el detalle de la fila.
   const prevWriter = prev._writtenBy;

@@ -366,9 +366,31 @@ export async function runUnifiedImport(
       : acc.parsed;
 
     result.counters.adRowsFetched += parsed.length;
-    if (parsed.length === 0) continue;
 
+    // Buckets sembrados por los DOS niveles.
+    //
+    // Antes solo se recorrían las filas de anuncio, y la pasada de campaña se limitaba a
+    // decorar un bucket que ya existiera. Con eso, todo campaña-día con gasto a nivel
+    // campaña pero sin filas a nivel anuncio desaparecía sin dejar rastro: Meta omite en
+    // `level=ad` los anuncios borrados, pero conserva su gasto en `level=campaign`. Una
+    // cuenta cuya consulta de anuncios volviera vacía no escribía absolutamente nada.
+    //
+    // Es la diferencia con Campañas Meta, que escribe directo desde el nivel campaña.
     const buckets = bucketsOf(parsed);
+    for (const [key, fila] of acc.campaignLevelByKey) {
+      if (buckets.has(key)) continue;
+      const extKey = normalizeCampaignMapKey(fila.externalCampaignId);
+      if (seleccion && !seleccion.has(extKey)) continue;
+      buckets.set(key, {
+        externalCampaignId: fila.externalCampaignId,
+        campaignName: fila.displayName ?? null,
+        ymd: ymdOf(fila.recordDate),
+        recordDate: fila.recordDate,
+        adRows: [],
+      });
+    }
+
+    if (buckets.size === 0) continue;
 
     let campaignIdByExt = new Map<string, string>();
     if (!opts.dryRun) {
@@ -399,6 +421,41 @@ export async function runUnifiedImport(
       result.counters.adsTouched += new Set(parsed.map((r) => r.externalAdId)).size;
       result.counters.adSetsTouched += new Set(parsed.map((r) => r.externalAdSetId)).size;
       result.counters.adMetricsWritten += parsed.length;
+    }
+
+    // Campañas que solo aparecen a nivel campaña: `persistAdsForAccount` no las conoce
+    // porque no cuelgan de ningún anuncio de esta consulta.
+    for (const b of buckets.values()) {
+      if (campaignIdByExt.has(b.externalCampaignId)) continue;
+
+      const existente = await prisma.advertisingCampaign.findUnique({
+        where: {
+          companyId_externalCampaignId: {
+            companyId,
+            externalCampaignId: b.externalCampaignId,
+          },
+        },
+        select: { id: true },
+      });
+      if (existente) {
+        campaignIdByExt.set(b.externalCampaignId, existente.id);
+        touchedCampaignIds.add(existente.id);
+        continue;
+      }
+      if (opts.dryRun) continue;
+
+      const creada = await prisma.advertisingCampaign.create({
+        data: {
+          companyId,
+          externalCampaignId: b.externalCampaignId,
+          displayName: b.campaignName,
+          advertisingAccountId: acc.advertisingAccountId,
+        },
+        select: { id: true },
+      });
+      campaignIdByExt.set(b.externalCampaignId, creada.id);
+      touchedCampaignIds.add(creada.id);
+      result.counters.campaignsTouched += 1;
     }
 
     for (const [ext, id] of campaignIdByExt) touchedByExt.set(normalizeCampaignMapKey(ext), id);

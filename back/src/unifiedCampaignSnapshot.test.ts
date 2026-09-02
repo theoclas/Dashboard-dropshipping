@@ -400,3 +400,25 @@ test("la fusion conserva las claves de negocio que el escritor nuevo no trae", (
   assert.equal(merged._campaignLevelPass, undefined);
   assert.equal(merged._supersededSource, "unified");
 });
+
+test("la fusion NO borra el gasto anterior si el nuevo trae la clave pero vacia", () => {
+  // Una celda vacia del Excel trae la clave igual. Purgar por la mera presencia de la
+  // clave dejaba la fila sin gasto legible y el dashboard bajaba sin motivo.
+  const anterior = { "Campaign ID": "C1", "Importe gastado (COP)": 950000 };
+
+  for (const inutil of [null, "", "   ", "no aplica"]) {
+    const merged = mergeCampaignSnapshot(anterior, {
+      "Campaign ID": "C1",
+      "Importe gastado (COP)": inutil as never,
+    });
+    const sp = spendFromMetaExcelSnapshot(merged);
+    assert.equal(sp.amount, 950000, `deberia conservarse el gasto con valor ${JSON.stringify(inutil)}`);
+  }
+
+  // Con un valor utilizable si se sustituye, incluso si viene como texto con separadores.
+  const bueno = mergeCampaignSnapshot(anterior, {
+    "Campaign ID": "C1",
+    "Importe gastado (COP)": "1.200.000",
+  });
+  assert.equal(spendFromMetaExcelSnapshot(bueno).amount, 1200000);
+});
