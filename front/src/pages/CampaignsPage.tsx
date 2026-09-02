@@ -15,16 +15,16 @@ import {
   Select,
   Space,
   Spin,
-  Segmented,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ClearOutlined, LinkOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { ApiOutlined, ClearOutlined, FileExcelOutlined, LinkOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
@@ -175,7 +175,7 @@ export function CampaignsPage() {
   const [loading, setLoading] = useState(false);
 
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importSource, setImportSource] = useState<"file" | "meta-api">("file");
+  const [importSource, setImportSource] = useState<"file" | "meta-api">("meta-api");
   const [useShopify, setUseShopify] = useState(false);
   const [importAccountIds, setImportAccountIds] = useState<string[]>([]);
   const [activeBatchAccountId, setActiveBatchAccountId] = useState<string | null>(null);
@@ -324,6 +324,12 @@ export function CampaignsPage() {
       setMetrics([]);
     }
   }, [productId, isAllProducts, loadCampaigns]);
+
+  useEffect(() => {
+    if (isAllProducts && importSource === "file") {
+      setImportSource("meta-api");
+    }
+  }, [isAllProducts, importSource]);
 
   useEffect(() => {
     if (selectedCampaign) void loadMetrics(selectedCampaign.id);
@@ -1487,6 +1493,62 @@ export function CampaignsPage() {
         Campañas Meta
       </Title>
 
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <Tooltip
+          title={
+            isAllProducts
+              ? "Con «Todos los productos» solo está disponible la importación por API Meta."
+              : "Sube un archivo Excel o CSV de Meta para un producto del catálogo."
+          }
+        >
+          <Button
+            type={importSource === "file" ? "primary" : "default"}
+            size="large"
+            icon={<FileExcelOutlined />}
+            disabled={isAllProducts}
+            onClick={() => setImportSource("file")}
+            style={{
+              flex: "1 1 220px",
+              minHeight: 64,
+              height: "auto",
+              paddingBlock: 12,
+              textAlign: "left",
+              justifyContent: "flex-start",
+              borderColor: importSource === "file" ? token.colorPrimary : undefined,
+            }}
+          >
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.35 }}>
+              <span style={{ fontWeight: 600 }}>Excel / CSV</span>
+              <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.85 }}>
+                Archivo por producto
+              </span>
+            </span>
+          </Button>
+        </Tooltip>
+        <Button
+          type={importSource === "meta-api" ? "primary" : "default"}
+          size="large"
+          icon={<ApiOutlined />}
+          onClick={() => setImportSource("meta-api")}
+          style={{
+            flex: "1 1 220px",
+            minHeight: 64,
+            height: "auto",
+            paddingBlock: 12,
+            textAlign: "left",
+            justifyContent: "flex-start",
+            borderColor: importSource === "meta-api" ? token.colorPrimary : undefined,
+          }}
+        >
+          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.35 }}>
+            <span style={{ fontWeight: 600 }}>API Meta</span>
+            <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.85 }}>
+              {isAllProducts ? "Importación masiva por producto" : "Consulta por rango de fechas"}
+            </span>
+          </span>
+        </Button>
+      </div>
+
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card size="small" title="Producto del catálogo">
@@ -1502,7 +1564,10 @@ export function CampaignsPage() {
               style={{ width: "100%" }}
               options={productOptions}
               value={productId}
-              onChange={setProductId}
+              onChange={(v) => {
+                setProductId(v);
+                if (isAllCatalogProducts(v)) setImportSource("meta-api");
+              }}
             />
             {isAllProducts ? (
               <Alert
@@ -1510,7 +1575,7 @@ export function CampaignsPage() {
                 showIcon
                 style={{ marginTop: 12 }}
                 message="Modo todos los productos"
-                description="Al importar, cada producto usará sus campañas vinculadas. Los productos sin campañas configuradas se omitirán."
+                description="Solo disponible por API Meta. Cada producto usará sus campañas vinculadas; los que no tengan campañas configuradas se omitirán."
               />
             ) : null}
           </Card>
@@ -1570,53 +1635,62 @@ export function CampaignsPage() {
         </Col>
       </Row>
 
-      <Card title="Importar métricas (Excel / CSV Meta o API)">
+      <Card
+        title={importSource === "meta-api" ? "Importar métricas desde API Meta" : "Importar métricas desde Excel / CSV"}
+        style={{
+          borderColor: importSource === "meta-api" ? token.colorPrimaryBorder : token.colorBorderSecondary,
+        }}
+        headStyle={{
+          background: importSource === "meta-api" ? token.colorPrimaryBg : token.colorFillAlter,
+        }}
+      >
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-          <Segmented
-            value={importSource}
-            onChange={(v) => setImportSource(v as "file" | "meta-api")}
-            options={[
-              { label: "Archivo Excel / CSV", value: "file" },
-              { label: "API Meta", value: "meta-api" },
-            ]}
-          />
-
           {importSource === "file" ? (
-          <Space wrap align="start">
-            <Upload
-              key={importUploadKey}
-              maxCount={1}
-              accept=".csv,.xlsx,.xls,.xlsm"
-              beforeUpload={(file) => {
-                setImportFile(file);
-                return false;
-              }}
-              onRemove={() => setImportFile(null)}
-            >
-              <Button icon={<UploadOutlined />}>Elegir archivo</Button>
-            </Upload>
-            <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
-              Aplicar sesiones Shopify manuales (editable en la vista previa)
-            </Checkbox>
-          </Space>
+            <>
+              <Alert
+                type="info"
+                showIcon
+                message="Importación por archivo"
+                description="Elige un producto del catálogo y sube el Excel o CSV exportado de Meta. Las campañas del archivo se asignan solo a ese producto."
+              />
+              <Space wrap align="start">
+                <Upload
+                  key={importUploadKey}
+                  maxCount={1}
+                  accept=".csv,.xlsx,.xls,.xlsm"
+                  beforeUpload={(file) => {
+                    setImportFile(file);
+                    return false;
+                  }}
+                  onRemove={() => setImportFile(null)}
+                >
+                  <Button type="primary" icon={<UploadOutlined />}>
+                    Elegir archivo
+                  </Button>
+                </Upload>
+                <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
+                  Aplicar sesiones Shopify manuales (editable en la vista previa)
+                </Checkbox>
+              </Space>
+            </>
           ) : (
             <>
-            <Alert
-              type="info"
-              showIcon
-              message="Consulta por rango desde Meta Insights API"
-              description={`Elige un rango de hasta ${META_API_MAX_RANGE_DAYS} días (máx.) y una o más cuentas publicitarias. El sistema consulta día a día (y cuenta a cuenta) con pausa entre llamadas. Tras «Traer desde API» verás un resumen por día y cuenta; puedes importar cada uno o todos a la vez.`}
-            />
-            <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
-              Aplicar sesiones Shopify manuales (editable en la vista previa)
-            </Checkbox>
-            <Button
-              type="default"
-              disabled={!canImport}
-              onClick={() => setShopifyJsonPasteOpen(true)}
-            >
-              Pegar sesiones Shopify (JSON)
-            </Button>
+              <Alert
+                type="info"
+                showIcon
+                message="Consulta por rango desde Meta Insights API"
+                description={
+                  isAllProducts
+                    ? `Modo todos los productos: elige cuentas y un rango de hasta ${META_API_MAX_RANGE_DAYS} días. Cada producto importará solo sus campañas vinculadas.`
+                    : `Elige un rango de hasta ${META_API_MAX_RANGE_DAYS} días (máx.) y una o más cuentas publicitarias. El sistema consulta día a día (y cuenta a cuenta) con pausa entre llamadas. Tras «Traer desde API» verás un resumen por día y cuenta; puedes importar cada uno o todos a la vez.`
+                }
+              />
+              <Checkbox checked={useShopify} onChange={(e) => setUseShopify(e.target.checked)} disabled={!canImport}>
+                Aplicar sesiones Shopify manuales (editable en la vista previa)
+              </Checkbox>
+              <Button type="default" disabled={!canImport} onClick={() => setShopifyJsonPasteOpen(true)}>
+                Pegar sesiones Shopify (JSON)
+              </Button>
             </>
           )}
 
