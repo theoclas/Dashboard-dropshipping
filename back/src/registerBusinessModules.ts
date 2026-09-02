@@ -89,7 +89,7 @@ const metaApiImportOptionsSchema = z.object({
 });
 
 export function registerBusinessModules(app: express.Application) {
-  app.get("/api/catalog-products", authRequired, companyRequired, requireAnyPermission(["moduleCatalogoProductos", "moduleCampanasMeta", "moduleCuentasPublicitarias", "moduleDashboard"]), async (req, res) => {
+  app.get("/api/catalog-products", authRequired, companyRequired, requireAnyPermission(["moduleCatalogoProductos", "moduleCampanasMeta", "moduleCuentasPublicitarias", "moduleDashboard", "moduleImportUnificado"]), async (req, res) => {
     const u = user(req);
     const list = await catalogProductService.listCatalogProducts(u.companyId);
     return res.json(list);
@@ -377,7 +377,7 @@ export function registerBusinessModules(app: express.Application) {
     "/api/catalog-products/:productId/advertising-accounts",
     authRequired,
     companyRequired,
-    requireAnyPermission(["moduleCampanasMeta", "moduleCatalogoProductos"]),
+    requireAnyPermission(["moduleCampanasMeta", "moduleCatalogoProductos", "moduleImportUnificado"]),
     async (req, res) => {
       const u = user(req);
       const productId = String(req.params.productId);
@@ -836,7 +836,7 @@ export function registerBusinessModules(app: express.Application) {
     "/api/meta-campaign/advertising-accounts",
     authRequired,
     companyRequired,
-    requireAnyPermission(["moduleCampanasMeta", "moduleCuentasPublicitarias"]),
+    requireAnyPermission(["moduleCampanasMeta", "moduleCuentasPublicitarias", "moduleImportUnificado"]),
     async (req, res) => {
       const u = user(req);
       const list = await advertisingAccountService.listAdvertisingAccounts(u.companyId);

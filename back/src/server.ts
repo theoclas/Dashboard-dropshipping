@@ -22,6 +22,7 @@ import type { JwtPayload } from "./types";
 import { mergeOperatorPermissions } from "./operatorPermissions";
 import { registerBusinessModules } from "./registerBusinessModules";
 import { registerAdsModule } from "./registerAdsModule";
+import { registerUnifiedImportModule } from "./registerUnifiedImportModule";
 import { registerAgentRoutes } from "./registerAgentRoutes";
 import {
   registerAdminMetaAdsRoutes,
@@ -1931,6 +1932,7 @@ registerAdminMetaAdsRoutes(app);
 registerMetaAdsOptionsRoutes(app);
 registerBusinessModules(app);
 registerAdsModule(app);
+registerUnifiedImportModule(app);
 registerAgentRoutes(app);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
