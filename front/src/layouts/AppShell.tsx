@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button, Layout, Menu, Select, Typography, message, theme } from "antd";
 import type { MenuProps } from "antd";
@@ -21,6 +21,10 @@ import {
   BankOutlined,
   PictureOutlined,
   CloudDownloadOutlined,
+  DatabaseOutlined,
+  DollarOutlined,
+  PartitionOutlined,
+  RocketOutlined,
   AppstoreOutlined,
   SettingOutlined,
   ExportOutlined,
@@ -39,6 +43,7 @@ type AppMenuItem = NonNullable<MenuProps["items"]>[number];
 const SUBMENU_OPERACION = "submenu-operacion";
 const SUBMENU_DATOS = "submenu-datos";
 const SUBMENU_MARKETING = "submenu-marketing";
+const SUBMENU_PROCESO_INDIVIDUAL = "submenu-proceso-individual";
 const SUBMENU_FINANZAS = "submenu-finanzas";
 const SUBMENU_ANALISIS = "submenu-analisis";
 const SUBMENU_CONFIG = "submenu-config";
@@ -46,10 +51,21 @@ const SUBMENU_META_ADS = "submenu-meta-ads";
 
 const MENU_OPEN_KEYS_STORAGE = "fersua_menu_open_keys";
 
-function pushSubMenu(out: AppMenuItem[], key: string, label: string, children: AppMenuItem[]) {
+/**
+ * Sección del menú. El icono no es decorativo: con el menú plegado, Ant Design solo
+ * muestra el icono del submenú, así que sin él la sección queda en blanco y no hay
+ * manera de llegar a sus opciones.
+ */
+function pushSubMenu(
+  out: AppMenuItem[],
+  key: string,
+  label: string,
+  icon: ReactNode,
+  children: AppMenuItem[],
+) {
   const subChildren = children.filter(Boolean) as AppMenuItem[];
   if (subChildren.length === 0) return;
-  out.push({ key, label, className: "fs-menu-section", children: subChildren });
+  out.push({ key, label, icon, className: "fs-menu-section", children: subChildren });
 }
 
 /** Submenús que deben abrirse según la ruta activa. */
@@ -74,10 +90,15 @@ function openSubmenusForPath(pathname: string): string[] {
   }
   if (
     pathname.startsWith("/app/campanas-meta") ||
+    pathname.startsWith("/app/anuncios") ||
+    pathname.startsWith("/app/import-unificado") ||
     pathname.startsWith("/app/cuentas-publicitarias") ||
     pathname.startsWith("/app/cpa")
   ) {
     keys.push(SUBMENU_MARKETING);
+  }
+  if (pathname.startsWith("/app/campanas-meta") || pathname.startsWith("/app/anuncios")) {
+    keys.push(SUBMENU_PROCESO_INDIVIDUAL);
   }
   if (
     pathname.startsWith("/app/gasto-operacional") ||
@@ -196,7 +217,7 @@ export function AppShell() {
       });
     }
 
-    pushSubMenu(items, SUBMENU_OPERACION, "Operación", [
+    pushSubMenu(items, SUBMENU_OPERACION, "Operación", <AppstoreOutlined />, [
       canPedidos
         ? {
             key: "/app/pedidos",
@@ -227,7 +248,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushSubMenu(items, SUBMENU_DATOS, "Datos", [
+    pushSubMenu(items, SUBMENU_DATOS, "Datos", <DatabaseOutlined />, [
       canImportaciones
         ? {
             key: "/app/importar",
@@ -244,26 +265,37 @@ export function AppShell() {
         : null,
     ]);
 
-    pushSubMenu(items, SUBMENU_MARKETING, "Marketing", [
-      canCampanas
-        ? {
-            key: "/app/campanas-meta",
-            icon: <FundProjectionScreenOutlined />,
-            label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
-          }
-        : null,
-      canAnuncios
-        ? {
-            key: "/app/anuncios",
-            icon: <PictureOutlined />,
-            label: <Link to="/app/anuncios">Anuncios</Link>,
-          }
-        : null,
+    pushSubMenu(items, SUBMENU_MARKETING, "Marketing", <RocketOutlined />, [
+      // El unificado va primero y fuera del grupo: es el camino preferente.
       canImportUnificado
         ? {
             key: "/app/import-unificado",
             icon: <CloudDownloadOutlined />,
             label: <Link to="/app/import-unificado">Import unificado</Link>,
+          }
+        : null,
+      // Los dos que el unificado sustituye, agrupados mientras convivan.
+      canCampanas || canAnuncios
+        ? {
+            key: SUBMENU_PROCESO_INDIVIDUAL,
+            icon: <PartitionOutlined />,
+            label: "Proceso individual",
+            children: [
+              canCampanas
+                ? {
+                    key: "/app/campanas-meta",
+                    icon: <FundProjectionScreenOutlined />,
+                    label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
+                  }
+                : null,
+              canAnuncios
+                ? {
+                    key: "/app/anuncios",
+                    icon: <PictureOutlined />,
+                    label: <Link to="/app/anuncios">Anuncios</Link>,
+                  }
+                : null,
+            ].filter(Boolean) as AppMenuItem[],
           }
         : null,
       canCuentas
@@ -290,7 +322,7 @@ export function AppShell() {
       /* CPA clásico (Excel / cpa-records) oculto: sustituido por CPA experimental. Ver CpaPage / CpaRecordsView. */
     ]);
 
-    pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", [
+    pushSubMenu(items, SUBMENU_FINANZAS, "Finanzas", <DollarOutlined />, [
       canSalidasCartera
         ? {
             key: "/app/entradas-cartera",
@@ -314,7 +346,7 @@ export function AppShell() {
         : null,
     ]);
 
-    pushSubMenu(items, SUBMENU_ANALISIS, "Análisis", [
+    pushSubMenu(items, SUBMENU_ANALISIS, "Análisis", <LineChartOutlined />, [
       canReportes
         ? {
             key: "/app/reportes",

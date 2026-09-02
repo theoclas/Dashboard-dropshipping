@@ -40,15 +40,17 @@ body {
   width: calc(100% - 16px);
 }
 
-/* Secciones colapsables con aspecto de grupo (como antes) */
-.fs-app-sider .ant-menu-dark .fs-menu-section > .ant-menu-submenu-title .ant-menu-item-icon {
+/* Secciones colapsables con aspecto de grupo.
+   Solo con el menú desplegado: al plegarlo, Ant Design únicamente pinta el icono del
+   submenú, así que ocultarlo dejaba la sección en blanco y sin forma de abrirla. */
+.fs-app-sider:not(.ant-layout-sider-collapsed) .ant-menu-dark .fs-menu-section > .ant-menu-submenu-title .ant-menu-item-icon {
   display: none !important;
   width: 0 !important;
   min-width: 0 !important;
   margin: 0 !important;
 }
 
-.fs-app-sider .ant-menu-dark .fs-menu-section > .ant-menu-submenu-title {
+.fs-app-sider:not(.ant-layout-sider-collapsed) .ant-menu-dark .fs-menu-section > .ant-menu-submenu-title {
   height: auto;
   min-height: unset;
   margin-inline: 0;
@@ -85,11 +87,18 @@ body {
   padding-inline: 16px !important;
 }
 
-.fs-app-sider.ant-layout-sider-collapsed .fs-menu-section > .ant-menu-submenu-title {
-  padding: 0;
-  font-size: 0;
-  line-height: 0;
-  overflow: hidden;
+/* Plegado: la sección se comporta como cualquier otro botón del menú — icono centrado y
+   desplegable al pasar el ratón. Antes se anulaba el título y, con el icono también
+   oculto, no quedaba nada visible ni pulsable. */
+.fs-app-sider.ant-layout-sider-collapsed .ant-menu-dark .fs-menu-section > .ant-menu-submenu-title {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+}
+
+/* El desplegable que sale al pasar el ratón con el menú plegado. */
+.ant-menu-submenu-popup .fs-menu-section-popup .ant-menu-item {
+  margin-inline: 4px;
 }
 
 /* Login: ocupa siempre el alto del viewport (evita franja del body debajo) */
