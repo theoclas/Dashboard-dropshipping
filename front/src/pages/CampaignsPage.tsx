@@ -85,16 +85,80 @@ function isAllCatalogProducts(productId?: string): boolean {
   return productId === ALL_CATALOG_PRODUCTS_ID;
 }
 
-function showBulkImportSummary(res: BulkProductImportResult, title: string) {
+/**
+ * Avisos del import agrupados por texto, con los días en los que se repitió cada uno.
+ *
+ * Durante un import masivo el mismo aviso ("Ninguna campaña vinculada coincide con los
+ * datos") se repite para cada producto y cada día. Agrupado, un lote de 30 días pasa de
+ * cientos de líneas idénticas a una por producto con su cuenta de días.
+ */
+type AvisosAgrupados = Map<string, Set<string>>;
+
+type ColectorDeAvisos = { avisos: AvisosAgrupados; dia: string };
+
+function acumularAvisos(destino: AvisosAgrupados, dia: string, lineas: string[]): void {
+  for (const linea of lineas) {
+    const dias = destino.get(linea) ?? new Set<string>();
+    dias.add(dia);
+    destino.set(linea, dias);
+  }
+}
+
+/**
+ * Un único modal al terminar el lote, en vez de uno por día.
+ *
+ * Antes cada día × cuenta abría su propio `Modal.warning`, así que importar un mes sobre
+ * cuatro cuentas obligaba a cerrar más de cien diálogos con el mismo contenido.
+ */
+function mostrarAvisosDelLote(avisos: AvisosAgrupados, totalDias: number): void {
+  if (avisos.size === 0) return;
+  const lineas = [...avisos.entries()]
+    .sort((a, b) => b[1].size - a[1].size)
+    .map(([texto, dias]) =>
+      dias.size === 1
+        ? `${texto} (${[...dias][0]})`
+        : `${texto} — se repitió en ${dias.size} de ${totalDias} día(s)`,
+    );
+
+  Modal.warning({
+    title: `Avisos del import masivo (${avisos.size} distinto${avisos.size === 1 ? "" : "s"})`,
+    width: 720,
+    content: (
+      <div style={{ maxHeight: 420, overflowY: "auto" }}>
+        {lineas.map((linea, i) => (
+          <div key={i} style={{ marginBottom: 6, wordBreak: "break-word" }}>
+            {linea}
+          </div>
+        ))}
+      </div>
+    ),
+  });
+}
+
+/**
+ * Con `collector` no interrumpe: acumula para el resumen final del lote. Sin él se
+ * comporta como siempre, que es lo que quieres en un import de un solo día o de archivo.
+ */
+function showBulkImportSummary(
+  res: BulkProductImportResult,
+  title: string,
+  collector?: ColectorDeAvisos,
+) {
+  const skipped = res.details.filter((d) => d.skipped);
+  const lines = [
+    ...skipped.map((d) => `${d.productName}: ${d.skipReason ?? "omitido"}`),
+    ...res.errors.slice(0, 30),
+  ];
+
+  if (collector) {
+    acumularAvisos(collector.avisos, collector.dia, lines);
+    return;
+  }
+
   message.success(
     `${res.productsImported} producto(s) importados, ${res.productsSkipped} omitidos. Campañas +${res.imported}, métricas +${res.metricsCreated}/~${res.metricsUpdated}.`,
   );
-  const skipped = res.details.filter((d) => d.skipped);
-  if (skipped.length > 0 || res.errors.length > 0) {
-    const lines = [
-      ...skipped.map((d) => `${d.productName}: ${d.skipReason ?? "omitido"}`),
-      ...res.errors.slice(0, 30),
-    ];
+  if (lines.length > 0) {
     Modal.warning({ title, content: lines.join("\n") });
   }
 }
@@ -187,6 +251,8 @@ export function CampaignsPage() {
   const [activeBatchDate, setActiveBatchDate] = useState<string | null>(null);
   const [metaApiBatchProgress, setMetaApiBatchProgress] = useState<string | null>(null);
   const [metaApiBatchImporting, setMetaApiBatchImporting] = useState(false);
+  /** Silencia el resumen final del lote para quien ya sabe qué productos no aplican. */
+  const [omitirAvisosDelLote, setOmitirAvisosDelLote] = useState(false);
   const [metaAdsAppId, setMetaAdsAppId] = useState<string | undefined>();
   const [metaAdsSystemUserId, setMetaAdsSystemUserId] = useState<string | undefined>();
   const [metaAppOptions, setMetaAppOptions] = useState<MetaAdsAppOption[]>([]);
@@ -675,7 +741,7 @@ export function CampaignsPage() {
   }, [shopifyJsonPasteText, applyShopifySessionsByDate, metaApiBatchDays.length]);
 
   const runMetaApiDayImport = useCallback(
-    async (day: MetaApiBatchDay): Promise<boolean> => {
+    async (day: MetaApiBatchDay, collector?: ColectorDeAvisos): Promise<boolean> => {
       if (!productId || !day.advertisingAccountId || !day.preview || !isMetaApiBatchDayImportable(day.status))
         return false;
       const previousStatus = day.status;
@@ -719,7 +785,7 @@ export function CampaignsPage() {
                 : d,
             ),
           );
-          showBulkImportSummary(res, `Import masivo (${day.reportDate})`);
+          showBulkImportSummary(res, `Import masivo (${day.reportDate})`, collector);
           return true;
         }
 
@@ -740,14 +806,19 @@ export function CampaignsPage() {
               : d,
           ),
         );
-        message.success(
-          `${day.reportDate}: ${res.imported} campañas nuevas, ${res.campaignsUpdated} actualizadas; métricas +${res.metricsCreated} / ~${res.metricsUpdated}.`,
-        );
-        if (res.errors.length) {
-          Modal.warning({
-            title: `Avisos del import (${day.reportDate})`,
-            content: res.errors.slice(0, 30).join("\n"),
-          });
+        if (collector) {
+          // En lote no se interrumpe: el resumen sale una sola vez al terminar.
+          acumularAvisos(collector.avisos, day.reportDate, res.errors.slice(0, 30));
+        } else {
+          message.success(
+            `${day.reportDate}: ${res.imported} campañas nuevas, ${res.campaignsUpdated} actualizadas; métricas +${res.metricsCreated} / ~${res.metricsUpdated}.`,
+          );
+          if (res.errors.length) {
+            Modal.warning({
+              title: `Avisos del import (${day.reportDate})`,
+              content: res.errors.slice(0, 30).join("\n"),
+            });
+          }
         }
         void loadCampaigns(productId);
         if (selectedCampaign) void loadMetrics(selectedCampaign.id);
@@ -781,18 +852,21 @@ export function CampaignsPage() {
     }
     setMetaApiBatchImporting(true);
     setMetaApiBatchDays(getBatchDaysWithActivePersisted());
+    // Los avisos se acumulan durante todo el lote y salen juntos al final, agrupados.
+    const avisos: AvisosAgrupados = new Map();
     let ok = 0;
     for (let i = 0; i < days.length; i++) {
       const day = days[i]!;
       setMetaApiBatchProgress(`Importando día ${i + 1} de ${days.length} (${day.reportDate})…`);
       if (i > 0) await sleep(META_API_DAY_DELAY_MS);
-      const imported = await runMetaApiDayImport(day);
+      const imported = await runMetaApiDayImport(day, { avisos, dia: day.reportDate });
       if (imported) ok += 1;
     }
     setMetaApiBatchProgress(null);
     setMetaApiBatchImporting(false);
     if (ok > 0) message.success(`Importación masiva: ${ok} de ${days.length} día(s) importados.`);
-  }, [getBatchDaysWithActivePersisted, runMetaApiDayImport]);
+    if (!omitirAvisosDelLote) mostrarAvisosDelLote(avisos, days.length);
+  }, [getBatchDaysWithActivePersisted, runMetaApiDayImport, omitirAvisosDelLote]);
 
   const activeBatchDay = useMemo(
     () =>
@@ -2120,6 +2194,17 @@ export function CampaignsPage() {
               >
                 Importar todos ({metaApiImportableCount})
               </Button>
+            ) : null}
+            {importSource === "meta-api" && metaApiImportableCount > 0 ? (
+              <Tooltip title="Los avisos ya no interrumpen día a día: salen agrupados al terminar. Marca esto para no verlos siquiera.">
+                <Checkbox
+                  checked={omitirAvisosDelLote}
+                  onChange={(e) => setOmitirAvisosDelLote(e.target.checked)}
+                  disabled={metaApiBatchImporting}
+                >
+                  Omitir avisos
+                </Checkbox>
+              </Tooltip>
             ) : null}
             <Button
               type="primary"
