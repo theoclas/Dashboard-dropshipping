@@ -634,12 +634,16 @@ export type UnifiedResolvedScope = {
 
 export type UnifiedRangeChunk = { desde: string; hasta: string };
 
+export type UnifiedLinkedProduct = { id: string; name: string };
+
 export type UnifiedPreviewCampaign = {
   externalCampaignId: string;
   displayName: string | null;
   days: number;
   spend: number;
-  /** Ya estaba vinculada al producto elegido. */
+  /** Todos los productos a los que la campaña está vinculada hoy. */
+  linkedProducts: UnifiedLinkedProduct[];
+  /** Está vinculada al producto elegido en el alcance. */
   linkedToProduct: boolean;
 };
 

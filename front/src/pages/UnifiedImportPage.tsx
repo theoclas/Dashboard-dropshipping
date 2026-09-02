@@ -55,6 +55,7 @@ import type {
   UnifiedFileImportResponse,
   UnifiedImportResponse,
   UnifiedImportScopeInput,
+  UnifiedLinkedProduct,
   UnifiedPreviewResponse,
 } from "../types";
 
@@ -381,10 +382,22 @@ function UnifiedImportPage() {
     },
     {
       title: "Producto",
-      dataIndex: "linkedToProduct",
-      width: 130,
-      render: (v: boolean) =>
-        v ? <Tag color="green">Ya vinculada</Tag> : <Tag>Sin vincular</Tag>,
+      dataIndex: "linkedProducts",
+      width: 220,
+      render: (productos: UnifiedLinkedProduct[]) => {
+        if (!productos || productos.length === 0) return <Tag>Sin vincular</Tag>;
+        // Verde si es el producto del alcance; azul si pertenece a otro. Decir "sin
+        // vincular" cuando la campaña sí tiene producto lleva a marcarla por error.
+        return (
+          <Space size={4} wrap>
+            {productos.map((p) => (
+              <Tag key={p.id} color={p.id === productId ? "green" : "blue"}>
+                {p.name}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
     },
   ];
 

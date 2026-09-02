@@ -56,27 +56,54 @@ const bodySchema = z.object({
   metaAdsSystemUserId: z.string().min(1).nullable().optional(),
 });
 
-/** IDs externos normalizados de las campañas ya vinculadas a un producto. */
-async function campaignsLinkedToProduct(
+export type LinkedProduct = { id: string; name: string };
+
+/**
+ * Productos vinculados a cada campaña, por ID externo normalizado.
+ *
+ * Se consulta para TODAS las campañas de la vista previa, no solo para el producto
+ * elegido: en alcance "todo" (o cuando un producto sin cuentas acaba consultándolas
+ * todas) aparecen campañas de otros productos, y marcarlas como "sin vincular" sería
+ * mentir — sí tienen producto, solo que no es este.
+ */
+async function productsByCampaign(
   companyId: string,
-  catalogProductId: string,
-): Promise<Set<string>> {
-  const links = await prisma.catalogProductAdvertisingCampaign.findMany({
-    where: { companyId, catalogProductId },
-    select: { campaign: { select: { externalCampaignId: true } } },
+  externalCampaignIds: string[],
+): Promise<Map<string, LinkedProduct[]>> {
+  const out = new Map<string, LinkedProduct[]>();
+  if (externalCampaignIds.length === 0) return out;
+
+  const campañas = await prisma.advertisingCampaign.findMany({
+    where: { companyId, externalCampaignId: { in: externalCampaignIds } },
+    select: {
+      externalCampaignId: true,
+      productLinks: {
+        select: { catalogProduct: { select: { id: true, name: true } } },
+      },
+    },
   });
-  return new Set(links.map((l) => normalizeCampaignMapKey(l.campaign.externalCampaignId)));
+
+  for (const c of campañas) {
+    out.set(
+      normalizeCampaignMapKey(c.externalCampaignId),
+      c.productLinks.map((l) => ({ id: l.catalogProduct.id, name: l.catalogProduct.name })),
+    );
+  }
+  return out;
 }
 
 /** Resumen por campaña de lo que traería el import, para la lista de selección. */
 function summarizeByCampaign(
   planned: PlannedCampaignRow[],
-  yaVinculadas: Set<string>,
+  productosPorCampaña: Map<string, LinkedProduct[]>,
+  /** Producto del alcance, si lo hay; sirve para distinguir "es de este" de "es de otro". */
+  catalogProductId: string | null,
 ): Array<{
   externalCampaignId: string;
   displayName: string | null;
   days: number;
   spend: number;
+  linkedProducts: LinkedProduct[];
   linkedToProduct: boolean;
 }> {
   const porCampaña = new Map<
@@ -99,13 +126,18 @@ function summarizeByCampaign(
   }
 
   return [...porCampaña.entries()]
-    .map(([key, v]) => ({
-      externalCampaignId: v.externalCampaignId,
-      displayName: v.displayName,
-      days: v.days,
-      spend: Math.round(v.spend * 100) / 100,
-      linkedToProduct: yaVinculadas.has(key),
-    }))
+    .map(([key, v]) => {
+      const linkedProducts = productosPorCampaña.get(key) ?? [];
+      return {
+        externalCampaignId: v.externalCampaignId,
+        displayName: v.displayName,
+        days: v.days,
+        spend: Math.round(v.spend * 100) / 100,
+        linkedProducts,
+        linkedToProduct:
+          catalogProductId !== null && linkedProducts.some((p) => p.id === catalogProductId),
+      };
+    })
     .sort((a, b) => b.spend - a.spend);
 }
 
@@ -198,12 +230,15 @@ export function registerUnifiedImportModule(app: express.Express): void {
           runId: parsed.data.runId,
         });
 
-        const yaVinculadas =
-          r.scope.kind === "product" && r.scope.catalogProductId
-            ? await campaignsLinkedToProduct(u.companyId, r.scope.catalogProductId)
-            : new Set<string>();
-
-        const campaigns = summarizeByCampaign(r.planned, yaVinculadas);
+        const productosPorCampaña = await productsByCampaign(
+          u.companyId,
+          [...new Set(r.planned.map((x) => x.externalCampaignId))],
+        );
+        const campaigns = summarizeByCampaign(
+          r.planned,
+          productosPorCampaña,
+          r.scope.catalogProductId,
+        );
 
         return res.json({
           runId: r.runId,
@@ -350,9 +385,11 @@ export function registerUnifiedImportModule(app: express.Express): void {
           },
           campaigns: summarizeByCampaign(
             r.planned,
-            r.scope.kind === "product" && r.scope.catalogProductId
-              ? await campaignsLinkedToProduct(u.companyId, r.scope.catalogProductId)
-              : new Set<string>(),
+            await productsByCampaign(
+              u.companyId,
+              [...new Set(r.planned.map((x) => x.externalCampaignId))],
+            ),
+            r.scope.catalogProductId,
           ),
           unlinkedCampaigns: r.unlinkedCampaigns,
           linkConflicts: r.linkConflicts,
