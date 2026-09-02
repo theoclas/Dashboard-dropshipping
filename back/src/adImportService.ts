@@ -102,6 +102,89 @@ export async function importAdsForAccount(
 
   if (parsed.length === 0) return result;
 
+  const persisted = await persistAdsForAccount(companyId, advertisingAccountId, parsed, {
+    metaAccountId: account.metaAccountId,
+    desde: v.desde,
+    hasta: v.hasta,
+    metaAdsAppId: opts.metaAdsAppId,
+    metaAdsSystemUserId: opts.metaAdsSystemUserId,
+    errors,
+  });
+  const { campaignIdByExt } = persisted;
+  result.campaignsCreated = persisted.counters.campaignsCreated;
+  result.adSetsCreated = persisted.counters.adSetsCreated;
+  result.adsCreated = persisted.counters.adsCreated;
+  result.adMetricsWritten = persisted.counters.adMetricsWritten;
+
+  // ── 5. Derivar nivel campaña ───────────────────────────────────────────────
+  if (opts.deriveCampaignMetrics !== false) {
+    result.campaignMetricsWritten = await deriveCampaignMetricsFromAds(
+      companyId,
+      parsed,
+      campaignIdByExt,
+      errors,
+    );
+  }
+
+  return result;
+}
+
+/** Contadores de lo que se creó al persistir una cuenta. */
+export type PersistAdsCounters = {
+  campaignsCreated: number;
+  adSetsCreated: number;
+  adsCreated: number;
+  adMetricsWritten: number;
+};
+
+export type PersistAdsResult = {
+  /** ID externo de Meta -> ID interno, para poder colgar de aquí el nivel campaña. */
+  campaignIdByExt: Map<string, string>;
+  adSetIdByExt: Map<string, string>;
+  adIdByExt: Map<string, string>;
+  counters: PersistAdsCounters;
+};
+
+/**
+ * Persiste la jerarquía campaña -> conjunto -> anuncio y las métricas por anuncio y día.
+ *
+ * Está separada de `importAdsForAccount` porque el import unificado necesita exactamente
+ * estos cuatro pasos, pero luego escribe el nivel campaña a su manera (con fusión de
+ * snapshot y vínculo al producto). Duplicar estos upserts era la otra opción, y habría
+ * garantizado que las dos copias se separaran con el tiempo.
+ *
+ * Devuelve los mapas de IDs porque quien llame los necesita para lo que venga después.
+ */
+export async function persistAdsForAccount(
+  companyId: string,
+  advertisingAccountId: string,
+  parsed: ParsedAdRow[],
+  opts: {
+    metaAccountId: string;
+    desde: string;
+    hasta: string;
+    metaAdsAppId?: string | null;
+    metaAdsSystemUserId?: string | null;
+    /** Se rellena con los avisos no fatales (por ejemplo, creativos no disponibles). */
+    errors: string[];
+  },
+): Promise<PersistAdsResult> {
+  const counters: PersistAdsCounters = {
+    campaignsCreated: 0,
+    adSetsCreated: 0,
+    adsCreated: 0,
+    adMetricsWritten: 0,
+  };
+
+  if (parsed.length === 0) {
+    return {
+      campaignIdByExt: new Map(),
+      adSetIdByExt: new Map(),
+      adIdByExt: new Map(),
+      counters,
+    };
+  }
+
   // ── 1. Campañas ────────────────────────────────────────────────────────────
   const campaignNameByExt = new Map<string, string | null>();
   for (const r of parsed) {
@@ -129,7 +212,7 @@ export async function importAdsForAccount(
         select: { id: true },
       });
       campaignIdByExt.set(ext, created.id);
-      result.campaignsCreated += 1;
+      counters.campaignsCreated += 1;
     }
   }
 
@@ -176,18 +259,18 @@ export async function importAdsForAccount(
         select: { id: true },
       });
       adSetIdByExt.set(ext, created.id);
-      result.adSetsCreated += 1;
+      counters.adSetsCreated += 1;
     }
   }
 
   // ── 3. Anuncios ────────────────────────────────────────────────────────────
-  const metaRes = await fetchAdMetadata(account.metaAccountId, {
+  const metaRes = await fetchAdMetadata(opts.metaAccountId, {
     companyId,
     metaAdsAppId: opts.metaAdsAppId,
     metaAdsSystemUserId: opts.metaAdsSystemUserId,
   });
   if (metaRes.error) {
-    errors.push(
+    opts.errors.push(
       `No se pudo leer el estado ni el creativo de los anuncios (se importa igual): ${metaRes.error}`,
     );
   }
@@ -254,7 +337,7 @@ export async function importAdsForAccount(
         select: { id: true },
       });
       adIdByExt.set(ext, created.id);
-      result.adsCreated += 1;
+      counters.adsCreated += 1;
     }
   }
 
@@ -262,8 +345,8 @@ export async function importAdsForAccount(
   // Se borra el rango de los anuncios que sí vinieron en esta consulta y se reinserta:
   // Meta omite los días sin entrega, así que reinsertar refleja su verdad actual.
   // Los anuncios que no vinieron conservan lo que ya tenían.
-  const rangeStart = utcDay(v.desde);
-  const rangeEnd = utcDay(v.hasta);
+  const rangeStart = utcDay(opts.desde);
+  const rangeEnd = utcDay(opts.hasta);
   const touchedAdIds = [...adIdByExt.values()];
 
   const metricRows: Prisma.AdMetricCreateManyInput[] = [];
@@ -306,19 +389,9 @@ export async function importAdsForAccount(
       await tx.adMetric.createMany({ data: slice });
     }
   });
-  result.adMetricsWritten = metricRows.length;
+  counters.adMetricsWritten = metricRows.length;
 
-  // ── 5. Derivar nivel campaña ───────────────────────────────────────────────
-  if (opts.deriveCampaignMetrics !== false) {
-    result.campaignMetricsWritten = await deriveCampaignMetricsFromAds(
-      companyId,
-      parsed,
-      campaignIdByExt,
-      errors,
-    );
-  }
-
-  return result;
+  return { campaignIdByExt, adSetIdByExt, adIdByExt, counters };
 }
 
 /**
