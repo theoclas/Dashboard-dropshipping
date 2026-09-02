@@ -24,6 +24,7 @@ import { CompaniesPage } from "./pages/CompaniesPage";
 import { LogisticsPage } from "./pages/LogisticsPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
 import { AdsPage } from "./pages/AdsPage";
+import { UnifiedImportPage } from "./pages/UnifiedImportPage";
 import { AdvertisingAccountsPage } from "./pages/AdvertisingAccountsPage";
 import { OperationalExpensesPage } from "./pages/OperationalExpensesPage";
 import { CarteraSalidasPage } from "./pages/CarteraSalidasPage";
@@ -142,6 +143,14 @@ export function AppRoutes() {
           element={
             <Perm perm="moduleAnuncios">
               <AdsPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="import-unificado"
+          element={
+            <Perm perm="moduleImportUnificado">
+              <UnifiedImportPage />
             </Perm>
           }
         />

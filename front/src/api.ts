@@ -35,6 +35,11 @@ import type {
   OperationalExpenseRow,
   OrdersTableConfig,
   Role,
+  UnifiedDryRunResponse,
+  UnifiedImportResponse,
+  UnifiedImportScopeInput,
+  UnifiedPreviewResponse,
+  UnifiedValidateRangeResponse,
 } from "./types";
 
 /** Petición cancelada (AbortController); no mostrar error al usuario. */
@@ -1102,6 +1107,58 @@ export async function importAdsFromMetaApi(body: {
 }): Promise<AdImportResponse> {
   // El import trae un rango entero en una sola llamada por cuenta; puede tardar.
   const { data } = await api.post<AdImportResponse>("/ads/import/meta-api", body, {
+    timeout: 180000,
+  });
+  return data;
+}
+
+/* ── Import unificado ─────────────────────────────────────────────────────── */
+
+export type UnifiedImportBody = {
+  scope: UnifiedImportScopeInput;
+  desde: string;
+  hasta: string;
+  runId?: string;
+  withCampaignLevelPass?: boolean;
+  useShopifySessions?: boolean;
+  shopifySessionsByDayAndCampaign?: Record<string, Record<string, number>>;
+  metaAdsAppId?: string | null;
+  metaAdsSystemUserId?: string | null;
+};
+
+export async function validateUnifiedRange(
+  desde: string,
+  hasta: string,
+): Promise<UnifiedValidateRangeResponse> {
+  const { data } = await api.get<UnifiedValidateRangeResponse>(
+    "/import-unificado/validate-range",
+    { params: { desde, hasta } },
+  );
+  return data;
+}
+
+/** Consulta Meta y devuelve las campañas para elegirlas. No escribe nada. */
+export async function previewUnifiedImport(
+  body: UnifiedImportBody,
+): Promise<UnifiedPreviewResponse> {
+  const { data } = await api.post<UnifiedPreviewResponse>("/import-unificado/preview", body, {
+    timeout: 180000,
+  });
+  return data;
+}
+
+/** Calcula fila por fila lo que escribiría y lo compara con lo que hay. No escribe. */
+export async function dryRunUnifiedImport(
+  body: UnifiedImportBody,
+): Promise<UnifiedDryRunResponse> {
+  const { data } = await api.post<UnifiedDryRunResponse>("/import-unificado/dry-run", body, {
+    timeout: 180000,
+  });
+  return data;
+}
+
+export async function runUnifiedImport(body: UnifiedImportBody): Promise<UnifiedImportResponse> {
+  const { data } = await api.post<UnifiedImportResponse>("/import-unificado/meta-api", body, {
     timeout: 180000,
   });
   return data;

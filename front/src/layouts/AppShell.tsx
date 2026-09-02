@@ -20,6 +20,7 @@ import {
   ApiOutlined,
   BankOutlined,
   PictureOutlined,
+  CloudDownloadOutlined,
   AppstoreOutlined,
   SettingOutlined,
   ExportOutlined,
@@ -105,6 +106,7 @@ function readStoredOpenKeys(): string[] | null {
 const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
   if (pathname.startsWith("/app/anuncios")) return "/app/anuncios";
+  if (pathname.startsWith("/app/import-unificado")) return "/app/import-unificado";
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
@@ -178,6 +180,7 @@ export function AppShell() {
   const canCpa = usePermission("moduleCpa");
   const canCampanas = usePermission("moduleCampanasMeta");
   const canAnuncios = usePermission("moduleAnuncios");
+  const canImportUnificado = usePermission("moduleImportUnificado");
   const canCuentas = usePermission("moduleCuentasPublicitarias");
   const canGastoOp = usePermission("moduleGastoOperacional");
   const canConfig = usePermission("moduleConfiguracion");
@@ -254,6 +257,13 @@ export function AppShell() {
             key: "/app/anuncios",
             icon: <PictureOutlined />,
             label: <Link to="/app/anuncios">Anuncios</Link>,
+          }
+        : null,
+      canImportUnificado
+        ? {
+            key: "/app/import-unificado",
+            icon: <CloudDownloadOutlined />,
+            label: <Link to="/app/import-unificado">Import unificado</Link>,
           }
         : null,
       canCuentas
