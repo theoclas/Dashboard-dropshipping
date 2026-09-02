@@ -744,3 +744,24 @@ export type UnifiedImportResponse = {
   warnings: string[];
   errors: string[];
 };
+
+export type UnifiedFileImportResponse = {
+  runId: string;
+  scope: UnifiedResolvedScope;
+  desde: string;
+  hasta: string;
+  dryRun: boolean;
+  counters: UnifiedCounters;
+  totals: {
+    campaignDayRows: number;
+    spend: number;
+    previousSpend: number;
+    spendDelta: number;
+    newRows: number;
+  };
+  campaigns: UnifiedPreviewCampaign[];
+  unlinkedCampaigns: UnifiedUnlinkedCampaign[];
+  linkConflicts: UnifiedLinkConflict[];
+  warnings: string[];
+  errors: string[];
+};

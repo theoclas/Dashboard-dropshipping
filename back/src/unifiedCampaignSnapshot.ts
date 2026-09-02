@@ -39,9 +39,8 @@ export const AD_LEVEL_ATTRIBUTION = "7d_click,1d_view";
 export const CAMPAIGN_LEVEL_ATTRIBUTION = "default";
 
 /**
- * Todas las claves que este escritor puede emitir. La fusión borra estas del snapshot
- * anterior antes de escribir, para que no sobreviva un valor viejo de una corrida que
- * sí las traía junto a una nueva que no.
+ * Todas las claves que este escritor puede emitir. Sirve de contrato para los tests de
+ * paridad: si alguien quita una, el test que compara contra las dos rutas viejas cae.
  */
 export const UNIFIED_OWNED_KEYS: readonly string[] = [
   // Negocio (las leen el dashboard, el CPA y la tabla de Campañas Meta)
@@ -88,7 +87,7 @@ export const UNIFIED_OWNED_KEYS: readonly string[] = [
   "_supersededSource",
 ];
 
-const UNIFIED_OWNED_KEY_SET = new Set(UNIFIED_OWNED_KEYS);
+
 
 /**
  * Alias exactos que `spendFromMetaExcelSnapshot` consulta por orden antes de recurrir a
@@ -305,7 +304,11 @@ export function mergeCampaignSnapshot(
 
   for (const [k, v] of Object.entries(prev)) {
     if (nextTraeGasto && isSpendHeaderKey(k)) continue;
-    if (UNIFIED_OWNED_KEY_SET.has(k) && !isSpendHeaderKey(k)) continue;
+    // Las claves de procedencia (`_...`) las pone entera quien escribe: conservar las de
+    // la corrida anterior haría que la fila mintiera sobre de dónde salieron sus números.
+    // Las de negocio NO se purgan: si el Excel no trae `Compras`, es mejor conservar la
+    // que dejó la API que dejar la fila sin ese dato.
+    if (k.startsWith("_")) continue;
     if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
       kept[k] = v;
     }

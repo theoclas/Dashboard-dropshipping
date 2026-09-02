@@ -14,6 +14,7 @@ import {
   Radio,
   Row,
   Segmented,
+  Upload,
   Select,
   Space,
   Statistic,
@@ -30,6 +31,7 @@ import {
   FileExcelOutlined,
   LinkOutlined,
   SearchOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { Link } from "react-router-dom";
@@ -38,6 +40,7 @@ import {
   fetchCatalogProducts,
   fetchMetaCampaignAdvertisingAccounts,
   fetchProductAdvertisingAccounts,
+  importUnifiedFile,
   previewUnifiedImport,
   runUnifiedImport,
   type UnifiedImportBody,
@@ -49,6 +52,7 @@ import type {
   AdvertisingAccount,
   CatalogProduct,
   UnifiedDryRunResponse,
+  UnifiedFileImportResponse,
   UnifiedImportResponse,
   UnifiedImportScopeInput,
   UnifiedPreviewResponse,
@@ -96,7 +100,10 @@ function UnifiedImportPage() {
   const [sesionesPorDia, setSesionesPorDia] = useState<Record<string, number>>({});
   const [repartoManual, setRepartoManual] = useState<Record<string, number>>({});
 
-  const [cargando, setCargando] = useState<"preview" | "dry" | "import" | null>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [resultadoArchivo, setResultadoArchivo] = useState<UnifiedFileImportResponse | null>(null);
+
+  const [cargando, setCargando] = useState<"preview" | "dry" | "import" | "archivo" | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -299,6 +306,27 @@ function UnifiedImportPage() {
     });
   }, [cuerpoBase, preview, scope, seleccion, scopeKind, simulacion, usarShopify, shopifyPayload]);
 
+  const procesarArchivo = useCallback(
+    async (dryRun: boolean) => {
+      if (!archivo) return;
+      setCargando("archivo");
+      try {
+        const r = await importUnifiedFile({ file: archivo, scope, dryRun, useShopifySessions: usarShopify });
+        setResultadoArchivo(r);
+        message.success(
+          dryRun
+            ? `Simulación: ${fmtInteger(r.totals.campaignDayRows)} fila(s) de campaña-día.`
+            : `Importadas ${fmtInteger(r.counters.campaignMetricsWritten)} fila(s).`,
+        );
+      } catch (e) {
+        message.error(errorMessage(e));
+      } finally {
+        setCargando(null);
+      }
+    },
+    [archivo, scope, usarShopify],
+  );
+
   const aplicarShopify = useCallback(() => {
     const r = parseShopifySessionsJsonl(textoShopify);
     if (!r.ok) {
@@ -492,15 +520,137 @@ function UnifiedImportPage() {
         </Row>
 
         {fuente === "archivo" ? (
-          <Alert
-            style={{ marginTop: 16 }}
-            type="info"
-            showIcon
-            message="El import por archivo llega en el siguiente paso"
-            description="De momento usa la API de Meta. Cuando esté, pasará por la misma fusión de snapshot, así que subir un Excel dejará de borrar lo que trajo la API."
-          />
+          <>
+            <Divider />
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="El archivo pasa por la misma fusión que el import de la API"
+              description="Sus columnas propias se conservan y ya no borran lo que trajo Meta. Las fechas salen del propio archivo, así que el rango de arriba no se usa aquí."
+            />
+            <Space wrap>
+              <Upload
+                maxCount={1}
+                accept=".xlsx,.xls,.csv"
+                beforeUpload={(f) => {
+                  setArchivo(f);
+                  setResultadoArchivo(null);
+                  return false;
+                }}
+                onRemove={() => {
+                  setArchivo(null);
+                  setResultadoArchivo(null);
+                }}
+                fileList={archivo ? [{ uid: "1", name: archivo.name } as never] : []}
+              >
+                <Button icon={<UploadOutlined />}>Elegir archivo</Button>
+              </Upload>
+              <Button
+                icon={<ExperimentOutlined />}
+                disabled={!archivo || !puedeConsultar}
+                loading={cargando === "archivo"}
+                onClick={() => void procesarArchivo(true)}
+              >
+                Simular sin escribir
+              </Button>
+              <Button
+                type="primary"
+                danger
+                icon={<FileExcelOutlined />}
+                disabled={!archivo || !puedeConsultar || !resultadoArchivo}
+                loading={cargando === "archivo"}
+                onClick={() => void procesarArchivo(false)}
+              >
+                Importar archivo
+              </Button>
+            </Space>
+            {!resultadoArchivo && archivo ? (
+              <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+                Simula primero: así ves cuánto gasto cambiaría antes de escribir.
+              </Text>
+            ) : null}
+          </>
         ) : null}
       </Card>
+
+      {resultadoArchivo ? (
+        <Card>
+          <Title level={4} style={{ marginTop: 0 }}>
+            {resultadoArchivo.dryRun ? "Simulación del archivo" : "Resultado del archivo"}
+          </Title>
+          <Row gutter={[16, 16]}>
+            <Col xs={12} md={6}>
+              <Statistic
+                title="Filas campaña-día"
+                value={resultadoArchivo.totals.campaignDayRows}
+                formatter={(v) => fmtInteger(Number(v))}
+              />
+            </Col>
+            <Col xs={12} md={6}>
+              <Statistic title="Filas nuevas" value={resultadoArchivo.totals.newRows} />
+            </Col>
+            <Col xs={12} md={6}>
+              <Statistic
+                title="Gasto del archivo"
+                value={resultadoArchivo.totals.spend}
+                formatter={(v) => fmtMoney(Number(v))}
+              />
+            </Col>
+            <Col xs={12} md={6}>
+              <Tooltip title="Diferencia contra el gasto que hay hoy guardado para esas mismas filas.">
+                <Statistic
+                  title="Diferencia vs. lo guardado"
+                  value={resultadoArchivo.totals.spendDelta}
+                  valueStyle={{
+                    color:
+                      Math.abs(resultadoArchivo.totals.spendDelta) < 1
+                        ? undefined
+                        : resultadoArchivo.totals.spendDelta > 0
+                          ? "#cf1322"
+                          : "#3f8600",
+                  }}
+                  formatter={(v) => fmtMoney(Number(v))}
+                />
+              </Tooltip>
+            </Col>
+          </Row>
+
+          <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+            Fechas del archivo: {resultadoArchivo.desde || "—"} a {resultadoArchivo.hasta || "—"}
+          </Text>
+
+          {resultadoArchivo.warnings.map((w, i) => (
+            <Alert key={i} style={{ marginTop: 12 }} type="warning" showIcon message={w} />
+          ))}
+          {resultadoArchivo.errors.map((e, i) => (
+            <Alert key={i} style={{ marginTop: 12 }} type="error" showIcon message={e} />
+          ))}
+
+          {resultadoArchivo.unlinkedCampaigns.length > 0 ? (
+            <>
+              <Divider orientationMargin={0}>Campañas sin producto vinculado</Divider>
+              <Table
+                size="small"
+                rowKey="campaignId"
+                pagination={{ pageSize: 10, size: "small" }}
+                dataSource={resultadoArchivo.unlinkedCampaigns}
+                columns={[
+                  { title: "Campaña", dataIndex: "displayName", render: (v) => v ?? "(sin nombre)" },
+                  { title: "ID de Meta", dataIndex: "externalCampaignId", width: 170 },
+                  {
+                    title: "Gasto en el rango",
+                    dataIndex: "spendInRange",
+                    width: 160,
+                    align: "right",
+                    render: (v: number) => fmtMoney(v),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
+        </Card>
+      ) : null}
 
       {preview ? (
         <Card>

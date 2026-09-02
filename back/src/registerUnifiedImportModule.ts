@@ -1,4 +1,5 @@
 import type express from "express";
+import multer from "multer";
 import { z } from "zod";
 import { authRequired, companyRequired, requirePermission } from "./middleware";
 import type { JwtPayload } from "./types";
@@ -7,6 +8,7 @@ import { normalizeCampaignMapKey } from "./metaCampaignExcelParse";
 import { prisma } from "./prisma";
 import {
   chunkRange,
+  runUnifiedFileImport,
   runUnifiedImport,
   UNIFIED_CHUNK_DAYS,
   type PlannedCampaignRow,
@@ -105,6 +107,28 @@ function summarizeByCampaign(
       linkedToProduct: yaVinculadas.has(key),
     }))
     .sort((a, b) => b.spend - a.spend);
+}
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+/** El alcance viaja como JSON dentro de un campo del formulario multipart. */
+function parseScopeField(
+  raw: unknown,
+): { ok: true; scope: UnifiedImportScope } | { ok: false; message: string } {
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return { ok: false, message: "Falta el alcance del import." };
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return { ok: false, message: "El alcance no es un JSON válido." };
+  }
+  const parsed = scopeSchema.safeParse(json);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Alcance inválido." };
+  }
+  return { ok: true, scope: parsed.data };
 }
 
 function mensajeDeError(e: unknown): string {
@@ -264,6 +288,72 @@ export function registerUnifiedImportModule(app: express.Express): void {
             shopifySessions: p.shopifySessions,
             snapshot: p.snapshot,
           })),
+          unlinkedCampaigns: r.unlinkedCampaigns,
+          linkConflicts: r.linkConflicts,
+          warnings: r.warnings,
+          errors: r.errors,
+        });
+      } catch (e) {
+        return res.status(400).json({ message: mensajeDeError(e) });
+      }
+    },
+  );
+
+  /**
+   * Import desde Excel/CSV. Pasa por la misma fusión que el de la API, así que subir un
+   * archivo ya no borra lo que trajo Meta.
+   *
+   * `dryRun=true` simula; sin él, escribe. Ambos exigen el permiso de archivo, que es lo
+   * que permite entregar el módulo a un cliente con esta puerta cerrada.
+   */
+  app.post(
+    "/api/import-unificado/archivo",
+    authRequired,
+    companyRequired,
+    requirePermission("actionImportUnificadoArchivo"),
+    upload.single("file"),
+    async (req, res) => {
+      const u = user(req);
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      if (!file) return res.status(400).json({ message: "Falta el archivo." });
+
+      const parsedScope = parseScopeField(req.body?.scope);
+      if (!parsedScope.ok) return res.status(400).json({ message: parsedScope.message });
+
+      const dryRun = String(req.body?.dryRun ?? "") === "true";
+
+      try {
+        const r = await runUnifiedFileImport(u.companyId, {
+          buffer: file.buffer,
+          filename: file.originalname,
+          scope: parsedScope.scope,
+          dryRun,
+          useShopifySessions: String(req.body?.useShopifySessions ?? "") === "true",
+        });
+
+        const spendNuevo = r.planned.reduce((n, p) => n + p.spend, 0);
+        const spendAnterior = r.planned.reduce((n, p) => n + (p.previousSpend ?? 0), 0);
+
+        return res.json({
+          runId: r.runId,
+          scope: r.scope,
+          desde: r.desde,
+          hasta: r.hasta,
+          dryRun: r.dryRun,
+          counters: r.counters,
+          totals: {
+            campaignDayRows: r.planned.length,
+            spend: Math.round(spendNuevo * 100) / 100,
+            previousSpend: Math.round(spendAnterior * 100) / 100,
+            spendDelta: Math.round((spendNuevo - spendAnterior) * 100) / 100,
+            newRows: r.planned.filter((p) => p.previousSpend === null).length,
+          },
+          campaigns: summarizeByCampaign(
+            r.planned,
+            r.scope.kind === "product" && r.scope.catalogProductId
+              ? await campaignsLinkedToProduct(u.companyId, r.scope.catalogProductId)
+              : new Set<string>(),
+          ),
           unlinkedCampaigns: r.unlinkedCampaigns,
           linkConflicts: r.linkConflicts,
           warnings: r.warnings,

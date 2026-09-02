@@ -36,6 +36,7 @@ import type {
   OrdersTableConfig,
   Role,
   UnifiedDryRunResponse,
+  UnifiedFileImportResponse,
   UnifiedImportResponse,
   UnifiedImportScopeInput,
   UnifiedPreviewResponse,
@@ -1160,6 +1161,28 @@ export async function dryRunUnifiedImport(
 export async function runUnifiedImport(body: UnifiedImportBody): Promise<UnifiedImportResponse> {
   const { data } = await api.post<UnifiedImportResponse>("/import-unificado/meta-api", body, {
     timeout: 180000,
+  });
+  return data;
+}
+
+/**
+ * Import por archivo del módulo unificado. Pasa por la misma fusión de snapshot que el
+ * de la API, así que subir un Excel ya no borra lo que trajo Meta.
+ */
+export async function importUnifiedFile(params: {
+  file: File;
+  scope: UnifiedImportScopeInput;
+  dryRun: boolean;
+  useShopifySessions?: boolean;
+}): Promise<UnifiedFileImportResponse> {
+  const form = new FormData();
+  form.append("file", params.file);
+  form.append("scope", JSON.stringify(params.scope));
+  form.append("dryRun", params.dryRun ? "true" : "false");
+  if (params.useShopifySessions) form.append("useShopifySessions", "true");
+
+  const { data } = await api.post<UnifiedFileImportResponse>("/import-unificado/archivo", form, {
+    timeout: 300000,
   });
   return data;
 }

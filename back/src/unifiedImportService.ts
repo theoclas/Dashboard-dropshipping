@@ -13,6 +13,7 @@ import { mapAdInsightRows, type ParsedAdRow } from "./metaAdInsightNormalize";
 import { mapInsightToParsedRow } from "./metaApiInsightNormalize";
 import {
   normalizeCampaignMapKey,
+  parseMetaCampaignMetricsExcel,
   spendFromMetaExcelSnapshot,
   type ParsedMetaCampaignRow,
 } from "./metaCampaignExcelParse";
@@ -467,6 +468,183 @@ export async function runUnifiedImport(
           }`,
         );
       }
+    }
+  }
+
+  await applyProductLinks(companyId, scope, touchedByExt, result, opts.dryRun === true);
+  result.unlinkedCampaigns = await reportUnlinkedCampaigns(
+    companyId,
+    touchedCampaignIds,
+    result.planned,
+  );
+
+  return result;
+}
+
+export type UnifiedFileImportOptions = {
+  buffer: Buffer;
+  filename?: string;
+  scope: UnifiedImportScope;
+  dryRun?: boolean;
+  useShopifySessions?: boolean;
+  shopifySessionsByDayAndCampaign?: Record<string, Record<string, number>>;
+};
+
+/**
+ * Import desde Excel/CSV, por el **mismo** camino de fusión que el de la API.
+ *
+ * Esto es lo que arregla el problema viejo: hasta ahora subir un archivo pisaba el
+ * snapshot entero y borraba lo que había traído la API (y al revés). Pasando por
+ * `mergeCampaignSnapshot`, cada escritor sustituye lo suyo y respeta lo del otro.
+ *
+ * No toca la jerarquía de anuncios: un archivo de nivel campaña no la contiene.
+ */
+export async function runUnifiedFileImport(
+  companyId: string,
+  opts: UnifiedFileImportOptions,
+): Promise<UnifiedImportResult & { planned: PlannedCampaignRow[] }> {
+  const runId = randomUUID();
+  const scope = await resolveImportScope(companyId, opts.scope);
+
+  const { rows, errors: parseErrors } = parseMetaCampaignMetricsExcel(opts.buffer, {
+    sourceFilename: opts.filename,
+  });
+
+  const seleccion = scope.selectedCampaignIds ? new Set(scope.selectedCampaignIds) : null;
+  const usadas = seleccion
+    ? rows.filter((r) => seleccion.has(normalizeCampaignMapKey(r.externalCampaignId)))
+    : rows;
+
+  const fechas = usadas.map((r) => ymdOf(r.recordDate)).sort();
+  const desde = fechas[0] ?? "";
+  const hasta = fechas[fechas.length - 1] ?? "";
+
+  const result: UnifiedImportResult & { planned: PlannedCampaignRow[] } = {
+    runId,
+    scope,
+    desde,
+    hasta,
+    chunks: desde && hasta ? [{ desde, hasta }] : [],
+    dryRun: opts.dryRun === true,
+    counters: {
+      accountsQueried: 0,
+      adRowsFetched: 0,
+      campaignsTouched: 0,
+      adSetsTouched: 0,
+      adsTouched: 0,
+      adMetricsWritten: 0,
+      campaignMetricsWritten: 0,
+      linksCreated: 0,
+    },
+    unlinkedCampaigns: [],
+    linkConflicts: [],
+    warnings: [...scope.warnings],
+    errors: [...parseErrors],
+    planned: [],
+  };
+
+  if (usadas.length === 0) {
+    result.warnings.push("El archivo no tiene filas que importar con el alcance elegido.");
+    return result;
+  }
+
+  // ── Campañas ─────────────────────────────────────────────────────────────
+  const campaignIdByExt = new Map<string, string>();
+  const touchedCampaignIds = new Set<string>();
+  const touchedByExt = new Map<string, string>();
+
+  const exts = [...new Set(usadas.map((r) => r.externalCampaignId))];
+  const existentes = await prisma.advertisingCampaign.findMany({
+    where: { companyId, externalCampaignId: { in: exts } },
+    select: { id: true, externalCampaignId: true },
+  });
+  for (const c of existentes) campaignIdByExt.set(c.externalCampaignId, c.id);
+
+  for (const ext of exts) {
+    if (campaignIdByExt.has(ext)) continue;
+    if (opts.dryRun) continue;
+    const nombre = usadas.find((r) => r.externalCampaignId === ext)?.displayName ?? null;
+    // Sin cuenta publicitaria: el archivo no dice a cuál pertenece, y adivinarlo sería
+    // peor que dejarlo vacío para que se asigne desde Campañas Meta.
+    const creada = await prisma.advertisingCampaign.create({
+      data: { companyId, externalCampaignId: ext, displayName: nombre },
+      select: { id: true },
+    });
+    campaignIdByExt.set(ext, creada.id);
+  }
+
+  for (const [ext, id] of campaignIdByExt) {
+    touchedCampaignIds.add(id);
+    touchedByExt.set(normalizeCampaignMapKey(ext), id);
+  }
+  result.counters.campaignsTouched = exts.length;
+
+  // ── Métricas ─────────────────────────────────────────────────────────────
+  const previos = await loadPreviousMetrics(companyId, [...campaignIdByExt.values()], {
+    desde,
+    hasta,
+  });
+
+  for (const row of usadas) {
+    const ymd = ymdOf(row.recordDate);
+    const campaignId = campaignIdByExt.get(row.externalCampaignId);
+
+    const base: CampaignSnapshot = {
+      ...(row.rawRow as CampaignSnapshot),
+      _writtenBy: "unified-file",
+      _unifiedRunId: runId,
+      _sourceFilename: opts.filename ?? null,
+    };
+    const previo = campaignId ? previos.get(`${campaignId}|${ymd}`) : undefined;
+    const snapshot = mergeCampaignSnapshot(previo?.metaExcelSnapshot ?? null, base);
+
+    const shopifyManual = resolveShopifySessions(
+      { useShopifySessions: opts.useShopifySessions, shopifySessionsByDayAndCampaign: opts.shopifySessionsByDayAndCampaign } as UnifiedImportOptions,
+      ymd,
+      row.externalCampaignId,
+    );
+    // Si el archivo trae su propia columna de sesiones y no hay reparto manual, se usa.
+    const shopify = shopifyManual ?? row.shopifySessions ?? null;
+
+    result.planned.push({
+      externalCampaignId: row.externalCampaignId,
+      campaignName: row.displayName ?? null,
+      ymd,
+      recordDate: row.recordDate,
+      snapshot,
+      metaLinkClicks: row.metaLinkClicks ?? null,
+      metaConversationsStarted: row.metaConversationsStarted ?? null,
+      shopifySessions: shopify,
+      spend: spendFromMetaExcelSnapshot(snapshot).amount,
+      previousSpend: previo ? spendFromMetaExcelSnapshot(previo.metaExcelSnapshot).amount : null,
+    });
+
+    if (opts.dryRun || !campaignId) continue;
+
+    try {
+      await prisma.advertisingCampaignMetric.upsert({
+        where: { campaignId_recordDate: { campaignId, recordDate: row.recordDate } },
+        create: {
+          companyId,
+          campaignId,
+          recordDate: row.recordDate,
+          metaLinkClicks: row.metaLinkClicks ?? null,
+          metaConversationsStarted: row.metaConversationsStarted ?? null,
+          shopifySessions: shopify,
+          metaExcelSnapshot: snapshot as Prisma.InputJsonValue,
+        },
+        update: {
+          metaLinkClicks: row.metaLinkClicks ?? null,
+          metaConversationsStarted: row.metaConversationsStarted ?? null,
+          ...(shopify !== null ? { shopifySessions: shopify } : {}),
+          metaExcelSnapshot: snapshot as Prisma.InputJsonValue,
+        },
+      });
+      result.counters.campaignMetricsWritten += 1;
+    } catch (e) {
+      result.errors.push(
+        `Fila ${row.externalCampaignId} ${ymd}: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 

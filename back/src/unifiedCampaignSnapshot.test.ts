@@ -370,3 +370,33 @@ test("un gasto de nivel campana en texto no desactiva el control de descuadre", 
   assert.equal(snapshot._spendDeltaVsAds, 10);
   assert.equal(snapshot._spendFallbackToAds, undefined);
 });
+
+test("la fusion conserva las claves de negocio que el escritor nuevo no trae", () => {
+  // Un Excel con pocas columnas no debe borrar lo que dejo la API: son dos vistas del
+  // mismo campana-dia, no dos verdades que se excluyan.
+  const deLaApi = {
+    "Campaign ID": "C1",
+    "Importe gastado (COP)": 1000,
+    Compras: 3,
+    CTR: 1.8,
+    _writtenBy: "unified",
+    _campaignLevelPass: true,
+  };
+  const delArchivo = {
+    "Campaign ID": "C1",
+    "Importe gastado (COP)": 1200,
+    "Presupuesto de la campana": 50000,
+    _writtenBy: "unified-file",
+  };
+
+  const merged = mergeCampaignSnapshot(deLaApi, delArchivo);
+
+  assert.equal(merged.Compras, 3);
+  assert.equal(merged.CTR, 1.8);
+  assert.equal(merged["Importe gastado (COP)"], 1200);
+  assert.equal(merged["Presupuesto de la campana"], 50000);
+  // Pero la procedencia es la del escritor nuevo, sin restos de la anterior.
+  assert.equal(merged._writtenBy, "unified-file");
+  assert.equal(merged._campaignLevelPass, undefined);
+  assert.equal(merged._supersededSource, "unified");
+});
