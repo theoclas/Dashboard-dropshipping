@@ -382,6 +382,8 @@ export function AppShell() {
     canMapeo,
     canCpa,
     canCampanas,
+    canAnuncios,
+    canImportUnificado,
     canCuentas,
     canGastoOp,
     canConfig,
