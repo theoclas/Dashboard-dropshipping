@@ -814,6 +814,18 @@ export async function createMetaAdsSystemUser(body: {
   return data;
 }
 
+/** Sustituye por completo las empresas que pueden usar un usuario de Meta. Solo ADMIN. */
+export async function setMetaAdsSystemUserCompanies(
+  id: string,
+  companyIds: string[],
+): Promise<MetaAdsSystemUser> {
+  const { data } = await api.put<MetaAdsSystemUser>(
+    `/admin/meta-ads-system-users/${id}/companies`,
+    { companyIds },
+  );
+  return data;
+}
+
 export async function updateMetaAdsSystemUser(
   id: string,
   body: {

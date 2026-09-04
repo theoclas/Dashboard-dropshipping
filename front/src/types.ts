@@ -597,6 +597,8 @@ export type MetaAdsSystemUser = {
   notes: string | null;
   isActive: boolean;
   apps: MetaAdsAppAccess[];
+  /** Empresas que pueden usar este usuario de Meta. */
+  companies: { id: string; name: string }[];
   createdAt: string;
   updatedAt: string;
 };

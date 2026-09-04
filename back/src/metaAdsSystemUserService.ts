@@ -18,6 +18,8 @@ export type MetaAdsSystemUserPublic = {
   notes: string | null;
   isActive: boolean;
   apps: MetaAdsAppAccessPublic[];
+  /** Empresas que pueden usar este usuario de Meta. */
+  companies: { id: string; name: string }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -41,6 +43,10 @@ const userInclude = {
   appAccess: {
     include: { app: true },
     orderBy: [{ isDefault: "desc" as const }, { app: { name: "asc" as const } }],
+  },
+  companies: {
+    include: { company: { select: { id: true, name: true } } },
+    orderBy: { company: { name: "asc" as const } },
   },
 };
 
@@ -84,6 +90,7 @@ function toPublic(row: {
     isDefault: boolean;
     app: { name: string; metaAppId: string | null };
   }>;
+  companies?: Array<{ company: { id: string; name: string } }>;
 }): MetaAdsSystemUserPublic {
   return {
     id: row.id,
@@ -93,6 +100,7 @@ function toPublic(row: {
     notes: row.notes,
     isActive: row.isActive,
     apps: row.appAccess.map(toAppAccessPublic),
+    companies: (row.companies ?? []).map((c) => c.company),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -100,7 +108,7 @@ function toPublic(row: {
 
 export async function listMetaAdsSystemUsers(companyId: string): Promise<MetaAdsSystemUserPublic[]> {
   const rows = await prisma.metaAdsSystemUser.findMany({
-    where: { companyId },
+    where: { companies: { some: { companyId } } },
     include: userInclude,
     orderBy: { name: "asc" },
   });
@@ -112,7 +120,7 @@ export async function getMetaAdsSystemUser(
   id: string,
 ): Promise<MetaAdsSystemUserPublic | null> {
   const row = await prisma.metaAdsSystemUser.findFirst({
-    where: { id, companyId },
+    where: { id, companies: { some: { companyId } } },
     include: userInclude,
   });
   return row ? toPublic(row) : null;
@@ -127,7 +135,7 @@ export async function getMetaAdsSystemUserAppToken(
     where: {
       systemUserId,
       appId,
-      systemUser: { isActive: true, companyId },
+      systemUser: { isActive: true, companies: { some: { companyId } } },
       app: { isActive: true },
     },
     select: { accessToken: true },
@@ -140,7 +148,7 @@ export async function resolveDefaultMetaAdsAccessToken(companyId: string): Promi
   const row = await prisma.metaAdsSystemUserAppAccess.findFirst({
     where: {
       isDefault: true,
-      systemUser: { isActive: true, companyId },
+      systemUser: { isActive: true, companies: { some: { companyId } } },
       app: { isActive: true },
     },
     select: { accessToken: true },
@@ -151,7 +159,7 @@ export async function resolveDefaultMetaAdsAccessToken(companyId: string): Promi
 
   const any = await prisma.metaAdsSystemUserAppAccess.findFirst({
     where: {
-      systemUser: { isActive: true, companyId },
+      systemUser: { isActive: true, companies: { some: { companyId } } },
       app: { isActive: true },
     },
     select: { accessToken: true },
@@ -166,7 +174,7 @@ export async function listMetaAdsSystemUserOptions(
 ): Promise<MetaAdsSystemUserOption[]> {
   const rows = await prisma.metaAdsSystemUserAppAccess.findMany({
     where: {
-      systemUser: { isActive: true, companyId },
+      systemUser: { isActive: true, companies: { some: { companyId } } },
       app: { isActive: true, ...(appId?.trim() ? { id: appId.trim() } : {}) },
     },
     include: { systemUser: true },
@@ -271,6 +279,11 @@ export async function createMetaAdsSystemUser(input: {
     },
   });
 
+  // Sin esta fila el usuario recien creado no seria visible ni para quien lo creo.
+  await prisma.metaAdsSystemUserCompany.create({
+    data: { systemUserId: row.id, companyId: input.companyId },
+  });
+
   await syncAppAccess(input.companyId, row.id, input.appAccess);
 
   const full = await getMetaAdsSystemUser(input.companyId, row.id);
@@ -288,7 +301,9 @@ export async function updateMetaAdsSystemUser(
     appAccess?: AppAccessInput[];
   },
 ): Promise<MetaAdsSystemUserPublic | null> {
-  const existing = await prisma.metaAdsSystemUser.findFirst({ where: { id, companyId } });
+  const existing = await prisma.metaAdsSystemUser.findFirst({
+    where: { id, companies: { some: { companyId } } },
+  });
   if (!existing) return null;
 
   await prisma.metaAdsSystemUser.update({
@@ -311,6 +326,50 @@ export async function updateMetaAdsSystemUser(
 }
 
 export async function deleteMetaAdsSystemUser(companyId: string, id: string): Promise<boolean> {
-  const r = await prisma.metaAdsSystemUser.deleteMany({ where: { id, companyId } });
+  const r = await prisma.metaAdsSystemUser.deleteMany({
+    where: { id, companies: { some: { companyId } } },
+  });
   return r.count > 0;
+}
+
+/**
+ * Sustituye por completo las empresas que pueden usar un usuario de Meta.
+ *
+ * Va en transacción: si se borrasen las viejas y fallase la inserción, el usuario
+ * quedaría sin ninguna empresa y sus tokens dejarían de resolverse para todo el mundo.
+ *
+ * Quien llama debe tener acceso al usuario; las empresas destino se validan aquí.
+ */
+export async function replaceMetaAdsSystemUserCompanies(
+  systemUserId: string,
+  companyIds: string[],
+): Promise<{ ok: true; companies: { id: string; name: string }[] } | { ok: false; message: string }> {
+  const pedidas = [...new Set(companyIds.filter((c) => typeof c === "string" && c.trim() !== ""))];
+  if (pedidas.length === 0) {
+    return { ok: false, message: "Elige al menos una empresa; si no, nadie podría usarlo." };
+  }
+
+  const validas = await prisma.company.findMany({
+    where: { id: { in: pedidas } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  if (validas.length !== pedidas.length) {
+    return { ok: false, message: "Alguna de las empresas elegidas no existe." };
+  }
+
+  await prisma.$transaction([
+    prisma.metaAdsSystemUserCompany.deleteMany({
+      where: { systemUserId, companyId: { notIn: validas.map((c) => c.id) } },
+    }),
+    ...validas.map((c) =>
+      prisma.metaAdsSystemUserCompany.upsert({
+        where: { systemUserId_companyId: { systemUserId, companyId: c.id } },
+        create: { systemUserId, companyId: c.id },
+        update: {},
+      }),
+    ),
+  ]);
+
+  return { ok: true, companies: validas };
 }

@@ -58,6 +58,7 @@ model Company {
   ads                        Ad[]
   adMetrics                  AdMetric[]
   metaAdsSystemUsers         MetaAdsSystemUser[]
+  metaAdsSystemUserAccess    MetaAdsSystemUserCompany[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -649,10 +650,27 @@ model MetaAdsSystemUser {
 
   company   Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   appAccess MetaAdsSystemUserAppAccess[]
+  companies MetaAdsSystemUserCompany[]
 
   @@index([companyId, isActive])
   @@index([isActive])
   @@map("meta_ads_system_users")
+}
+
+/// Empresas que pueden usar este usuario de Meta. Antes era una sola (`company_id`), que
+/// se conserva como empresa propietaria; el acceso se decide por esta tabla.
+model MetaAdsSystemUserCompany {
+  id           String   @id @default(cuid())
+  systemUserId String   @map("system_user_id")
+  companyId    String   @map("company_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  systemUser MetaAdsSystemUser @relation(fields: [systemUserId], references: [id], onDelete: Cascade)
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([systemUserId, companyId])
+  @@index([companyId])
+  @@map("meta_ads_system_user_companies")
 }
 
 /// Acceso usuario + app con token propio (N:M).

@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Layout, Menu, Typography, theme } from "antd";
+import { Menu, Typography, theme } from "antd";
 import type { MenuProps } from "antd";
-import { BankOutlined, AppstoreOutlined, ApiOutlined, KeyOutlined, SettingOutlined, UserOutlined } from "@ant-design/icons";
-
-const { Sider, Content } = Layout;
+import {
+  ApiOutlined,
+  AppstoreOutlined,
+  BankOutlined,
+  KeyOutlined,
+  SettingOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 
 const SUBMENU_META_ADS = "meta-ads-config";
 
@@ -14,11 +19,6 @@ function adminSectionKey(pathname: string): string {
   if (pathname.includes("/app/admin/usuarios")) return "usuarios";
   if (pathname.includes("/app/admin/configuracion")) return "configuracion";
   return "empresas";
-}
-
-function adminOpenKeys(pathname: string): string[] {
-  if (pathname.includes("/app/admin/meta-ads")) return [SUBMENU_META_ADS];
-  return [];
 }
 
 const menuItems: MenuProps["items"] = [
@@ -33,6 +33,7 @@ const menuItems: MenuProps["items"] = [
     label: <Link to="/app/admin/usuarios">Usuarios</Link>,
   },
   {
+    // En horizontal, Ant Design lo pinta como desplegable al pasar el ratón.
     key: SUBMENU_META_ADS,
     icon: <ApiOutlined />,
     label: "Configuración Meta Ads",
@@ -56,52 +57,43 @@ const menuItems: MenuProps["items"] = [
   },
 ];
 
+/**
+ * Administración con la navegación arriba.
+ *
+ * Antes era una barra lateral dentro del contenido, o sea un segundo menú vertical
+ * pegado al del sidebar principal: dos columnas de navegación compitiendo por el mismo
+ * espacio y dejando el contenido en una franja estrecha. En horizontal, las secciones se
+ * leen de un vistazo y las que tienen hijos se despliegan al pasar el ratón.
+ */
 export function AdminLayout() {
   const { token } = theme.useToken();
   const location = useLocation();
-  const selected = adminSectionKey(location.pathname);
-  const [openKeys, setOpenKeys] = useState<string[]>(() => adminOpenKeys(location.pathname));
-
-  useEffect(() => {
-    const forPath = adminOpenKeys(location.pathname);
-    if (forPath.length === 0) return;
-    setOpenKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of forPath) next.add(k);
-      return [...next];
-    });
-  }, [location.pathname]);
+  const selected = useMemo(() => adminSectionKey(location.pathname), [location.pathname]);
 
   return (
-    <Layout style={{ minHeight: "100%", background: "transparent" }}>
-      <Sider
-        width={240}
-        theme="light"
+    <div style={{ minHeight: "100%" }}>
+      <div
         style={{
-          borderRight: `1px solid ${token.colorBorder}`,
-          background: token.colorBgContainer,
+          borderBottom: `1px solid ${token.colorBorder}`,
+          marginBottom: 24,
         }}
       >
-        <div style={{ padding: "16px 16px 8px" }}>
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            Administración
-          </Typography.Title>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Empresas, usuarios y preferencias
-          </Typography.Text>
-        </div>
+        <Typography.Title level={5} style={{ margin: "0 0 2px" }}>
+          Administración
+        </Typography.Title>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Empresas, usuarios y preferencias
+        </Typography.Text>
         <Menu
-          mode="inline"
+          mode="horizontal"
           selectedKeys={[selected]}
-          openKeys={openKeys}
-          onOpenChange={setOpenKeys}
           items={menuItems}
-          style={{ borderInlineEnd: 0 }}
+          // Sin borde propio: el de abajo lo pone el contenedor, y así la línea llega de
+          // lado a lado en vez de cortarse donde acaban los ítems.
+          style={{ borderBottom: "none", marginTop: 8, background: "transparent" }}
         />
-      </Sider>
-      <Content style={{ paddingLeft: 24, minWidth: 0 }}>
-        <Outlet />
-      </Content>
-    </Layout>
+      </div>
+      <Outlet />
+    </div>
   );
 }

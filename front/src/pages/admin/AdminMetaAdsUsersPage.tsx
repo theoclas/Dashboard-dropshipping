@@ -22,16 +22,18 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { AdminPageHeader } from "./AdminPageHeader";
-import { KeyOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { BankOutlined, KeyOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import {
   createMetaAdsSystemUser,
+  fetchCompanies,
   deleteMetaAdsSystemUser,
   fetchMetaAdsApps,
   fetchMetaAdsSystemUsers,
+  setMetaAdsSystemUserCompanies,
   updateMetaAdsSystemUser,
 } from "../../api";
-import type { MetaAdsApp, MetaAdsSystemUser } from "../../types";
+import type { Company, MetaAdsApp, MetaAdsSystemUser } from "../../types";
 
 const { Text } = Typography;
 
@@ -58,8 +60,29 @@ export function AdminMetaAdsUsersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MetaAdsSystemUser | null>(null);
   const [form] = Form.useForm<FormValues>();
+  // Asignacion a empresas: se edita aparte del formulario de tokens porque es otra
+  // decision (quien puede usarlo) y no queremos obligar a repasar tokens para tocarla.
+  const [empresas, setEmpresas] = useState<Company[]>([]);
+  const [empresasElegidas, setEmpresasElegidas] = useState<string[]>([]);
+  const [guardandoEmpresas, setGuardandoEmpresas] = useState(false);
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setEmpresas(await fetchCompanies());
+      } catch {
+        message.error("No se pudieron cargar las empresas.");
+      }
+    })();
+  }, []);
+
+  // Al cambiar de usuario seleccionado, la lista vuelve a lo que hay guardado.
+  useEffect(() => {
+    setEmpresasElegidas(selected?.companies.map((c) => c.id) ?? []);
+  }, [selected?.id, selected?.companies]);
+
   const activeApps = apps.filter((a) => a.isActive);
 
   const load = useCallback(async () => {
@@ -77,6 +100,21 @@ export function AdminMetaAdsUsersPage() {
       setLoading(false);
     }
   }, [selectedId]);
+
+  const guardarEmpresas = useCallback(async () => {
+    if (!selected) return;
+    setGuardandoEmpresas(true);
+    try {
+      await setMetaAdsSystemUserCompanies(selected.id, empresasElegidas);
+      message.success("Empresas actualizadas.");
+      await load();
+    } catch (e) {
+      const r = e as { response?: { data?: { message?: string } } };
+      message.error(r?.response?.data?.message ?? "No se pudo guardar.");
+    } finally {
+      setGuardandoEmpresas(false);
+    }
+  }, [selected, empresasElegidas, load]);
 
   useEffect(() => {
     void load();
@@ -211,6 +249,20 @@ export function AdminMetaAdsUsersPage() {
         ),
     },
     {
+      title: "Empresas",
+      key: "companies",
+      render: (_: unknown, row: MetaAdsSystemUser) =>
+        row.companies.length === 0 ? (
+          <Tag color="red">Ninguna</Tag>
+        ) : (
+          <Space size={4} wrap>
+            {row.companies.map((c) => (
+              <Tag key={c.id}>{c.name}</Tag>
+            ))}
+          </Space>
+        ),
+    },
+    {
       title: "ID sistema",
       dataIndex: "metaSystemUserId",
       key: "mid",
@@ -333,6 +385,45 @@ export function AdminMetaAdsUsersPage() {
           <Button style={{ marginTop: 16 }} onClick={() => openEdit(selected)}>
             Editar / renovar tokens
           </Button>
+
+          <Divider orientationMargin={0}>
+            <Space size={6}>
+              <BankOutlined />
+              Empresas que pueden usarlo
+            </Space>
+          </Divider>
+          <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            Un mismo usuario de Meta puede servir a varias empresas. Las que no estén aquí no verán
+            este usuario ni podrán usar sus tokens al importar.
+          </Text>
+          <Space.Compact style={{ width: "100%", maxWidth: 620 }}>
+            <Select
+              mode="multiple"
+              allowClear={false}
+              style={{ width: "100%" }}
+              placeholder="Elige una o varias empresas"
+              value={empresasElegidas}
+              onChange={setEmpresasElegidas}
+              options={empresas.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <Button
+              type="primary"
+              loading={guardandoEmpresas}
+              disabled={
+                empresasElegidas.length === 0 ||
+                (empresasElegidas.length === selected.companies.length &&
+                  empresasElegidas.every((id) => selected.companies.some((c) => c.id === id)))
+              }
+              onClick={() => void guardarEmpresas()}
+            >
+              Guardar
+            </Button>
+          </Space.Compact>
+          {empresasElegidas.length === 0 ? (
+            <Text type="danger" style={{ display: "block", marginTop: 6, fontSize: 12 }}>
+              Tiene que quedar al menos una: si no, nadie podría usar sus tokens.
+            </Text>
+          ) : null}
         </Card>
       ) : null}
 
