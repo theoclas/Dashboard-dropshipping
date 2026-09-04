@@ -609,3 +609,12 @@ export type MetaAdsSystemUserOption = {
   tokenMasked: string | null;
 };
 
+
+/** Resultado de la búsqueda global de usuarios (solo ADMIN). */
+export type AdminUserSearchRow = {
+  id: string;
+  email: string;
+  username: string | null;
+  fullName: string;
+  companies: { name: string; role: Role }[];
+};

@@ -702,6 +702,87 @@ app.delete("/api/users/:userId/memberships/:companyId", authRequired, requireRol
   return res.json({ ok: true });
 });
 
+/**
+ * Búsqueda global de usuarios.
+ *
+ * A diferencia de `assignable-users`, no se limita a una empresa: sirve para llegar a
+ * alguien que se quedó fuera de una empresa que quien busca no administra. Devuelve solo
+ * lo necesario para identificarlo y nunca el hash de la contraseña.
+ */
+app.get("/api/users/search", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (q.length < 2) return res.json([]);
+
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ email: { contains: q } }, { username: { contains: q } }, { fullName: { contains: q } }],
+    },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      fullName: true,
+      memberships: { select: { role: true, company: { select: { name: true } } } },
+    },
+    take: 25,
+    orderBy: [{ fullName: "asc" }],
+  });
+
+  return res.json(
+    users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      fullName: u.fullName,
+      companies: u.memberships.map((m) => ({ name: m.company.name, role: m.role })),
+    })),
+  );
+});
+
+/**
+ * Un administrador cambia la contraseña de otro usuario.
+ *
+ * A propósito NO se comprueba que quien llama administre alguna empresa del destinatario:
+ * el caso que motivó esto es exactamente ese, alguien bloqueado en una empresa que el
+ * administrador no toca.
+ *
+ * Conviene tenerlo presente: la contraseña pertenece al usuario, no a la membresía, así
+ * que cambiarla abre de golpe todas las empresas a las que ese usuario pertenece. El día
+ * que el dashboard tenga varios clientes, esta ruta hay que acotarla o moverla detrás de
+ * una marca de super administrador.
+ */
+app.patch("/api/users/:userId/password", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  const caller = (req as express.Request & { user?: JwtPayload }).user!;
+  const userId = String(req.params.userId);
+
+  const schema = z.object({
+    password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres."),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Payload inválido." });
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, fullName: true },
+  });
+  if (!target) return res.status(404).json({ message: "Usuario no encontrado." });
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: await bcrypt.hash(parsed.data.password, 10) },
+  });
+
+  // No hay tabla de auditoría; al menos que quede rastro en los logs de pm2 de quién
+  // le cambió la contraseña a quién, que es lo primero que se pregunta si algo pasa.
+  console.log(
+    `[admin] ${caller.username} (${caller.userId}) cambió la contraseña de ${target.email} (${target.id})`,
+  );
+
+  return res.json({ ok: true, email: target.email, fullName: target.fullName });
+});
+
 function serializeOrder(o: Order) {
   const row = o as Order & { notasManuales?: string | null };
   return {

@@ -4,6 +4,7 @@ import type {
   AdLevel,
   AdMetricsResponse,
   AdsHierarchy,
+  AdminUserSearchRow,
   AdvertisingAccount,
   AdvertisingAccountOperationalExpensesResponse,
   AdvertisingAccountWithStats,
@@ -1107,3 +1108,23 @@ export async function importAdsFromMetaApi(body: {
   return data;
 }
 
+
+/**
+ * Busca usuarios en todas las empresas, no solo en las que administras. Es lo que
+ * permite llegar a alguien que se quedó fuera de una empresa que no tocas.
+ */
+export async function searchUsersGlobal(q: string): Promise<AdminUserSearchRow[]> {
+  const { data } = await api.get<AdminUserSearchRow[]>("/users/search", { params: { q } });
+  return data;
+}
+
+export async function changeUserPassword(
+  userId: string,
+  password: string,
+): Promise<{ ok: boolean; email: string; fullName: string }> {
+  const { data } = await api.patch<{ ok: boolean; email: string; fullName: string }>(
+    `/users/${userId}/password`,
+    { password },
+  );
+  return data;
+}

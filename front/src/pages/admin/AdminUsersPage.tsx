@@ -3,6 +3,7 @@ import { Card, Select, Space, Typography, message } from "antd";
 import { fetchCompanies } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Company } from "../../types";
+import { AdminUserPasswordCard } from "./AdminUserPasswordCard";
 import { CompanyUserManagement } from "./CompanyUserManagement";
 
 const { Title, Paragraph } = Typography;
@@ -74,6 +75,8 @@ export function AdminUsersPage() {
       {usersCompanyId ? (
         <CompanyUserManagement key={usersCompanyId} companyId={usersCompanyId} showAssignExisting />
       ) : null}
+
+      <AdminUserPasswordCard />
     </Space>
   );
 }
