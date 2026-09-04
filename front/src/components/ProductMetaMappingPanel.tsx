@@ -23,6 +23,7 @@ import {
   putProductAdvertisingAccounts,
   unlinkAdvertisingCampaignFromProduct,
 } from "../api";
+import { selectAllDropdown } from "./selectAllDropdown";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccount, AdvertisingCampaignRow, CatalogProduct } from "../types";
 
@@ -241,6 +242,11 @@ export function ProductMetaMappingPanel({
               disabled={!canCrud || savingAccounts}
               loading={savingAccounts}
               onChange={(v) => void saveLinkedAccounts(v)}
+              dropdownRender={selectAllDropdown({
+                options: accountOptions,
+                value: linkedAccountIds,
+                onChange: (v) => void saveLinkedAccounts(v),
+              })}
             />
           </div>
         </>

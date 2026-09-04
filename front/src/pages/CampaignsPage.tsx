@@ -65,6 +65,7 @@ import {
   previewMetaApiCampaignImport,
   previewMetaApiCampaignImportAll,
 } from "../api";
+import { selectAllDropdown } from "../components/selectAllDropdown";
 import { usePermission } from "../hooks/usePermission";
 import type {
   AdvertisingAccount,
@@ -2043,6 +2044,15 @@ export function CampaignsPage() {
               }}
               loading={accountsLoading}
               notFoundContent={accountsLoading ? "Cargando…" : "Sin cuentas"}
+              dropdownRender={
+                importSource === "meta-api"
+                  ? selectAllDropdown({
+                      options: accountOptions,
+                      value: importAccountIds,
+                      onChange: setImportAccountIds,
+                    })
+                  : undefined
+              }
             />
             {importSource === "meta-api" ? (
               <div style={{ maxWidth: 560, marginTop: 12 }}>

@@ -28,6 +28,7 @@ import {
   fetchMetaAdsSystemUserOptions,
   importAdsFromMetaApi,
 } from "../api";
+import { selectAllDropdown } from "../components/selectAllDropdown";
 import { usePermission } from "../hooks/usePermission";
 import { fmtInteger, fmtMoney, fmtPercentPoints } from "../utils/format";
 import type {
@@ -567,6 +568,15 @@ export function AdsPage() {
                 setAdSetIds([]);
               }}
               options={accountOptions}
+              dropdownRender={selectAllDropdown({
+                options: accountOptions,
+                value: accountIds,
+                onChange: (v) => {
+                  setAccountIds(v);
+                  setCampaignIds([]);
+                  setAdSetIds([]);
+                },
+              })}
               maxTagCount="responsive"
               optionFilterProp="label"
             />
@@ -608,6 +618,14 @@ export function AdsPage() {
                   setAdSetIds([]);
                 }}
                 options={campaignOptions}
+                dropdownRender={selectAllDropdown({
+                  options: campaignOptions,
+                  value: campaignIds,
+                  onChange: (v) => {
+                    setCampaignIds(v);
+                    setAdSetIds([]);
+                  },
+                })}
                 maxTagCount="responsive"
                 optionFilterProp="label"
               />
@@ -622,6 +640,12 @@ export function AdsPage() {
                 value={adSetIds}
                 onChange={setAdSetIds}
                 options={adSetOptions}
+                dropdownRender={selectAllDropdown({
+                  options: adSetOptions,
+                  value: adSetIds,
+                  onChange: setAdSetIds,
+                  etiqueta: "todos",
+                })}
                 maxTagCount="responsive"
                 optionFilterProp="label"
               />
