@@ -10,6 +10,7 @@ const DEFAULT_VISIBLE: { key: string; pin?: OrdersTableColumnPin }[] = [
   { key: "fecha" },
   { key: "cliente" },
   { key: "telefono" },
+  { key: "productos" },
   { key: "ciudad" },
   { key: "notas_manuales" },
   { key: "transportadora" },

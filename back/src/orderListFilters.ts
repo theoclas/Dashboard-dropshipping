@@ -24,6 +24,48 @@ function zTrimmedOptional() {
     });
 }
 
+/**
+ * Columnas por las que se puede filtrar eligiendo valores de una lista.
+ *
+ * Es una lista blanca a propósito: la clave llega del navegador y termina como nombre de
+ * columna en la consulta. Todo lo que no esté aquí se ignora.
+ */
+export const ORDER_FILTER_COLUMNS: Record<string, string> = {
+  id: "id",
+  id_dropi: "externalOrderId",
+  estado_unificado: "estadoUnificado",
+  transportadora: "transportadora",
+  ciudad: "ciudad",
+  cliente: "cliente",
+  telefono: "telefono",
+  guia: "guia",
+  notas_manuales: "notasManuales",
+  estado_operativo: "estadoOperativo",
+  notas: "notas",
+  estatus_original: "estatusOriginal",
+  ultimo_mov: "ultimoMov",
+  estado_cartera: "estadoCartera",
+  departamento: "departamento",
+  direccion: "direccion",
+  tipo_tienda: "tipoTienda",
+  tienda: "tienda",
+  vendedor: "vendedor",
+  tipo_envio: "tipoEnvio",
+  email_cliente: "emailCliente",
+  observacion_dropi: "observacionDropi",
+  tags: "tags",
+  codigo_postal: "codigoPostal",
+  id_orden_tienda: "idOrdenTienda",
+  numero_pedido_tienda: "numeroPedidoTienda",
+  usuario_generacion_guia: "usuarioGeneracionGuia",
+};
+
+/** Clave especial del desplegable para «sin valor»: cubre NULL y cadena vacía. */
+export const FILTRO_VACIO = "__vacio__";
+
+/** Producto del catálogo: no es columna de `Order`, se resuelve aparte. */
+export const FILTRO_PRODUCTO = "producto";
+
 export const orderListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(800).default(50),
@@ -90,6 +132,31 @@ export const orderListQuerySchema = z.object({
     }),
   /** Producto del catálogo (vínculos Dropi en Productos de pedidos). */
   catalog_product_id: zTrimmedOptional(),
+  /**
+   * Selecciones de los desplegables, como JSON: `{"ciudad":["MEDELLIN","CALI"]}`.
+   *
+   * Va en un solo parámetro en vez de uno por columna para no duplicar treinta entradas
+   * en el esquema y en el constructor del `where`.
+   */
+  filters_in: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (!v || v.trim() === "") return undefined;
+      try {
+        const parsed = JSON.parse(v) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+        const out: Record<string, string[]> = {};
+        for (const [k, val] of Object.entries(parsed as Record<string, unknown>)) {
+          if (!Array.isArray(val)) continue;
+          const vals = val.filter((x): x is string => typeof x === "string");
+          if (vals.length > 0) out[k] = vals;
+        }
+        return Object.keys(out).length > 0 ? out : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
   /** `1` / `true`: solo pedidos sin número de guía (logística). */
   guia_blank: z
     .union([z.string(), z.number(), z.boolean()])
@@ -241,6 +308,25 @@ export function buildPrismaOrderWhere(
       const start = new Date(Date.UTC(y0, m0 - 1, d0, 0, 0, 0, 0));
       const end = new Date(Date.UTC(y1, m1 - 1, d1, 23, 59, 59, 999));
       and.push({ fecha: { gte: start, lte: end } });
+    }
+  }
+
+  if (f.filters_in) {
+    for (const [clave, valores] of Object.entries(f.filters_in)) {
+      const columna = ORDER_FILTER_COLUMNS[clave];
+      if (!columna || valores.length === 0) continue;
+
+      const concretos = valores.filter((v) => v !== FILTRO_VACIO);
+      const incluyeVacio = valores.length !== concretos.length;
+
+      const opciones: Prisma.OrderWhereInput[] = [];
+      if (concretos.length > 0) opciones.push({ [columna]: { in: concretos } } as Prisma.OrderWhereInput);
+      // «Sin valor» abarca NULL y cadena vacía: en los datos importados aparecen las dos.
+      if (incluyeVacio) {
+        opciones.push({ [columna]: null } as Prisma.OrderWhereInput);
+        opciones.push({ [columna]: "" } as Prisma.OrderWhereInput);
+      }
+      if (opciones.length > 0) and.push({ OR: opciones });
     }
   }
 

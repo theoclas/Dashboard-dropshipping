@@ -39,6 +39,8 @@ export type Pedido = {
   numero_pedido_tienda: string | null;
   usuario_generacion_guia: string | null;
   fecha_generacion_guia: string | null;
+  /** Productos del catálogo que contiene el pedido (columna Productos). */
+  productos?: { id: string; name: string }[];
   /** Marcado para no aparecer en el módulo Oficina. */
   excluir_oficina?: boolean;
   created_at?: string | null;

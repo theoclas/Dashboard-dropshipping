@@ -12,6 +12,10 @@ import { z } from "zod";
 import { ImportBatchKind, Prisma, Role, type Order } from "@prisma/client";
 import { prisma } from "./prisma";
 import {
+  catalogProductsForOrders,
+  externalOrderIdsForCatalogProducts,
+} from "./orderCatalogProducts";
+import {
   authRequired,
   companyRequired,
   configureAuthMiddleware,
@@ -44,6 +48,9 @@ import {
   buildOrderOrderBy,
   buildPrismaOrderWhere,
   externalOrderIdsForCatalogProduct,
+  FILTRO_PRODUCTO,
+  FILTRO_VACIO,
+  ORDER_FILTER_COLUMNS,
   narrowOrderIdsByCastFilters,
   orderExportBodySchema,
   flattenParams,
@@ -847,12 +854,18 @@ app.get("/api/orders", authRequired, companyRequired, requirePermission("moduleP
       return res.json({ data: [], total: 0, page: f.page, limit: f.limit });
     }
 
+    // El producto puede venir del selector de arriba (uno) o del desplegable de la
+    // columna (varios). Se juntan: si están los dos, manda la intersección.
+    const productosPedidos = [
+      ...(f.catalog_product_id ? [f.catalog_product_id] : []),
+      ...(f.filters_in?.[FILTRO_PRODUCTO] ?? []),
+    ];
     let catalogProductExternalIds: string[] | undefined;
-    if (f.catalog_product_id) {
-      catalogProductExternalIds = await externalOrderIdsForCatalogProduct(
+    if (productosPedidos.length > 0) {
+      catalogProductExternalIds = await externalOrderIdsForCatalogProducts(
         prisma,
         user.companyId,
-        f.catalog_product_id,
+        productosPedidos,
       );
       if (catalogProductExternalIds.length === 0) {
         return res.json({ data: [], total: 0, page: f.page, limit: f.limit });
@@ -872,8 +885,17 @@ app.get("/api/orders", authRequired, companyRequired, requirePermission("moduleP
       prisma.order.count({ where }),
     ]);
 
+    const productosPorPedido = await catalogProductsForOrders(
+      prisma,
+      user.companyId,
+      orders.map((o) => o.externalOrderId).filter((v): v is string => Boolean(v)),
+    );
+
     return res.json({
-      data: orders.map(serializeOrder),
+      data: orders.map((o) => ({
+        ...serializeOrder(o),
+        productos: productosPorPedido.get(o.externalOrderId ?? "") ?? [],
+      })),
       total,
       page: f.page,
       limit: f.limit,
@@ -884,6 +906,97 @@ app.get("/api/orders", authRequired, companyRequired, requirePermission("moduleP
     return res.status(500).json({ message: msg });
   }
 });
+
+/**
+ * Valores disponibles para el desplegable de una columna, con cuántos pedidos tiene cada
+ * uno.
+ *
+ * Se aplican los demás filtros activos pero **no el de la propia columna**, igual que en
+ * Excel: si al abrir «Ciudad» ya tienes MEDELLÍN marcada y se filtrara también por ella,
+ * la lista se quedaría en un solo valor y no podrías añadir CALI.
+ */
+app.get(
+  "/api/orders/facets",
+  authRequired,
+  companyRequired,
+  requirePermission("modulePedidos"),
+  async (req, res) => {
+    const user = (req as express.Request & { user?: JwtPayload }).user!;
+    const field = String(req.query.field ?? "").trim();
+    const q = String(req.query.q ?? "").trim();
+
+    try {
+      // El producto no es columna de Order: la lista sale del catálogo, que es corta.
+      if (field === FILTRO_PRODUCTO) {
+        const productos = await prisma.catalogProduct.findMany({
+          where: {
+            companyId: user.companyId,
+            ...(q ? { name: { contains: q } } : {}),
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+          take: 300,
+        });
+        return res.json(productos.map((p) => ({ value: p.id, label: p.name, count: null })));
+      }
+
+      const columna = ORDER_FILTER_COLUMNS[field];
+      if (!columna) return res.status(400).json({ message: "Esa columna no admite filtro por lista." });
+
+      const parsed = orderListQuerySchema.safeParse(flattenParams(req.query as Record<string, unknown>));
+      if (!parsed.success) return res.status(400).json({ message: "Parámetros inválidos." });
+
+      const f = parsed.data;
+      const sinEstaColumna = {
+        ...f,
+        filters_in: f.filters_in
+          ? Object.fromEntries(Object.entries(f.filters_in).filter(([k]) => k !== field))
+          : undefined,
+      };
+
+      const narrowed = await narrowOrderIdsByCastFilters(prisma, user.companyId, sinEstaColumna);
+      if (narrowed && narrowed.length === 0) return res.json([]);
+
+      const productosPedidos = [
+        ...(sinEstaColumna.catalog_product_id ? [sinEstaColumna.catalog_product_id] : []),
+        ...(sinEstaColumna.filters_in?.[FILTRO_PRODUCTO] ?? []),
+      ];
+      let idsPorProducto: string[] | undefined;
+      if (productosPedidos.length > 0) {
+        idsPorProducto = await externalOrderIdsForCatalogProducts(prisma, user.companyId, productosPedidos);
+        if (idsPorProducto.length === 0) return res.json([]);
+      }
+
+      const base = buildPrismaOrderWhere(user.companyId, sinEstaColumna, narrowed, idsPorProducto);
+      const where = q ? { AND: [base, { [columna]: { contains: q } }] } : base;
+
+      // `by` lleva un nombre de columna dinámico, de ahí el cast; el nombre viene de la
+      // lista blanca ORDER_FILTER_COLUMNS, nunca del cliente en crudo.
+      const agrupar = prisma.order.groupBy as unknown as (
+        args: unknown,
+      ) => Promise<Array<Record<string, unknown>>>;
+      const filas = await agrupar({ by: [columna], where, _count: { _all: true } });
+
+      const valores = filas.map((r) => {
+        const bruto = r[columna];
+        const vacio = bruto === null || bruto === undefined || String(bruto).trim() === "";
+        const conteo = (r._count as { _all?: number } | undefined)?._all ?? 0;
+        return {
+          value: vacio ? FILTRO_VACIO : String(bruto),
+          label: vacio ? "(sin valor)" : String(bruto),
+          count: conteo,
+        };
+      });
+
+      // Los más frecuentes primero: es lo que se busca casi siempre.
+      valores.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+      return res.json(valores.slice(0, 300));
+    } catch (err) {
+      console.error("[GET /api/orders/facets]", err);
+      return res.status(500).json({ message: err instanceof Error ? err.message : "Error." });
+    }
+  },
+);
 
 /** Transportadoras con pedidos cuya dirección contiene «oficina». */
 app.get(

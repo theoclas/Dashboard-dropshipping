@@ -11,6 +11,8 @@ import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 import { fmtCalendarDateDdMmYyyy } from "../utils/calendarDateLocal";
 import type { Pedido, PedidoColumnFilterKey } from "./ordersTypes";
+import type { OrderFacet } from "../api";
+import { ColumnFacetFilter } from "./ColumnFacetFilter";
 
 const { Text } = Typography;
 
@@ -42,6 +44,11 @@ export type OrdersFiltersState = Record<string, string> & {
 export type OrdersColumnContext = {
   filters: OrdersFiltersState;
   setFilters: React.Dispatch<React.SetStateAction<OrdersFiltersState>>;
+  /** Valores marcados en el desplegable de cada columna, por clave de filtro. */
+  selections: Record<string, string[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  /** Trae los valores que hay en una columna, con los demás filtros ya aplicados. */
+  cargarValores: (field: string, q: string) => Promise<OrderFacet[]>;
   setPage: (p: number) => void;
   editingId: string | null;
   editData: Partial<Pedido>;
@@ -57,40 +64,41 @@ export type OrdersColumnContext = {
   onEdit: (record: Pedido) => void;
 };
 
-function getColumnSearchProps(
-  ctx: OrdersColumnContext,
-  title: string,
-  filterKey: PedidoColumnFilterKey,
-) {
+/**
+ * Filtro de columna: desplegable con los valores que existen y casillas para elegir
+ * varios, como en Excel.
+ *
+ * Sustituye a la caja de texto que había. Aquella obligaba a saberse de memoria cómo
+ * está escrito el valor y solo admitía uno; con la lista se ve lo que hay, cuántos
+ * pedidos tiene cada uno, y se pueden marcar varios.
+ */
+function getColumnSearchProps(ctx: OrdersColumnContext, title: string, filterKey: string) {
+  const seleccion = ctx.selections[filterKey] ?? [];
+
   return {
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: FilterDropdownProps) => (
-      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
-        <Input
-          placeholder={`Buscar ${title}`}
-          value={String(selectedKeys[0] ?? "")}
-          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => confirm()}
-          style={{ marginBottom: 8, display: "block" }}
-        />
-        <Space>
-          <Button type="primary" onClick={() => confirm()} icon={<SearchOutlined />} size="small" style={{ width: 90 }}>
-            Buscar
-          </Button>
-          <Button
-            onClick={() => {
-              clearFilters?.();
-              confirm();
-            }}
-            size="small"
-            style={{ width: 90 }}
-          >
-            Limpiar
-          </Button>
-        </Space>
-      </div>
+    filterDropdown: ({ confirm, visible }: FilterDropdownProps & { visible?: boolean }) => (
+      <ColumnFacetFilter
+        field={filterKey}
+        titulo={title}
+        seleccion={seleccion}
+        abierto={visible !== false}
+        cargarValores={ctx.cargarValores}
+        onAplicar={(valores) => {
+          ctx.setSelections((prev) => {
+            const next = { ...prev };
+            if (valores.length === 0) delete next[filterKey];
+            else next[filterKey] = valores;
+            return next;
+          });
+          ctx.setPage(1);
+        }}
+        onCerrar={() => confirm({ closeDropdown: true })}
+      />
     ),
-    filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? "#1677ff" : undefined }} />,
-    filteredValue: ctx.filters[filterKey] ? [ctx.filters[filterKey]] : null,
+    filterIcon: (filtered: boolean) => (
+      <SearchOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
+    ),
+    filteredValue: seleccion.length > 0 ? seleccion : null,
   };
 }
 
@@ -98,6 +106,25 @@ export function createOrdersColumnDefs(ctx: OrdersColumnContext): Record<string,
   const search = (title: string, key: PedidoColumnFilterKey) => getColumnSearchProps(ctx, title, key);
 
   return {
+    productos: {
+      title: "Productos",
+      key: "productos",
+      width: 200,
+      render: (_: unknown, r: Pedido) => {
+        const lista = r.productos ?? [];
+        if (lista.length === 0) return <Text type="secondary">—</Text>;
+        return (
+          <Space size={4} wrap>
+            {lista.map((p) => (
+              <Tag key={p.id} style={{ margin: 0 }}>
+                {p.name}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
+      ...getColumnSearchProps(ctx, "Productos", "producto"),
+    },
     id: {
       title: "ID",
       dataIndex: "id",

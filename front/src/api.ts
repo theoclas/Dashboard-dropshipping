@@ -1149,3 +1149,15 @@ export async function changeUserPassword(
   );
   return data;
 }
+
+/** Un valor posible del desplegable de filtro de una columna de Pedidos. */
+export type OrderFacet = { value: string; label: string; count: number | null };
+
+/**
+ * Valores disponibles para el filtro de una columna, con los demás filtros ya aplicados.
+ * `field` es la clave de filtro (`ciudad`, `producto`…) y `q` acota la búsqueda.
+ */
+export async function fetchOrderFacets(params: Record<string, unknown>): Promise<OrderFacet[]> {
+  const { data } = await api.get<OrderFacet[]>("/orders/facets", { params });
+  return data;
+}

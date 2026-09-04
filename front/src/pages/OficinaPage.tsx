@@ -24,6 +24,7 @@ import { isAxiosError } from "axios";
 import {
   downloadOrdersExport,
   fetchOficinaCarriers,
+  fetchOrderFacets,
   fetchOrdersPage,
   fetchProductosDetalle,
   patchOficinaTableConfig,
@@ -245,6 +246,8 @@ export function OficinaPage() {
   const [carrierTab, setCarrierTab] = useState(TAB_TODAS);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // Lo marcado en cada desplegable de columna, por clave de filtro.
+  const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [sortField, setSortField] = useState<string>("id");
   const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -279,8 +282,17 @@ export function OficinaPage() {
       params.startDate = startDate;
       params.endDate = endDate;
     }
+    if (Object.keys(selections).length > 0) {
+      params.filters_in = JSON.stringify(selections);
+    }
     return params;
-  }, [sortField, sortOrder, carrierTab, startDate, endDate, showExcluded]);
+  }, [sortField, sortOrder, carrierTab, startDate, endDate, showExcluded, selections]);
+
+  /** Valores de una columna, con los filtros de las demás ya aplicados. */
+  const cargarValores = useCallback(
+    (field: string, q: string) => fetchOrderFacets({ ...buildListParams(), field, q }),
+    [buildListParams],
+  );
 
   const loadCarriers = useCallback(async () => {
     try {
@@ -413,8 +425,12 @@ export function OficinaPage() {
     }
   };
 
-  const renderEditable = (field: keyof Pedido, record: Pedido) => {
-    if (user?.role === "LECTOR") return record[field];
+  const renderEditable = (field: keyof Pedido, record: Pedido): ReactNode => {
+    // `productos` es una lista de objetos y aquí nunca se edita, pero el tipo de
+    // `keyof Pedido` lo admite: se aplana para que siga siendo pintable.
+    const valor = record[field];
+    const plano = Array.isArray(valor) ? valor.map((x) => x.name).join(", ") : valor;
+    if (user?.role === "LECTOR") return plano;
     if (editingId === record.id) {
       return (
         <Input
@@ -424,12 +440,15 @@ export function OficinaPage() {
         />
       );
     }
-    return record[field];
+    return plano;
   };
 
   const columnCtx: OrdersColumnContext = useMemo(
     () => ({
       filters: filters as OrdersColumnContext["filters"],
+      selections,
+      setSelections,
+      cargarValores,
       setFilters: setFilters as OrdersColumnContext["setFilters"],
       setPage,
       editingId,
