@@ -41,9 +41,16 @@ const appInclude = {
   },
 };
 
-export async function listMetaAdsApps(companyId: string): Promise<MetaAdsAppPublic[]> {
+/**
+ * El catálogo de administración se ve entero, sin filtrar por empresa.
+ *
+ * No es un descuido: si una app queda sin empresas asignadas, filtrando aquí se volvería
+ * invisible y no habría forma de arreglarla desde ninguna pantalla. El filtro por empresa
+ * va donde de verdad importa — en las opciones que ofrece Campañas Meta — y esta ruta ya
+ * está restringida a ADMIN.
+ */
+export async function listMetaAdsApps(): Promise<MetaAdsAppPublic[]> {
   const rows = await prisma.metaAdsApp.findMany({
-    where: { companies: { some: { companyId } } },
     include: appInclude,
     orderBy: { name: "asc" },
   });
@@ -59,14 +66,8 @@ export async function listActiveMetaAdsAppOptions(companyId: string): Promise<Me
   return rows.map(toPublic);
 }
 
-export async function getMetaAdsApp(
-  companyId: string,
-  id: string,
-): Promise<MetaAdsAppPublic | null> {
-  const row = await prisma.metaAdsApp.findFirst({
-    where: { id, companies: { some: { companyId } } },
-    include: appInclude,
-  });
+export async function getMetaAdsApp(id: string): Promise<MetaAdsAppPublic | null> {
+  const row = await prisma.metaAdsApp.findUnique({ where: { id }, include: appInclude });
   return row ? toPublic(row) : null;
 }
 
@@ -135,7 +136,6 @@ export async function createMetaAdsApp(input: {
 }
 
 export async function updateMetaAdsApp(
-  companyId: string,
   id: string,
   input: {
     name?: string;
@@ -144,9 +144,7 @@ export async function updateMetaAdsApp(
     isActive?: boolean;
   },
 ): Promise<MetaAdsAppPublic | null> {
-  const existing = await prisma.metaAdsApp.findFirst({
-    where: { id, companies: { some: { companyId } } },
-  });
+  const existing = await prisma.metaAdsApp.findUnique({ where: { id } });
   if (!existing) return null;
 
   const row = await prisma.metaAdsApp.update({
@@ -163,9 +161,7 @@ export async function updateMetaAdsApp(
   return toPublic(row);
 }
 
-export async function deleteMetaAdsApp(companyId: string, id: string): Promise<boolean> {
-  const r = await prisma.metaAdsApp.deleteMany({
-    where: { id, companies: { some: { companyId } } },
-  });
+export async function deleteMetaAdsApp(id: string): Promise<boolean> {
+  const r = await prisma.metaAdsApp.deleteMany({ where: { id } });
   return r.count > 0;
 }

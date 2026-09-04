@@ -106,21 +106,25 @@ function toPublic(row: {
   };
 }
 
-export async function listMetaAdsSystemUsers(companyId: string): Promise<MetaAdsSystemUserPublic[]> {
+/**
+ * El catálogo de administración se ve entero, sin filtrar por empresa.
+ *
+ * No es un descuido: si un usuario de Meta queda sin empresas asignadas, filtrando aquí se volvería
+ * invisible y no habría forma de arreglarla desde ninguna pantalla. El filtro por empresa
+ * va donde de verdad importa — en las opciones que ofrece Campañas Meta — y esta ruta ya
+ * está restringida a ADMIN.
+ */
+export async function listMetaAdsSystemUsers(): Promise<MetaAdsSystemUserPublic[]> {
   const rows = await prisma.metaAdsSystemUser.findMany({
-    where: { companies: { some: { companyId } } },
     include: userInclude,
     orderBy: { name: "asc" },
   });
   return rows.map(toPublic);
 }
 
-export async function getMetaAdsSystemUser(
-  companyId: string,
-  id: string,
-): Promise<MetaAdsSystemUserPublic | null> {
-  const row = await prisma.metaAdsSystemUser.findFirst({
-    where: { id, companies: { some: { companyId } } },
+export async function getMetaAdsSystemUser(id: string): Promise<MetaAdsSystemUserPublic | null> {
+  const row = await prisma.metaAdsSystemUser.findUnique({
+    where: { id },
     include: userInclude,
   });
   return row ? toPublic(row) : null;
@@ -197,10 +201,27 @@ export async function listMetaAdsSystemUserOptions(
   return options;
 }
 
-async function clearOtherDefaults(companyId: string, exceptAccessId?: string): Promise<void> {
+/**
+ * Deja un único par usuario+app marcado como predeterminado en cada empresa a la que
+ * sirve este usuario de Meta.
+ *
+ * Antes bastaba con la empresa del usuario, que era una sola. Ahora puede servir a
+ * varias, así que hay que limpiar la marca en todas ellas: si no, dos pares quedarían
+ * como predeterminados en la misma empresa y `resolveDefaultMetaAdsAccessToken`
+ * escogería uno por fecha, que es justo la clase de cosa que luego nadie entiende.
+ */
+async function clearOtherDefaults(systemUserId: string, exceptAccessId?: string): Promise<void> {
+  const empresas = await prisma.metaAdsSystemUserCompany.findMany({
+    where: { systemUserId },
+    select: { companyId: true },
+  });
+  if (empresas.length === 0) return;
+
   await prisma.metaAdsSystemUserAppAccess.updateMany({
     where: {
-      systemUser: { companyId },
+      systemUser: {
+        companies: { some: { companyId: { in: empresas.map((e) => e.companyId) } } },
+      },
       ...(exceptAccessId ? { id: { not: exceptAccessId } } : {}),
     },
     data: { isDefault: false },
@@ -208,7 +229,6 @@ async function clearOtherDefaults(companyId: string, exceptAccessId?: string): P
 }
 
 async function syncAppAccess(
-  companyId: string,
   systemUserId: string,
   appAccess: AppAccessInput[],
 ): Promise<void> {
@@ -255,7 +275,7 @@ async function syncAppAccess(
   }
 
   if (defaultAccessId) {
-    await clearOtherDefaults(companyId, defaultAccessId);
+    await clearOtherDefaults(systemUserId, defaultAccessId);
   }
 }
 
@@ -284,14 +304,13 @@ export async function createMetaAdsSystemUser(input: {
     data: { systemUserId: row.id, companyId: input.companyId },
   });
 
-  await syncAppAccess(input.companyId, row.id, input.appAccess);
+  await syncAppAccess(row.id, input.appAccess);
 
-  const full = await getMetaAdsSystemUser(input.companyId, row.id);
+  const full = await getMetaAdsSystemUser(row.id);
   return full!;
 }
 
 export async function updateMetaAdsSystemUser(
-  companyId: string,
   id: string,
   input: {
     name?: string;
@@ -301,9 +320,7 @@ export async function updateMetaAdsSystemUser(
     appAccess?: AppAccessInput[];
   },
 ): Promise<MetaAdsSystemUserPublic | null> {
-  const existing = await prisma.metaAdsSystemUser.findFirst({
-    where: { id, companies: { some: { companyId } } },
-  });
+  const existing = await prisma.metaAdsSystemUser.findUnique({ where: { id } });
   if (!existing) return null;
 
   await prisma.metaAdsSystemUser.update({
@@ -319,16 +336,14 @@ export async function updateMetaAdsSystemUser(
   });
 
   if (input.appAccess !== undefined) {
-    await syncAppAccess(companyId, id, input.appAccess);
+    await syncAppAccess(id, input.appAccess);
   }
 
-  return getMetaAdsSystemUser(companyId, id);
+  return getMetaAdsSystemUser(id);
 }
 
-export async function deleteMetaAdsSystemUser(companyId: string, id: string): Promise<boolean> {
-  const r = await prisma.metaAdsSystemUser.deleteMany({
-    where: { id, companies: { some: { companyId } } },
-  });
+export async function deleteMetaAdsSystemUser(id: string): Promise<boolean> {
+  const r = await prisma.metaAdsSystemUser.deleteMany({ where: { id } });
   return r.count > 0;
 }
 

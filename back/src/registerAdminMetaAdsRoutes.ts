@@ -95,7 +95,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const list = await listMetaAdsApps(reqCompanyId(req));
+      const list = await listMetaAdsApps();
       return res.json(list);
     },
   );
@@ -106,7 +106,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const row = await getMetaAdsApp(reqCompanyId(req), String(req.params.id));
+      const row = await getMetaAdsApp(String(req.params.id));
       if (!row) return res.status(404).json({ message: "No encontrado." });
       return res.json(row);
     },
@@ -138,7 +138,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
       const parsed = updateAppSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
       try {
-        const row = await updateMetaAdsApp(reqCompanyId(req), String(req.params.id), parsed.data);
+        const row = await updateMetaAdsApp(String(req.params.id), parsed.data);
         if (!row) return res.status(404).json({ message: "No encontrado." });
         return res.json(row);
       } catch (e) {
@@ -158,14 +158,14 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
 
       const id = String(req.params.id);
-      const actual = await getMetaAdsApp(reqCompanyId(req), id);
+      const actual = await getMetaAdsApp(id);
       if (!actual) return res.status(404).json({ message: "No encontrada." });
 
       const r = await replaceMetaAdsAppCompanies(id, parsed.data.companyIds);
       if (!r.ok) return res.status(400).json({ message: r.message });
 
       // Si se quitó a sí mismo de la lista deja de verla; se devuelve lo que haya.
-      const actualizado = await getMetaAdsApp(reqCompanyId(req), id);
+      const actualizado = await getMetaAdsApp(id);
       return res.json(actualizado ?? { id, removedSelf: true });
     },
   );
@@ -176,7 +176,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const ok = await deleteMetaAdsApp(reqCompanyId(req), String(req.params.id));
+      const ok = await deleteMetaAdsApp(String(req.params.id));
       if (!ok) return res.status(404).json({ message: "No encontrado." });
       return res.status(204).send();
     },
@@ -188,7 +188,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const list = await listMetaAdsSystemUsers(reqCompanyId(req));
+      const list = await listMetaAdsSystemUsers();
       return res.json(list);
     },
   );
@@ -199,7 +199,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const row = await getMetaAdsSystemUser(reqCompanyId(req), String(req.params.id));
+      const row = await getMetaAdsSystemUser(String(req.params.id));
       if (!row) return res.status(404).json({ message: "No encontrado." });
       return res.json(row);
     },
@@ -238,7 +238,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
       const parsed = updateUserSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
       try {
-        const row = await updateMetaAdsSystemUser(reqCompanyId(req), String(req.params.id), {
+        const row = await updateMetaAdsSystemUser(String(req.params.id), {
           name: parsed.data.name,
           metaSystemUserId: parsed.data.metaSystemUserId,
           notes: parsed.data.notes,
@@ -272,13 +272,13 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
       const id = String(req.params.id);
       // Quien llama tiene que poder ver el usuario desde su empresa activa; si no, podría
       // reasignar usuarios de Meta que no le corresponden.
-      const actual = await getMetaAdsSystemUser(reqCompanyId(req), id);
+      const actual = await getMetaAdsSystemUser(id);
       if (!actual) return res.status(404).json({ message: "No encontrado." });
 
       const r = await replaceMetaAdsSystemUserCompanies(id, parsed.data.companyIds);
       if (!r.ok) return res.status(400).json({ message: r.message });
 
-      const actualizado = await getMetaAdsSystemUser(reqCompanyId(req), id);
+      const actualizado = await getMetaAdsSystemUser(id);
       // Si se quitó a sí mismo de la lista, deja de verlo: se devuelven las empresas
       // resultantes para que la pantalla pueda avisar en vez de quedarse en blanco.
       return res.json(actualizado ?? { id, companies: r.companies, removedSelf: true });
@@ -291,7 +291,7 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const ok = await deleteMetaAdsSystemUser(reqCompanyId(req), String(req.params.id));
+      const ok = await deleteMetaAdsSystemUser(String(req.params.id));
       if (!ok) return res.status(404).json({ message: "No encontrado." });
       return res.status(204).send();
     },
