@@ -27,19 +27,31 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
 
-    if (prismaRef && payload.companyId && payload.role !== Role.ADMIN) {
+    // El rol y los permisos salen SIEMPRE de la membresía viva, nunca de lo que afirme
+    // el token.
+    //
+    // Antes se saltaba esta consulta cuando el token ya decía ADMIN, y si la membresía
+    // había desaparecido se conservaba el rol del token. Las dos cosas juntas dejaban
+    // una ventana de 8 horas —lo que dura el token— en la que alguien degradado o
+    // expulsado seguía entrando como administrador. Los tokens no se pueden revocar en
+    // este sistema, así que esta consulta es la única forma de que un cambio de rol
+    // surta efecto.
+    if (prismaRef && payload.companyId) {
       const membership = await prismaRef.userCompany.findUnique({
         where: {
           userId_companyId: { userId: payload.userId, companyId: payload.companyId },
         },
       });
-      if (membership) {
-        payload.role = membership.role;
-        payload.operatorPerms = mergeOperatorPermissions(
-          membership.role,
-          membership.operatorPermissions,
-        );
+      if (!membership) {
+        return res
+          .status(401)
+          .json({ message: "Tu acceso a esta empresa ya no existe. Vuelve a iniciar sesión." });
       }
+      payload.role = membership.role;
+      payload.operatorPerms = mergeOperatorPermissions(
+        membership.role,
+        membership.operatorPermissions,
+      );
     }
 
     (req as Request & { user?: JwtPayload }).user = payload;
