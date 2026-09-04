@@ -8,6 +8,7 @@ import {
   getMetaAdsApp,
   listActiveMetaAdsAppOptions,
   listMetaAdsApps,
+  replaceMetaAdsAppCompanies,
   updateMetaAdsApp,
 } from "./metaAdsAppService";
 import {
@@ -88,42 +89,56 @@ function parseAppAccess(
 }
 
 export function registerAdminMetaAdsRoutes(app: express.Application) {
-  app.get("/api/admin/meta-ads-apps", authRequired, requireRoles([Role.ADMIN]), async (_req, res) => {
-    const list = await listMetaAdsApps();
-    return res.json(list);
-  });
+  app.get(
+    "/api/admin/meta-ads-apps",
+    authRequired,
+    companyRequired,
+    requireRoles([Role.ADMIN]),
+    async (req, res) => {
+      const list = await listMetaAdsApps(reqCompanyId(req));
+      return res.json(list);
+    },
+  );
 
   app.get(
     "/api/admin/meta-ads-apps/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const row = await getMetaAdsApp(String(req.params.id));
+      const row = await getMetaAdsApp(reqCompanyId(req), String(req.params.id));
       if (!row) return res.status(404).json({ message: "No encontrado." });
       return res.json(row);
     },
   );
 
-  app.post("/api/admin/meta-ads-apps", authRequired, requireRoles([Role.ADMIN]), async (req, res) => {
+  app.post(
+    "/api/admin/meta-ads-apps",
+    authRequired,
+    companyRequired,
+    requireRoles([Role.ADMIN]),
+    async (req, res) => {
     const parsed = createAppSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
     try {
-      const row = await createMetaAdsApp(parsed.data);
+      const row = await createMetaAdsApp({ ...parsed.data, companyId: reqCompanyId(req) });
       return res.status(201).json(row);
     } catch (e) {
       return res.status(400).json({ message: e instanceof Error ? e.message : "Error al crear." });
     }
-  });
+  },
+  );
 
   app.patch(
     "/api/admin/meta-ads-apps/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
       const parsed = updateAppSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
       try {
-        const row = await updateMetaAdsApp(String(req.params.id), parsed.data);
+        const row = await updateMetaAdsApp(reqCompanyId(req), String(req.params.id), parsed.data);
         if (!row) return res.status(404).json({ message: "No encontrado." });
         return res.json(row);
       } catch (e) {
@@ -132,12 +147,36 @@ export function registerAdminMetaAdsRoutes(app: express.Application) {
     },
   );
 
+  /** Empresas que pueden usar la app. Sustituye el conjunto entero. Solo ADMIN. */
+  app.put(
+    "/api/admin/meta-ads-apps/:id/companies",
+    authRequired,
+    companyRequired,
+    requireRoles([Role.ADMIN]),
+    async (req, res) => {
+      const parsed = companiesSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Datos inválidos." });
+
+      const id = String(req.params.id);
+      const actual = await getMetaAdsApp(reqCompanyId(req), id);
+      if (!actual) return res.status(404).json({ message: "No encontrada." });
+
+      const r = await replaceMetaAdsAppCompanies(id, parsed.data.companyIds);
+      if (!r.ok) return res.status(400).json({ message: r.message });
+
+      // Si se quitó a sí mismo de la lista deja de verla; se devuelve lo que haya.
+      const actualizado = await getMetaAdsApp(reqCompanyId(req), id);
+      return res.json(actualizado ?? { id, removedSelf: true });
+    },
+  );
+
   app.delete(
     "/api/admin/meta-ads-apps/:id",
     authRequired,
+    companyRequired,
     requireRoles([Role.ADMIN]),
     async (req, res) => {
-      const ok = await deleteMetaAdsApp(String(req.params.id));
+      const ok = await deleteMetaAdsApp(reqCompanyId(req), String(req.params.id));
       if (!ok) return res.status(404).json({ message: "No encontrado." });
       return res.status(204).send();
     },
@@ -264,9 +303,10 @@ export function registerMetaAdsOptionsRoutes(app: express.Application) {
   app.get(
     "/api/meta-ads-apps/options",
     authRequired,
+    companyRequired,
     requirePermission("moduleCampanasMeta"),
-    async (_req, res) => {
-      const list = await listActiveMetaAdsAppOptions();
+    async (req, res) => {
+      const list = await listActiveMetaAdsAppOptions(reqCompanyId(req));
       return res.json(list.map((a) => ({ id: a.id, name: a.name, metaAppId: a.metaAppId })));
     },
   );

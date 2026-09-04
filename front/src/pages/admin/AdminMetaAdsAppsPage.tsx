@@ -9,6 +9,8 @@ import {
   Popconfirm,
   Space,
   Table,
+  Divider,
+  Select,
   Tag,
   Typography,
   message,
@@ -21,8 +23,10 @@ import {
   deleteMetaAdsApp,
   fetchMetaAdsApps,
   updateMetaAdsApp,
+  fetchCompanies,
+  setMetaAdsAppCompanies,
 } from "../../api";
-import type { MetaAdsApp } from "../../types";
+import type { Company, MetaAdsApp } from "../../types";
 
 const { Text } = Typography;
 
@@ -39,6 +43,9 @@ export function AdminMetaAdsAppsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MetaAdsApp | null>(null);
+  const [empresas, setEmpresas] = useState<Company[]>([]);
+  const [empresasElegidas, setEmpresasElegidas] = useState<string[]>([]);
+  const [guardandoEmpresas, setGuardandoEmpresas] = useState(false);
   const [form] = Form.useForm<FormValues>();
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
@@ -57,6 +64,37 @@ export function AdminMetaAdsAppsPage() {
       setLoading(false);
     }
   }, [selectedId]);
+
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setEmpresas(await fetchCompanies());
+      } catch {
+        message.error("No se pudieron cargar las empresas.");
+      }
+    })();
+  }, []);
+
+  // Al cambiar de app seleccionada, la lista vuelve a lo guardado.
+  useEffect(() => {
+    setEmpresasElegidas(selected?.companies.map((c) => c.id) ?? []);
+  }, [selected?.id, selected?.companies]);
+
+  const guardarEmpresas = useCallback(async () => {
+    if (!selected) return;
+    setGuardandoEmpresas(true);
+    try {
+      await setMetaAdsAppCompanies(selected.id, empresasElegidas);
+      message.success("Empresas actualizadas.");
+      await load();
+    } catch (e) {
+      const r = e as { response?: { data?: { message?: string } } };
+      message.error(r?.response?.data?.message ?? "No se pudo guardar.");
+    } finally {
+      setGuardandoEmpresas(false);
+    }
+  }, [selected, empresasElegidas, load]);
 
   useEffect(() => {
     void load();
@@ -134,6 +172,20 @@ export function AdminMetaAdsAppsPage() {
       ),
     },
     {
+      title: "Empresas",
+      key: "companies",
+      render: (_: unknown, row: MetaAdsApp) =>
+        row.companies.length === 0 ? (
+          <Tag color="red">Ninguna</Tag>
+        ) : (
+          <Space size={4} wrap>
+            {row.companies.map((c) => (
+              <Tag key={c.id}>{c.name}</Tag>
+            ))}
+          </Space>
+        ),
+    },
+    {
       title: "App ID",
       dataIndex: "metaAppId",
       key: "metaAppId",
@@ -205,6 +257,39 @@ export function AdminMetaAdsAppsPage() {
           <Button style={{ marginTop: 16 }} onClick={() => openEdit(selected)}>
             Editar
           </Button>
+
+          <Divider orientationMargin={0}>Empresas que pueden usarla</Divider>
+          <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            Las empresas que no estén aquí no verán esta app al importar campañas.
+          </Text>
+          <Space.Compact style={{ width: "100%", maxWidth: 620 }}>
+            <Select
+              mode="multiple"
+              allowClear={false}
+              style={{ width: "100%" }}
+              placeholder="Elige una o varias empresas"
+              value={empresasElegidas}
+              onChange={setEmpresasElegidas}
+              options={empresas.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <Button
+              type="primary"
+              loading={guardandoEmpresas}
+              disabled={
+                empresasElegidas.length === 0 ||
+                (empresasElegidas.length === selected.companies.length &&
+                  empresasElegidas.every((id) => selected.companies.some((c) => c.id === id)))
+              }
+              onClick={() => void guardarEmpresas()}
+            >
+              Guardar
+            </Button>
+          </Space.Compact>
+          {empresasElegidas.length === 0 ? (
+            <Text type="danger" style={{ display: "block", marginTop: 6, fontSize: 12 }}>
+              Tiene que quedar al menos una: si no, la app desaparece de todos los selectores.
+            </Text>
+          ) : null}
         </Card>
       ) : null}
 

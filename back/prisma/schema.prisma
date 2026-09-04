@@ -59,6 +59,7 @@ model Company {
   adMetrics                  AdMetric[]
   metaAdsSystemUsers         MetaAdsSystemUser[]
   metaAdsSystemUserAccess    MetaAdsSystemUserCompany[]
+  metaAdsAppAccess           MetaAdsAppCompany[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -632,9 +633,26 @@ model MetaAdsApp {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userAccess MetaAdsSystemUserAppAccess[]
+  companies  MetaAdsAppCompany[]
 
   @@index([isActive])
   @@map("meta_ads_apps")
+}
+
+/// Empresas que pueden usar esta app de Meta. Antes las apps eran globales: todas las
+/// empresas veían todas.
+model MetaAdsAppCompany {
+  id        String   @id @default(cuid())
+  appId     String   @map("app_id")
+  companyId String   @map("company_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  app     MetaAdsApp @relation(fields: [appId], references: [id], onDelete: Cascade)
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, companyId])
+  @@index([companyId])
+  @@map("meta_ads_app_companies")
 }
 
 /// Usuario del sistema Meta (sin token; tokens por app en el join). Por empresa.

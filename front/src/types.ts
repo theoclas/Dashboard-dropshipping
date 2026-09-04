@@ -570,6 +570,8 @@ export type MetaAdsApp = {
   metaAppId: string | null;
   notes: string | null;
   isActive: boolean;
+  /** Empresas que pueden usar esta app. */
+  companies: { id: string; name: string }[];
   createdAt: string;
   updatedAt: string;
 };
