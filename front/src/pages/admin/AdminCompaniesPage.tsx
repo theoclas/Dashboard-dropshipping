@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, Card, Drawer, Form, Input, Space, Table, Tooltip, Typography, message } from "antd";
+import { Button, Card, Drawer, Form, Input, Modal, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { BankOutlined, PlusOutlined } from "@ant-design/icons";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { api } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Company } from "../../types";
@@ -11,6 +13,8 @@ export function AdminCompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [form] = Form.useForm();
   const [manageCompany, setManageCompany] = useState<Company | null>(null);
+  // El alta va en modal: es una accion puntual y no merece ocupar la mitad de la pantalla.
+  const [crearAbierto, setCrearAbierto] = useState(false);
 
   const adminCompanyIds = useMemo(
     () => user?.companies.filter((m) => m.role === "ADMIN").map((m) => m.companyId) ?? [],
@@ -36,45 +40,76 @@ export function AdminCompaniesPage() {
       slug: values.slug.trim().toLowerCase().replace(/\s+/g, "-"),
     });
     form.resetFields();
+    setCrearAbierto(false);
     await load();
     message.success("Empresa creada.");
   }
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size="large">
-      <Typography.Title level={3} style={{ margin: 0 }}>
-        Empresas
-      </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-        Alta de empresas y listado. Puedes <strong>asignar y crear usuarios</strong> desde el botón «Usuarios» en cada
-        empresa donde seas ADMIN, o usar la vista centralizada en{" "}
-        <Link to="/app/admin/usuarios">Usuarios</Link>.
-      </Typography.Paragraph>
-      <Card title="Crear empresa">
-        <Form layout="inline" form={form} onFinish={createCompany}>
-          <Form.Item name="name" rules={[{ required: true }]}>
-            <Input placeholder='Nombre visible (ej. "J&D Tiendas online")' style={{ minWidth: 220 }} />
+      <AdminPageHeader
+        title="Empresas"
+        subtitle="Alta y listado. Los usuarios de cada empresa se gestionan desde el botón Usuarios de su fila, o en la pantalla Usuarios."
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCrearAbierto(true)}>
+            Crear empresa
+          </Button>
+        }
+      />
+
+      <Modal
+        title="Crear empresa"
+        open={crearAbierto}
+        onCancel={() => setCrearAbierto(false)}
+        footer={null}
+        destroyOnClose
+        width={520}
+      >
+        <Form layout="vertical" form={form} onFinish={createCompany}>
+          <Form.Item name="name" label="Nombre visible" rules={[{ required: true }]}>
+            <Input placeholder="J&D Tiendas online" />
           </Form.Item>
           <Form.Item
             name="slug"
-            rules={[{ required: true, pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: "Solo minúsculas, números y guiones." }]}
-            extra="Identificador único en URL/base de datos (sin espacios). Ej.: jd-tiendas-online"
+            label="Identificador"
+            rules={[
+              { required: true, pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: "Solo minúsculas, números y guiones." },
+            ]}
+            extra="Único en URL y base de datos, sin espacios."
           >
-            <Input placeholder="jd-tiendas-online" style={{ minWidth: 200 }} />
+            <Input placeholder="jd-tiendas-online" />
           </Form.Item>
           <Button htmlType="submit" type="primary">
             Crear
           </Button>
         </Form>
-      </Card>
-      <Card title="Empresas registradas">
+      </Modal>
+
+      <Card
+        title={
+          <Space>
+            <BankOutlined />
+            {`Empresas registradas (${companies.length})`}
+          </Space>
+        }
+      >
         <Table
           rowKey="id"
           dataSource={companies}
+          pagination={false}
           columns={[
             { title: "Nombre", dataIndex: "name" },
-            { title: "Slug", dataIndex: "slug" },
-            { title: "Activa", render: (row: Company) => (row.isActive ? "Sí" : "No") },
+            {
+              title: "Identificador",
+              dataIndex: "slug",
+              render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+            },
+            {
+              title: "Estado",
+              width: 110,
+              render: (row: Company) =>
+                row.isActive ? <Tag color="green">Activa</Tag> : <Tag>Inactiva</Tag>,
+            },
             {
               title: "Usuarios",
               key: "users",

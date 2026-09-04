@@ -21,6 +21,7 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { KeyOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import {
@@ -32,7 +33,7 @@ import {
 } from "../../api";
 import type { MetaAdsApp, MetaAdsSystemUser } from "../../types";
 
-const { Title, Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 type AppAccessFormRow = {
   appId: string;
@@ -255,17 +256,16 @@ export function AdminMetaAdsUsersPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div>
-        <Title level={3} style={{ margin: 0 }}>
-          Usuarios Meta Ads
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          Usuarios del sistema de Meta (como en Business Manager). Cada usuario puede tener varias{" "}
-          <Link to="/app/admin/meta-ads-apps">apps Meta</Link> con un token distinto. Se usan en{" "}
-          <strong>Campañas Meta → API Meta</strong>. Si no eliges app + usuario, se usa el par marcado como{" "}
-          <em>por defecto</em> o <code>API_Reportes_token</code> del <code>.env</code>.
-        </Paragraph>
-      </div>
+      <AdminPageHeader
+        title="Usuarios Meta Ads"
+        subtitle={
+          <>
+            Usuarios del sistema de Meta, como en Business Manager. Cada uno puede tener varias{" "}
+            <Link to="/app/admin/meta-ads-apps">apps Meta</Link> con su propio token. Si no eliges
+            app y usuario al importar, se usa el par marcado <em>por defecto</em>.
+          </>
+        }
+      />
 
       {activeApps.length === 0 ? (
         <Alert

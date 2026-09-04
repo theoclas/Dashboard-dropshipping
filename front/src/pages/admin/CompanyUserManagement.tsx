@@ -8,6 +8,7 @@ import {
   Flex,
   Form,
   Input,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -18,6 +19,8 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { UserAddOutlined, UsergroupAddOutlined } from "@ant-design/icons";
+import { ChangePasswordModal, type UsuarioParaClave } from "./ChangePasswordModal";
 import {
   addUserMembership,
   assignUserToCompany,
@@ -66,6 +69,11 @@ type Props = {
 };
 
 export function CompanyUserManagement({ companyId, heading, showAssignExisting = true }: Props) {
+  // Los formularios de alta viven en modales: tenerlos siempre desplegados encima de la
+  // tabla era lo que hacía que esta pantalla se leyera como un muro.
+  const [asignarAbierto, setAsignarAbierto] = useState(false);
+  const [crearAbierto, setCrearAbierto] = useState(false);
+  const [claveDe, setClaveDe] = useState<UsuarioParaClave | null>(null);
   const { user: authUser, refresh: refreshAuth } = useAuth();
   const [assignForm] = Form.useForm<{ userId: string; role: Role }>();
   const [createUserForm] = Form.useForm<{
@@ -258,12 +266,24 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
       {
         title: "Acciones",
         key: "act",
-        width: 132,
+        width: 210,
         align: "right",
         render: (_: unknown, row) => (
-          <Button type="link" size="small" style={{ padding: "0 4px" }} onClick={() => openPermissionsDrawer(row)}>
-            Rol, permisos y empresas
-          </Button>
+          <Space size={0} split={<Divider type="vertical" style={{ margin: 0 }} />}>
+            <Button type="link" size="small" style={{ padding: "0 6px" }} onClick={() => openPermissionsDrawer(row)}>
+              Rol y permisos
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: "0 6px" }}
+              onClick={() =>
+                setClaveDe({ id: row.userId, fullName: row.fullName, email: row.email })
+              }
+            >
+              Contraseña
+            </Button>
+          </Space>
         ),
       },
     ],
@@ -277,7 +297,14 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
       {heading ? <div>{heading}</div> : null}
 
       {showAssignExisting ? (
-        <Card title="Asignar usuario existente">
+        <Modal
+          title="Asignar usuario existente"
+          open={asignarAbierto}
+          onCancel={() => setAsignarAbierto(false)}
+          footer={null}
+          destroyOnClose
+          width={560}
+        >
           <Paragraph type="secondary">
             Busca entre las cuentas ya registradas en la plataforma y elige el rol en esta empresa. Si ya es miembro, se
             actualizará su rol.
@@ -338,10 +365,17 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
               Asignar a esta empresa
             </Button>
           </Form>
-        </Card>
+        </Modal>
       ) : null}
 
-      <Card title="Crear usuario nuevo">
+      <Modal
+        title="Crear usuario nuevo"
+        open={crearAbierto}
+        onCancel={() => setCrearAbierto(false)}
+        footer={null}
+        destroyOnClose
+        width={560}
+      >
         <Form
           form={createUserForm}
           layout="vertical"
@@ -383,12 +417,27 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
             Crear en esta empresa
           </Button>
         </Form>
-      </Card>
+      </Modal>
 
-      <Card title="Miembros, rol y permisos de operador" styles={{ body: { paddingTop: 12 } }}>
+      <Card
+        title="Miembros de la empresa"
+        styles={{ body: { paddingTop: 12 } }}
+        extra={
+          <Space>
+            {showAssignExisting ? (
+              <Button icon={<UsergroupAddOutlined />} onClick={() => setAsignarAbierto(true)}>
+                Asignar existente
+              </Button>
+            ) : null}
+            <Button type="primary" icon={<UserAddOutlined />} onClick={() => setCrearAbierto(true)}>
+              Crear usuario
+            </Button>
+          </Space>
+        }
+      >
         <Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          Usa <strong>Rol, permisos y empresas</strong> para el nivel en esta empresa, los permisos de operador y las
-          demás empresas a las que pertenece el usuario (incluido tú mismo).
+          <strong>Rol y permisos</strong> abre el nivel en esta empresa, los permisos de operador y las demás
+          empresas del usuario. <strong>Contraseña</strong> le asigna una nueva.
         </Paragraph>
         <div style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <Table<CompanyMemberRow>
@@ -405,6 +454,12 @@ export function CompanyUserManagement({ companyId, heading, showAssignExisting =
           />
         </div>
       </Card>
+
+      <ChangePasswordModal
+        open={claveDe !== null}
+        usuario={claveDe}
+        onClose={() => setClaveDe(null)}
+      />
 
       <Drawer
         title={editingMember ? `Usuario — ${editingMember.fullName}` : "Usuario"}

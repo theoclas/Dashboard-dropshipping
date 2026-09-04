@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   Button,
   Card,
@@ -15,6 +14,7 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { AppstoreOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   createMetaAdsApp,
@@ -24,7 +24,7 @@ import {
 } from "../../api";
 import type { MetaAdsApp } from "../../types";
 
-const { Title, Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 type FormValues = {
   name: string;
@@ -161,15 +161,10 @@ export function AdminMetaAdsAppsPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div>
-        <Title level={3} style={{ margin: 0 }}>
-          Apps Meta
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          Catálogo de aplicaciones de Meta Developers (ej. Allset Reportes). Asigna apps a usuarios del sistema en{" "}
-          <Link to="/app/admin/meta-ads-usuarios">Usuarios Meta Ads</Link>; cada par usuario + app tiene su propio token.
-        </Paragraph>
-      </div>
+      <AdminPageHeader
+        title="Apps Meta"
+        subtitle="Catálogo de aplicaciones de Meta Developers. Cada par usuario + app tiene su propio token; se asignan en Usuarios Meta Ads."
+      />
 
       <Card
         title="Aplicaciones"

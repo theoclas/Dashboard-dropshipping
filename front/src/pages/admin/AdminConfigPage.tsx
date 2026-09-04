@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminPageHeader } from "./AdminPageHeader";
 import {
   Button,
   Card,
@@ -12,7 +13,6 @@ import {
   Typography,
   message,
 } from "antd";
-import { Link } from "react-router-dom";
 import { fetchCompanies, patchCompanySettings, patchDashboardConfig } from "../../api";
 import { DropiRetirosPanel } from "../../components/DropiRetirosPanel";
 import { useAuth } from "../../contexts/AuthContext";
@@ -24,7 +24,7 @@ import {
 } from "../../dashboardVisibility";
 import type { Company } from "../../types";
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 const dashboardCardBodyScroll = {
   maxHeight: "min(560px, calc(100vh - 260px))" as const,
@@ -150,14 +150,10 @@ export function AdminConfigPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <Title level={3} style={{ margin: 0 }}>
-        Configuraciones especiales
-      </Title>
-      <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-        Qué tarjetas ves en el dashboard y datos de la empresa. Para usuarios y permisos usa{" "}
-        <Link to="/app/admin/usuarios">Usuarios</Link>; para altas de empresa,{" "}
-        <Link to="/app/admin/empresas">Empresas</Link>.
-      </Paragraph>
+      <AdminPageHeader
+        title="Configuraciones especiales"
+        subtitle="Qué tarjetas ves en el dashboard y los datos de la empresa."
+      />
 
       <Tabs
         activeKey={activeTab}

@@ -1,33 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Select, Space, Typography, message } from "antd";
+import { Alert, Button, Select, Space, message } from "antd";
+import { KeyOutlined } from "@ant-design/icons";
 import { fetchCompanies } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Company } from "../../types";
-import { AdminUserPasswordCard } from "./AdminUserPasswordCard";
+import { AdminPageHeader } from "./AdminPageHeader";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 import { CompanyUserManagement } from "./CompanyUserManagement";
-
-const { Title, Paragraph } = Typography;
 
 export function AdminUsersPage() {
   const { user } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [usersCompanyId, setUsersCompanyId] = useState(user?.activeCompany ?? "");
+  const [buscarClave, setBuscarClave] = useState(false);
 
   const adminCompanyIds = useMemo(
     () => user?.companies.filter((m) => m.role === "ADMIN").map((m) => m.companyId) ?? [],
     [user?.companies],
   );
 
-  const companyOptionsForAdmin = useMemo(() => {
-    return companies
-      .filter((c) => adminCompanyIds.includes(c.id))
-      .map((c) => ({ value: c.id, label: `${c.name} (${c.slug})` }));
-  }, [companies, adminCompanyIds]);
+  const companyOptionsForAdmin = useMemo(
+    () =>
+      companies
+        .filter((c) => adminCompanyIds.includes(c.id))
+        .map((c) => ({ value: c.id, label: c.name })),
+    [companies, adminCompanyIds],
+  );
 
   const loadCompanies = useCallback(async () => {
     try {
-      const list = await fetchCompanies();
-      setCompanies(list);
+      setCompanies(await fetchCompanies());
     } catch {
       message.error("No se pudieron cargar las empresas.");
     }
@@ -47,36 +49,41 @@ export function AdminUsersPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div>
-        <Title level={3} style={{ margin: 0 }}>
-          Usuarios
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          Crear cuentas, asignar usuarios existentes y gestionar en <strong>Rol, permisos y empresas</strong> el acceso a
-          cada empresa (incluido el tuyo). Solo puedes administrar empresas donde eres ADMIN.
-        </Paragraph>
-      </div>
+      <AdminPageHeader
+        title="Usuarios"
+        subtitle="Miembros, roles y permisos de cada empresa. Solo aparecen las empresas donde eres ADMIN."
+        extra={
+          <Space wrap>
+            <Select
+              style={{ minWidth: 240 }}
+              value={usersCompanyId || undefined}
+              options={companyOptionsForAdmin}
+              onChange={setUsersCompanyId}
+              placeholder="Elige una empresa"
+            />
+            <Button icon={<KeyOutlined />} onClick={() => setBuscarClave(true)}>
+              Contraseña de otro usuario
+            </Button>
+          </Space>
+        }
+      />
 
-      <Card title="Empresa de trabajo">
-        <Space wrap>
-          <Typography.Text strong>Empresa:</Typography.Text>
-          <Select
-            style={{ minWidth: 320 }}
-            value={usersCompanyId}
-            options={companyOptionsForAdmin}
-            onChange={(v) => setUsersCompanyId(v)}
-          />
-        </Space>
-        <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-          Solo aparecen empresas donde tu usuario es ADMIN. Los miembros y permisos son por empresa.
-        </Paragraph>
-      </Card>
+      {companyOptionsForAdmin.length === 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="No administras ninguna empresa"
+          description="Aun así puedes cambiarle la contraseña a un usuario con el botón de arriba."
+        />
+      ) : null}
 
       {usersCompanyId ? (
         <CompanyUserManagement key={usersCompanyId} companyId={usersCompanyId} showAssignExisting />
       ) : null}
 
-      <AdminUserPasswordCard />
+      {/* Sin usuario preseleccionado: el modal abre en modo búsqueda global, que es la
+          única vía para llegar a alguien de una empresa que no administras. */}
+      <ChangePasswordModal open={buscarClave} onClose={() => setBuscarClave(false)} />
     </Space>
   );
 }
