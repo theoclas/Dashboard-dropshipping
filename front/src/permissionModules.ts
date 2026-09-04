@@ -13,7 +13,6 @@ export type PermissionMenuModuleId =
   | "cpaExperimental"
   | "campanasMeta"
   | "anuncios"
-  | "importUnificado"
   | "cuentasPublicitarias"
   | "gastoOperacional"
   | "salidasCartera"
@@ -151,18 +150,6 @@ export const PERMISSION_MENU_MODULES: PermissionMenuModule[] = [
     actions: [{ key: "actionImportarAnuncios" }],
     accessIncludes: [
       "Ver la jerarquía cuenta → campaña → conjunto → anuncio con métricas diarias (lectura)",
-    ],
-  },
-  {
-    id: "importUnificado",
-    label: "Import unificado",
-    moduleKeys: ["moduleImportUnificado"],
-    actions: [
-      { key: "actionImportUnificadoApi" },
-      { key: "actionImportUnificadoArchivo" },
-    ],
-    accessIncludes: [
-      "Ver el alcance, la vista previa y la simulación del import sin escribir nada",
     ],
   },
   {

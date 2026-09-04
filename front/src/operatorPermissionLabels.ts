@@ -14,15 +14,12 @@ export const OPERATOR_PERMISSION_LABELS: Record<OperatorPermissionKey, string> =
   moduleCatalogoProductos: "Catálogo de productos",
   moduleCampanasMeta: "Campañas Meta",
   moduleAnuncios: "Anuncios",
-  moduleImportUnificado: "Import unificado (pruebas)",
   moduleCuentasPublicitarias: "Cuentas publicitarias",
   moduleGastoOperacional: "Gasto operacional",
   actionCatalogoProductosCrud: "Catálogo: crear/editar productos",
   actionCampanasMetaCrud: "Campañas: crear/editar/eliminar",
   actionImportarAdvertisingCampaigns: "Campañas: importar Excel",
   actionImportarAnuncios: "Anuncios: importar desde API Meta",
-  actionImportUnificadoApi: "Import unificado: traer desde API Meta",
-  actionImportUnificadoArchivo: "Import unificado: importar Excel/CSV",
   actionEditarMetricasAdvertising: "Campañas: editar métricas",
   actionCuentasPublicitariasCrud: "Cuentas publicitarias: alta/edición",
   actionGastoOperacionalCrud: "Gastos: alta/edición/borrar",
@@ -43,8 +40,6 @@ export const OPERATOR_ACTION_LABELS: Partial<Record<OperatorPermissionKey, strin
   actionCampanasMetaCrud: "Crear/editar/eliminar campañas",
   actionImportarAdvertisingCampaigns: "Importar Excel de campañas y métricas",
   actionImportarAnuncios: "Traer anuncios y métricas desde la API de Meta",
-  actionImportUnificadoApi: "Traer campañas y anuncios en una sola pasada desde Meta",
-  actionImportUnificadoArchivo: "Importar métricas desde archivo Excel o CSV",
   actionEditarMetricasAdvertising: "Editar y eliminar métricas de campañas",
   actionCuentasPublicitariasCrud: "Alta y edición de cuentas publicitarias",
   actionGastoOperacionalCrud: "Alta, edición y borrado de gastos",
@@ -67,10 +62,6 @@ export const OPERATOR_ACTION_HINTS: Partial<Record<OperatorPermissionKey, string
     "Trae la jerarquía cuenta → campaña → conjunto → anuncio con métricas diarias. También actualiza el gasto por campaña que usa CPA.",
   actionCuentasPublicitariasCrud: "También permite crear cuentas desde el flujo de importación de campañas.",
   actionCampanasMetaCrud: "En Cuentas publicitarias permite altas si no tienes el permiso de cuentas.",
-  actionImportUnificadoApi:
-    "Una sola consulta trae los tres niveles y vincula las campañas al producto. Actualiza el gasto que usa CPA.",
-  actionImportUnificadoArchivo:
-    "Si se desactiva, la opción de archivo desaparece del módulo y solo queda el import desde la API de Meta.",
 };
 
 export function actionPermissionLabel(key: OperatorPermissionKey): string {

@@ -28,7 +28,6 @@ function defaultLectorPermissions(): Record<OperatorPermissionKey, boolean> {
   r.moduleCatalogoProductos = true;
   r.moduleCampanasMeta = true;
   r.moduleAnuncios = true;
-  r.moduleImportUnificado = true;
   r.moduleCuentasPublicitarias = true;
   r.moduleGastoOperacional = true;
   return r;
@@ -64,15 +63,6 @@ export function mergeOperatorPermissions(
   }
   if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportarAnuncios")) {
     merged.actionImportarAnuncios = merged.actionImportarAdvertisingCampaigns;
-  }
-  if (!Object.prototype.hasOwnProperty.call(overrides, "moduleImportUnificado")) {
-    merged.moduleImportUnificado = merged.moduleCampanasMeta && merged.moduleAnuncios;
-  }
-  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportUnificadoApi")) {
-    merged.actionImportUnificadoApi = merged.actionImportarAnuncios;
-  }
-  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportUnificadoArchivo")) {
-    merged.actionImportUnificadoArchivo = merged.actionImportarAdvertisingCampaigns;
   }
   return merged;
 }

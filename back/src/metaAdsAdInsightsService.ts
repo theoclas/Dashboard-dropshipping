@@ -40,31 +40,6 @@ const AD_INSIGHT_FIELDS = [
 ].join(",");
 
 /**
- * Campos de la pasada de nivel campaña. Son exactamente los que lee
- * `mapInsightToParsedRow`, para que el snapshot salga idéntico al del módulo Campañas Meta.
- */
-const CAMPAIGN_INSIGHT_FIELDS = [
-  "account_id",
-  "account_name",
-  "campaign_id",
-  "campaign_name",
-  "spend",
-  "actions",
-  "action_values",
-  "cost_per_action_type",
-  "purchase_roas",
-  "impressions",
-  "reach",
-  "clicks",
-  "inline_link_clicks",
-  "ctr",
-  "cpc",
-  "cpm",
-  "date_start",
-  "date_stop",
-].join(",");
-
-/**
  * Ventanas de atribución fijas. Sin esto Meta usa el default de la cuenta, que puede cambiar,
  * y entonces comparar un día contra otro deja de ser válido.
  */
@@ -185,74 +160,6 @@ export async function fetchAdInsightsForAccountRange(
   }
   if (rows.length === 0) {
     errors.push(`Sin filas de anuncios para ${actId} entre ${v.desde} y ${v.hasta}.`);
-  }
-
-  return { rows, desde: v.desde, hasta: v.hasta, accountId: actId, pagesFetched, truncated, errors };
-}
-
-/**
- * Pasada compañera a nivel campaña, con `time_increment=1`.
- *
- * Dos cosas que solo se consiguen aquí:
- * - el **alcance real** (deduplicado por Meta), que no se puede sumar entre anuncios;
- * - las conversiones con la **ventana de atribución de la cuenta**, que es la que lee
- *   hoy el CPA experimental. La pasada de anuncios usa `7d_click/1d_view`, así que sin
- *   esta llamada las conversaciones cambiarían de definición.
- *
- * Cuesta una sola petición por cuenta y rango: el import de campañas actual hace una por
- * día únicamente porque no usa `time_increment`.
- *
- * A propósito **no** se manda `action_attribution_windows`: así Meta aplica el ajuste de
- * la cuenta y el resultado es idéntico al del módulo Campañas Meta.
- */
-export async function fetchCampaignInsightsForAccountRange(
-  metaAccountId: string,
-  opts: {
-    companyId: string;
-    desde: string;
-    hasta: string;
-    metaAdsAppId?: string | null;
-    metaAdsSystemUserId?: string | null;
-  },
-): Promise<FetchAdInsightsResult> {
-  const v = validateAdApiDateRange(opts.desde, opts.hasta);
-  if (!v.ok) throw new Error(v.message);
-
-  const actId = toMetaActAccountId(metaAccountId);
-  const accessToken = await resolveMetaAccessToken({
-    companyId: opts.companyId,
-    metaAdsAppId: opts.metaAdsAppId,
-    metaAdsSystemUserId: opts.metaAdsSystemUserId,
-  });
-
-  const errors: string[] = [];
-  const rows: MetaInsightApiRow[] = [];
-
-  const base = `https://graph.facebook.com/${metaApiVersion()}/${actId}/insights`;
-  const params = new URLSearchParams({
-    level: "campaign",
-    time_range: JSON.stringify({ since: v.desde, until: v.hasta }),
-    time_increment: "1",
-    fields: CAMPAIGN_INSIGHT_FIELDS,
-    limit: "500",
-  });
-
-  let url: string | null = `${base}?${params.toString()}`;
-  let pagesFetched = 0;
-
-  while (url && pagesFetched < MAX_PAGES) {
-    pagesFetched += 1;
-    const page = await fetchJsonWithRetry(url, accessToken);
-    rows.push(...(page.data ?? []));
-    url = page.paging?.next ?? null;
-  }
-
-  const truncated = url !== null;
-  if (truncated) {
-    errors.push(
-      `La cuenta ${actId} devolvió más de ${MAX_PAGES} páginas de nivel campaña entre ` +
-        `${v.desde} y ${v.hasta}; los datos están incompletos. Reduce el rango.`,
-    );
   }
 
   return { rows, desde: v.desde, hasta: v.hasta, accountId: actId, pagesFetched, truncated, errors };

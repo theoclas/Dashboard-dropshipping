@@ -14,15 +14,12 @@ export const OPERATOR_PERMISSION_KEYS = [
   "moduleCatalogoProductos",
   "moduleCampanasMeta",
   "moduleAnuncios",
-  "moduleImportUnificado",
   "moduleCuentasPublicitarias",
   "moduleGastoOperacional",
   "actionCatalogoProductosCrud",
   "actionCampanasMetaCrud",
   "actionImportarAdvertisingCampaigns",
   "actionImportarAnuncios",
-  "actionImportUnificadoApi",
-  "actionImportUnificadoArchivo",
   "actionEditarMetricasAdvertising",
   "actionCuentasPublicitariasCrud",
   "actionGastoOperacionalCrud",
@@ -65,7 +62,6 @@ export function defaultLectorPermissions(): Record<OperatorPermissionKey, boolea
   r.moduleCatalogoProductos = true;
   r.moduleCampanasMeta = true;
   r.moduleAnuncios = true;
-  r.moduleImportUnificado = true;
   r.moduleCuentasPublicitarias = true;
   r.moduleGastoOperacional = true;
   return r;
@@ -104,19 +100,6 @@ export function mergeOperatorPermissions(
   }
   if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportarAnuncios")) {
     merged.actionImportarAnuncios = merged.actionImportarAdvertisingCampaigns;
-  }
-  // Compat: el módulo de Import unificado hereda de Campañas Meta y de las dos acciones
-  // de import que ya existían, para que nadie lo gane por el hecho de crearlo.
-  if (!Object.prototype.hasOwnProperty.call(overrides, "moduleImportUnificado")) {
-    // Hereda de AMBOS: el módulo nuevo hace el trabajo de los dos, así que a quien le
-    // hayan denegado cualquiera de ellos no se le abre por la puerta de atrás.
-    merged.moduleImportUnificado = merged.moduleCampanasMeta && merged.moduleAnuncios;
-  }
-  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportUnificadoApi")) {
-    merged.actionImportUnificadoApi = merged.actionImportarAnuncios;
-  }
-  if (!Object.prototype.hasOwnProperty.call(overrides, "actionImportUnificadoArchivo")) {
-    merged.actionImportUnificadoArchivo = merged.actionImportarAdvertisingCampaigns;
   }
   return merged;
 }

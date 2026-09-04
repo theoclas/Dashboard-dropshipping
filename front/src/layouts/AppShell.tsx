@@ -20,10 +20,8 @@ import {
   ApiOutlined,
   BankOutlined,
   PictureOutlined,
-  CloudDownloadOutlined,
   DatabaseOutlined,
   DollarOutlined,
-  PartitionOutlined,
   RocketOutlined,
   AppstoreOutlined,
   SettingOutlined,
@@ -43,7 +41,6 @@ type AppMenuItem = NonNullable<MenuProps["items"]>[number];
 const SUBMENU_OPERACION = "submenu-operacion";
 const SUBMENU_DATOS = "submenu-datos";
 const SUBMENU_MARKETING = "submenu-marketing";
-const SUBMENU_PROCESO_INDIVIDUAL = "submenu-proceso-individual";
 const SUBMENU_FINANZAS = "submenu-finanzas";
 const SUBMENU_ANALISIS = "submenu-analisis";
 const SUBMENU_CONFIG = "submenu-config";
@@ -91,14 +88,10 @@ function openSubmenusForPath(pathname: string): string[] {
   if (
     pathname.startsWith("/app/campanas-meta") ||
     pathname.startsWith("/app/anuncios") ||
-    pathname.startsWith("/app/import-unificado") ||
     pathname.startsWith("/app/cuentas-publicitarias") ||
     pathname.startsWith("/app/cpa")
   ) {
     keys.push(SUBMENU_MARKETING);
-  }
-  if (pathname.startsWith("/app/campanas-meta") || pathname.startsWith("/app/anuncios")) {
-    keys.push(SUBMENU_PROCESO_INDIVIDUAL);
   }
   if (
     pathname.startsWith("/app/gasto-operacional") ||
@@ -127,7 +120,6 @@ function readStoredOpenKeys(): string[] | null {
 const pathToKey = (pathname: string): string => {
   if (pathname.startsWith("/app/campanas-meta")) return "/app/campanas-meta";
   if (pathname.startsWith("/app/anuncios")) return "/app/anuncios";
-  if (pathname.startsWith("/app/import-unificado")) return "/app/import-unificado";
   if (pathname.startsWith("/app/cuentas-publicitarias")) return "/app/cuentas-publicitarias";
   if (pathname.startsWith("/app/gasto-operacional")) return "/app/gasto-operacional";
   if (pathname.startsWith("/app/salidas-cartera")) return "/app/salidas-cartera";
@@ -201,7 +193,6 @@ export function AppShell() {
   const canCpa = usePermission("moduleCpa");
   const canCampanas = usePermission("moduleCampanasMeta");
   const canAnuncios = usePermission("moduleAnuncios");
-  const canImportUnificado = usePermission("moduleImportUnificado");
   const canCuentas = usePermission("moduleCuentasPublicitarias");
   const canGastoOp = usePermission("moduleGastoOperacional");
   const canConfig = usePermission("moduleConfiguracion");
@@ -266,36 +257,18 @@ export function AppShell() {
     ]);
 
     pushSubMenu(items, SUBMENU_MARKETING, "Marketing", <RocketOutlined />, [
-      // El unificado va primero y fuera del grupo: es el camino preferente.
-      canImportUnificado
+      canCampanas
         ? {
-            key: "/app/import-unificado",
-            icon: <CloudDownloadOutlined />,
-            label: <Link to="/app/import-unificado">Import unificado</Link>,
+            key: "/app/campanas-meta",
+            icon: <FundProjectionScreenOutlined />,
+            label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
           }
         : null,
-      // Los dos que el unificado sustituye, agrupados mientras convivan.
-      canCampanas || canAnuncios
+      canAnuncios
         ? {
-            key: SUBMENU_PROCESO_INDIVIDUAL,
-            icon: <PartitionOutlined />,
-            label: "Proceso individual",
-            children: [
-              canCampanas
-                ? {
-                    key: "/app/campanas-meta",
-                    icon: <FundProjectionScreenOutlined />,
-                    label: <Link to="/app/campanas-meta">Campañas Meta</Link>,
-                  }
-                : null,
-              canAnuncios
-                ? {
-                    key: "/app/anuncios",
-                    icon: <PictureOutlined />,
-                    label: <Link to="/app/anuncios">Anuncios</Link>,
-                  }
-                : null,
-            ].filter(Boolean) as AppMenuItem[],
+            key: "/app/anuncios",
+            icon: <PictureOutlined />,
+            label: <Link to="/app/anuncios">Anuncios</Link>,
           }
         : null,
       canCuentas
@@ -415,7 +388,6 @@ export function AppShell() {
     canCpa,
     canCampanas,
     canAnuncios,
-    canImportUnificado,
     canCuentas,
     canGastoOp,
     canConfig,

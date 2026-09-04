@@ -11,7 +11,6 @@ const ROUTE_BY_PERMISSION: { perm: OperatorPermissionKey; path: string }[] = [
   { perm: "moduleCpa", path: "/app/cpa-experimental" },
   { perm: "moduleCampanasMeta", path: "/app/campanas-meta" },
   { perm: "moduleAnuncios", path: "/app/anuncios" },
-  { perm: "moduleImportUnificado", path: "/app/import-unificado" },
   { perm: "moduleCuentasPublicitarias", path: "/app/cuentas-publicitarias" },
   { perm: "moduleGastoOperacional", path: "/app/gasto-operacional" },
   { perm: "moduleConfiguracion", path: "/app/configuracion" },
