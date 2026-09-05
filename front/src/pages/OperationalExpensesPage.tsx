@@ -37,6 +37,7 @@ import {
 import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDelete";
 import { useAuth } from "../contexts/AuthContext";
 import { formatDateOnly } from "../utils/formatDateOnly";
+import { fmtInteger } from "../utils/format";
 import { metaApiAccountAccessHint } from "../utils/metaApiErrorHint";
 import { usePermission } from "../hooks/usePermission";
 import type { AdvertisingAccount, MetaAdsAppOption, MetaAdsSystemUserOption, MetaBillingApiImportResult, OperationalExpenseRow } from "../types";
@@ -362,7 +363,7 @@ export function OperationalExpensesPage() {
         key: "monto",
         align: "right" as const,
         sorter: (a, b) => (a.monto ?? 0) - (b.monto ?? 0),
-        render: (v: number) => (v != null ? v.toFixed(2) : "—"),
+        render: (v: number) => (v != null ? `$${fmtInteger(Math.round(Number(v)))}` : "—"),
       },
       {
         title: "Cuenta Meta",
@@ -411,7 +412,7 @@ export function OperationalExpensesPage() {
                   onClick={() => {
                     confirmWipePasswordDelete({
                       title: "¿Eliminar este gasto?",
-                      description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${Number(r.monto).toLocaleString("es-CO")}`,
+                      description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${fmtInteger(Math.round(Number(r.monto)))}`,
                       onDelete: async (password) => {
                         await deleteOperationalExpense(r.id, password);
                         message.success("Eliminado.");
@@ -616,7 +617,8 @@ export function OperationalExpensesPage() {
                           title: "Monto",
                           dataIndex: "amount",
                           align: "right" as const,
-                          render: (v: number | null) => (v != null ? v.toFixed(2) : "—"),
+                          render: (v: number | null) =>
+                            v != null ? `$${fmtInteger(Math.round(Number(v)))}` : "—",
                         },
                         {
                           title: "Tipo",

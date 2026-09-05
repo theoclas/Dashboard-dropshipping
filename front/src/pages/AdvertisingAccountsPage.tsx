@@ -29,13 +29,10 @@ import { confirmWipePasswordDelete } from "../components/confirmWipePasswordDele
 import { ProductMetaMappingPanel } from "../components/ProductMetaMappingPanel";
 import { usePermission } from "../hooks/usePermission";
 import { formatDateOnly } from "../utils/formatDateOnly";
+import { fmtInteger } from "../utils/format";
 import type { AdvertisingAccountWithStats, CatalogProduct, OperationalExpenseRow } from "../types";
 
 const { Title, Text } = Typography;
-
-function fmtMoney(n: number): string {
-  return n.toLocaleString("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 export function AdvertisingAccountsPage() {
   const { token } = theme.useToken();
@@ -186,7 +183,7 @@ export function AdvertisingAccountsPage() {
       key: "monto",
       width: 120,
       align: "right",
-      render: (v: number) => `$${fmtMoney(v)}`,
+      render: (v: number) => `$${fmtInteger(Math.round(Number(v)))}`,
     },
     {
       title: "Estado",
@@ -211,7 +208,7 @@ export function AdvertisingAccountsPage() {
                   e.stopPropagation();
                   confirmWipePasswordDelete({
                     title: "¿Eliminar este gasto?",
-                    description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${fmtMoney(r.monto)}`,
+                    description: `${formatDateOnly(r.fecha)} — ${r.concepto} — $${fmtInteger(Math.round(Number(r.monto)))}`,
                     onDelete: async (password) => {
                       await deleteOperationalExpense(r.id, password);
                       message.success("Eliminado.");
@@ -410,12 +407,12 @@ export function AdvertisingAccountsPage() {
           <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
             <Col xs={24} sm={8}>
               <Card size="small" style={{ background: token.colorFillAlter }}>
-                <Statistic title="Total registrado (gasto)" value={summary.totalGastado} prefix="$" formatter={(v) => fmtMoney(Number(v))} />
+                <Statistic title="Total registrado (gasto)" value={summary.totalGastado} prefix="$" formatter={(v) => fmtInteger(Math.round(Number(v)))} />
               </Card>
             </Col>
             <Col xs={24} sm={8}>
               <Card size="small" style={{ background: token.colorFillAlter }}>
-                <Statistic title="Pagado" value={summary.totalPagado} prefix="$" valueStyle={{ color: token.colorSuccess }} formatter={(v) => fmtMoney(Number(v))} />
+                <Statistic title="Pagado" value={summary.totalPagado} prefix="$" valueStyle={{ color: token.colorSuccess }} formatter={(v) => fmtInteger(Math.round(Number(v)))} />
               </Card>
             </Col>
             <Col xs={24} sm={8}>
@@ -425,7 +422,7 @@ export function AdvertisingAccountsPage() {
                   value={summary.pendientePorPagar}
                   prefix="$"
                   valueStyle={{ color: summary.pendientePorPagar > 0 ? token.colorWarning : undefined }}
-                  formatter={(v) => fmtMoney(Number(v))}
+                  formatter={(v) => fmtInteger(Math.round(Number(v)))}
                 />
               </Card>
             </Col>
