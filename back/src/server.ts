@@ -27,6 +27,7 @@ import { mergeOperatorPermissions } from "./operatorPermissions";
 import { registerBusinessModules } from "./registerBusinessModules";
 import { registerAdsModule } from "./registerAdsModule";
 import { registerAgentRoutes } from "./registerAgentRoutes";
+import { registerServiceTokenRoutes } from "./registerServiceTokenRoutes";
 import {
   registerAdminMetaAdsRoutes,
   registerMetaAdsOptionsRoutes,
@@ -2126,6 +2127,7 @@ registerMetaAdsOptionsRoutes(app);
 registerBusinessModules(app);
 registerAdsModule(app);
 registerAgentRoutes(app);
+registerServiceTokenRoutes(app);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

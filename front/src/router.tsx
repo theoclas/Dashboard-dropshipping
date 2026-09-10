@@ -20,6 +20,7 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminConfigPage } from "./pages/admin/AdminConfigPage";
 import { AdminMetaAdsAppsPage } from "./pages/admin/AdminMetaAdsAppsPage";
 import { AdminMetaAdsUsersPage } from "./pages/admin/AdminMetaAdsUsersPage";
+import { AdminServiceTokensPage } from "./pages/admin/AdminServiceTokensPage";
 import { CompaniesPage } from "./pages/CompaniesPage";
 import { LogisticsPage } from "./pages/LogisticsPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
@@ -206,6 +207,7 @@ export function AppRoutes() {
           <Route path="usuarios" element={<AdminUsersPage />} />
           <Route path="meta-ads-apps" element={<AdminMetaAdsAppsPage />} />
           <Route path="meta-ads-usuarios" element={<AdminMetaAdsUsersPage />} />
+          <Route path="credenciales" element={<AdminServiceTokensPage />} />
           <Route path="configuracion" element={<AdminConfigPage />} />
         </Route>
       </Route>

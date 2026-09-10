@@ -60,6 +60,7 @@ model Company {
   metaAdsSystemUsers         MetaAdsSystemUser[]
   metaAdsSystemUserAccess    MetaAdsSystemUserCompany[]
   metaAdsAppAccess           MetaAdsAppCompany[]
+  serviceTokens              ServiceToken[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -720,4 +721,35 @@ enum Role {
   ADMIN
   OPERADOR
   LECTOR
+}
+
+/// Credencial de servicio para la API de solo lectura del agente (`/api/agent/*`).
+///
+/// No caduca —a diferencia del JWT de login, que dura 8 horas— pero **es revocable**, que
+/// es lo que la hace manejable: si se filtra, se marca `revokedAt` y deja de servir en el
+/// acto. El token en claro se muestra una sola vez, al crearlo; aquí solo vive su SHA-256.
+///
+/// El alcance NO depende de lo que diga el token: `middleware.ts` rechaza cualquier
+/// petición que no sea GET a `/api/agent/*`, así que esta credencial es incapaz de
+/// escribir aunque alguien manipule permisos.
+model ServiceToken {
+  id          String    @id @default(cuid())
+  /// Para qué es, en palabras. Ej. "Agente IA de análisis".
+  name        String    @db.VarChar(120)
+  /// SHA-256 en hex del token completo. Nunca se guarda el token en claro.
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
+  /// Primeros caracteres del token, para reconocerlo en la lista sin exponerlo.
+  prefix      String    @map("prefix") @db.VarChar(20)
+  companyId   String    @map("company_id")
+  /// Quién lo creó. Se conserva el token aunque el usuario se borre.
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  /// Última vez que se usó, con precisión de ~5 minutos (no se escribe en cada petición).
+  lastUsedAt  DateTime? @map("last_used_at")
+  /// Marcado = revocado. No se borra la fila, para conservar el rastro.
+  revokedAt   DateTime? @map("revoked_at")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("service_tokens")
 }

@@ -4,6 +4,13 @@ import type { PrismaClient } from "@prisma/client";
 import { Role } from "@prisma/client";
 import { mergeOperatorPermissions } from "./operatorPermissions";
 import type { OperatorPermissionKey } from "./operatorPermissions";
+import {
+  hashServiceToken,
+  isAgentReadOnlyRequest,
+  isServiceToken,
+  serviceTokenPermissions,
+  shouldRefreshLastUsed,
+} from "./serviceTokens";
 import type { JwtPayload } from "./types";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "change_me";
@@ -22,6 +29,11 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
 
   if (!token) {
     return res.status(401).json({ message: "Token requerido." });
+  }
+
+  // Credencial de servicio: no caduca, pero solo sirve para leer `/api/agent/*`.
+  if (isServiceToken(token)) {
+    return authenticateServiceToken(token, req, res, next);
   }
 
   try {
@@ -59,6 +71,68 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
   } catch {
     return res.status(401).json({ message: "Token inválido." });
   }
+}
+
+/**
+ * Autentica una credencial de servicio.
+ *
+ * El orden importa: primero se valida la credencial (una inválida es 401, no 403) y solo
+ * después se aplica la restricción de alcance. Así los códigos de respuesta significan lo
+ * que dicen y no se filtra qué rutas existen.
+ *
+ * La restricción **no depende de los permisos**: aunque la credencial trajera el mapa
+ * completo, cualquier método distinto de GET o cualquier ruta fuera de `/api/agent/` se
+ * rechaza aquí. Es lo que hace que sea estructuralmente incapaz de escribir.
+ */
+async function authenticateServiceToken(
+  token: string,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!prismaRef) {
+    return res.status(500).json({ message: "Autenticación no inicializada." });
+  }
+
+  const record = await prismaRef.serviceToken.findUnique({
+    where: { tokenHash: hashServiceToken(token) },
+  });
+
+  if (!record) {
+    return res.status(401).json({ message: "Token inválido." });
+  }
+  if (record.revokedAt) {
+    return res.status(401).json({ message: "Esta credencial fue revocada." });
+  }
+
+  // El candado. No se puede abrir desde el token.
+  if (!isAgentReadOnlyRequest(req.method, req.originalUrl)) {
+    return res.status(403).json({
+      message:
+        "Esta credencial es de solo lectura: únicamente admite GET sobre /api/agent/.",
+    });
+  }
+
+  // Rastro de uso, sin castigar cada consulta con un UPDATE.
+  const now = new Date();
+  if (shouldRefreshLastUsed(record.lastUsedAt, now)) {
+    prismaRef.serviceToken
+      .update({ where: { id: record.id }, data: { lastUsedAt: now } })
+      .catch(() => {
+        /* El rastro es informativo: si falla, la consulta debe seguir su curso. */
+      });
+  }
+
+  (req as Request & { user?: JwtPayload }).user = {
+    userId: `service:${record.id}`,
+    username: record.name,
+    email: "",
+    companyId: record.companyId,
+    role: Role.LECTOR,
+    operatorPerms: serviceTokenPermissions(),
+    serviceTokenId: record.id,
+  };
+  return next();
 }
 
 export function companyRequired(req: Request, res: Response, next: NextFunction) {

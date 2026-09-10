@@ -7,6 +7,7 @@ import {
   AppstoreOutlined,
   BankOutlined,
   KeyOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -17,6 +18,7 @@ function adminSectionKey(pathname: string): string {
   if (pathname.includes("/app/admin/meta-ads-apps")) return "meta-ads-apps";
   if (pathname.includes("/app/admin/meta-ads-usuarios")) return "meta-ads-usuarios";
   if (pathname.includes("/app/admin/usuarios")) return "usuarios";
+  if (pathname.includes("/app/admin/credenciales")) return "credenciales";
   if (pathname.includes("/app/admin/configuracion")) return "configuracion";
   return "empresas";
 }
@@ -49,6 +51,11 @@ const menuItems: MenuProps["items"] = [
         label: <Link to="/app/admin/meta-ads-usuarios">Usuarios Meta Ads</Link>,
       },
     ],
+  },
+  {
+    key: "credenciales",
+    icon: <SafetyCertificateOutlined />,
+    label: <Link to="/app/admin/credenciales">Credenciales de servicio</Link>,
   },
   {
     key: "configuracion",

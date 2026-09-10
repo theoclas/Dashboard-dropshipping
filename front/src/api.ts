@@ -1161,3 +1161,41 @@ export async function fetchOrderFacets(params: Record<string, unknown>): Promise
   const { data } = await api.get<OrderFacet[]>("/orders/facets", { params });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Credenciales de servicio (API de solo lectura del agente)
+// ---------------------------------------------------------------------------
+
+export type ServiceToken = {
+  id: string;
+  name: string;
+  /** Primeros caracteres del token. Lo demás no se puede recuperar. */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+/** Respuesta de creación: la única vez que viaja el token en claro. */
+export type ServiceTokenCreated = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  token: string;
+  aviso: string;
+};
+
+export async function fetchServiceTokens(): Promise<ServiceToken[]> {
+  const { data } = await api.get<{ items: ServiceToken[] }>("/service-tokens");
+  return data.items;
+}
+
+export async function createServiceToken(name: string): Promise<ServiceTokenCreated> {
+  const { data } = await api.post<ServiceTokenCreated>("/service-tokens", { name });
+  return data;
+}
+
+export async function revokeServiceToken(id: string): Promise<void> {
+  await api.post(`/service-tokens/${id}/revoke`);
+}
