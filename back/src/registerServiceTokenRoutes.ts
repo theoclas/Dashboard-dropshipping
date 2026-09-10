@@ -9,9 +9,11 @@ import type { JwtPayload } from "./types";
 /**
  * Administración de credenciales de servicio (`/api/agent/*` de solo lectura).
  *
- * Solo ADMIN. El token en claro se devuelve **una única vez**, al crearlo: después solo
- * queda su hash, así que ni esta API ni la base pueden volver a mostrarlo. Si se pierde,
- * se revoca y se crea otro.
+ * Solo ADMIN, y solo de la empresa activa: una credencial nace atada a una empresa y no
+ * puede consultar los datos de otra.
+ *
+ * El token **no viaja en el listado**. Se pide con `GET /:id/reveal`, para que abrir la
+ * pantalla no exponga el secreto y cada consulta deje rastro de quién lo miró.
  *
  * Revocar no borra la fila: deja el rastro de cuándo existió y cuándo se usó por última vez.
  */
@@ -61,6 +63,7 @@ export function registerServiceTokenRoutes(app: express.Express): void {
           items: rows.map(({ token, ...r }) => ({ ...r, puedeVerse: token !== null })),
         });
       } catch (e) {
+        console.error("[service-token] fallo al listar:", e);
         return res.status(500).json({ message: "No se pudieron cargar las credenciales." });
       }
     },
@@ -102,6 +105,7 @@ export function registerServiceTokenRoutes(app: express.Express): void {
 
         return res.status(201).json({ ...row, token });
       } catch (e) {
+        console.error("[service-token] fallo al crear:", e);
         return res.status(500).json({ message: "No se pudo crear la credencial." });
       }
     },
@@ -138,6 +142,7 @@ export function registerServiceTokenRoutes(app: express.Express): void {
         console.log(`[service-token] ${u.username} vio el token ${row.id} (${row.prefix}…)`);
         return res.json({ id: row.id, token: row.token, revocada: row.revokedAt !== null });
       } catch (e) {
+        console.error("[service-token] fallo al revelar:", e);
         return res.status(500).json({ message: "No se pudo leer la credencial." });
       }
     },
@@ -169,6 +174,7 @@ export function registerServiceTokenRoutes(app: express.Express): void {
         console.log(`[service-token] revocada ${id} por ${u.username}`);
         return res.json(updated);
       } catch (e) {
+        console.error("[service-token] fallo al revocar:", e);
         return res.status(500).json({ message: "No se pudo revocar la credencial." });
       }
     },
