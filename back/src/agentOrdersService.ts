@@ -31,7 +31,10 @@ export type OrdersBreakdownRow = {
   /** venta − flete − costo de proveedor − costo de las devoluciones. Sin publicidad. */
   margenBruto: number;
   margenPorPedido: number | null;
-  /** Mediana de días entre el pedido y su último movimiento, solo de los ya resueltos. */
+  /**
+   * Mediana de días de tránsito: del pedido hasta su último movimiento, solo de los ya
+   * resueltos. En contra entrega un tramo lento suele traer más devoluciones.
+   */
   diasHastaResolver: number | null;
 };
 
@@ -103,7 +106,11 @@ export async function queryOrdersBreakdown(
       transportadora: true,
       estadoUnificado: true,
       departamento: true,
-      diasDesdeUltMov: true,
+      // El tránsito se calcula con estas dos, NO con `diasDesdeUltMov`: ese campo cuenta
+      // días desde el último movimiento hasta HOY, así que en pedidos viejos vale 60 o 90
+      // y no tiene nada que ver con lo que tardó en llegar.
+      fecha: true,
+      fechaUltMov: true,
       venta: true,
       flete: true,
       costoProveedor: true,
@@ -138,11 +145,18 @@ export async function queryOrdersBreakdown(
   const total = vacio();
 
   for (const p of pedidos) {
+    // Días reales de tránsito: del pedido hasta su último movimiento. Solo tiene sentido en
+    // pedidos ya resueltos; en los que siguen en camino el último movimiento es intermedio.
+    const transito =
+      p.fecha && p.fechaUltMov
+        ? Math.max(0, Math.round((p.fechaUltMov.getTime() - p.fecha.getTime()) / 86_400_000))
+        : null;
+
     let clave: string;
     if (opts.dimension === "transportadora") clave = p.transportadora?.trim() || "sin transportadora";
     else if (opts.dimension === "estado") clave = p.estadoUnificado?.trim() || "sin estado";
     else if (opts.dimension === "departamento") clave = p.departamento?.trim() || "sin departamento";
-    else clave = tramoDias(p.diasDesdeUltMov);
+    else clave = tramoDias(transito);
 
     const tipo = clasificar(p.estadoUnificado);
     for (const acc of [grupos.get(clave) ?? grupos.set(clave, vacio()).get(clave)!, total]) {
@@ -156,7 +170,7 @@ export async function queryOrdersBreakdown(
       acc.costoProveedor += num(p.costoProveedor);
       // El costo de devolución solo se cobra si el pedido efectivamente se devolvió.
       if (tipo === "devuelto") acc.costoDevoluciones += num(p.costoDevolucionEstimado);
-      if (tipo !== "transito" && p.diasDesdeUltMov !== null) acc.diasResueltos.push(p.diasDesdeUltMov);
+      if (tipo !== "transito" && transito !== null) acc.diasResueltos.push(transito);
     }
   }
 
@@ -195,7 +209,7 @@ export async function queryOrdersBreakdown(
     notas: [
       "El rango filtra por fecha del PEDIDO, no de la entrega. Los pedidos recientes siguen en tránsito, así que `pctEntrega` sale artificialmente bajo. Para comparar grupos usa `pctEntregaResueltos`, que solo mira los ya resueltos.",
       "`margenBruto` es venta menos flete, costo de proveedor y costo de las devoluciones. NO descuenta publicidad: eso está en /api/agent/cpa/daily.",
-      "`diasHastaResolver` es la mediana de días desde el pedido hasta su último movimiento, solo de los resueltos. En contra entrega, un tramo lento suele traer más devoluciones.",
+      "`diasHastaResolver` es la mediana de días entre la fecha del pedido y la de su último movimiento, solo de los ya resueltos. NO usa `dias_desde_ult_mov`, que cuenta desde el último movimiento hasta hoy y en pedidos viejos vale 60 o 90 días sin decir nada del tránsito.",
       "Los estados se clasifican por texto de `estado_unificado`: ENTREG… cuenta como entregado; DEVU…, RECHAZ… y CANCEL… como devuelto; el resto, en tránsito.",
     ],
   };
