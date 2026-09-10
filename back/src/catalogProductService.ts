@@ -203,11 +203,38 @@ export function createCatalogProduct(companyId: string, data: { name: string; sk
   });
 }
 
+/** Un escalón de precio: cuántas unidades y a qué precio se venden juntas. */
+export type PrecioPack = { unidades: number; precio: number };
+
+export type EconomiaProducto = Partial<{
+  cpaObjetivo: number | null;
+  cpaAlerta: number | null;
+  costoUnitario: number | null;
+  precios: PrecioPack[] | null;
+  proveedor: string | null;
+  economiaNotas: string | null;
+}>;
+
+/** Las claves económicas, para saber si hay que refrescar `economiaActualizadaEn`. */
+const CLAVES_ECONOMIA = [
+  "cpaObjetivo",
+  "cpaAlerta",
+  "costoUnitario",
+  "precios",
+  "proveedor",
+  "economiaNotas",
+] as const;
+
 export function updateCatalogProduct(
   companyId: string,
   id: string,
-  data: Partial<{ name: string; sku: string | null; notes: string | null; isActive: boolean }>,
+  data: Partial<{ name: string; sku: string | null; notes: string | null; isActive: boolean }> &
+    EconomiaProducto,
 ) {
+  // Si se tocó algo de la economía se sella la fecha: un CPA objetivo sin saber de cuándo es
+  // no sirve para decidir, porque cambia cada vez que maduran las entregas.
+  const tocoEconomia = CLAVES_ECONOMIA.some((k) => data[k] !== undefined);
+
   return prisma.catalogProduct.updateMany({
     where: { id, companyId },
     data: {
@@ -215,6 +242,15 @@ export function updateCatalogProduct(
       ...(data.sku !== undefined ? { sku: data.sku?.trim() || null } : {}),
       ...(data.notes !== undefined ? { notes: data.notes?.trim() || null } : {}),
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.cpaObjetivo !== undefined ? { cpaObjetivo: data.cpaObjetivo } : {}),
+      ...(data.cpaAlerta !== undefined ? { cpaAlerta: data.cpaAlerta } : {}),
+      ...(data.costoUnitario !== undefined ? { costoUnitario: data.costoUnitario } : {}),
+      ...(data.precios !== undefined ? { precios: data.precios ?? undefined } : {}),
+      ...(data.proveedor !== undefined ? { proveedor: data.proveedor?.trim() || null } : {}),
+      ...(data.economiaNotas !== undefined
+        ? { economiaNotas: data.economiaNotas?.trim() || null }
+        : {}),
+      ...(tocoEconomia ? { economiaActualizadaEn: new Date() } : {}),
     },
   });
 }

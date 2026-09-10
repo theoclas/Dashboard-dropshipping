@@ -123,6 +123,17 @@ export function registerBusinessModules(app: express.Application) {
           sku: z.string().nullable().optional(),
           notes: z.string().nullable().optional(),
           isActive: z.boolean().optional(),
+          // Economía del producto. Los umbrales van en pesos por pedido generado.
+          cpaObjetivo: z.number().nonnegative().nullable().optional(),
+          cpaAlerta: z.number().nonnegative().nullable().optional(),
+          costoUnitario: z.number().nonnegative().nullable().optional(),
+          precios: z
+            .array(z.object({ unidades: z.number().int().positive(), precio: z.number().nonnegative() }))
+            .max(20)
+            .nullable()
+            .optional(),
+          proveedor: z.string().nullable().optional(),
+          economiaNotas: z.string().nullable().optional(),
         })
         .safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Payload inválido." });

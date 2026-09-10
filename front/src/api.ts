@@ -36,6 +36,7 @@ import type {
   OperationalExpenseRow,
   OrdersTableConfig,
   Role,
+  PrecioPack,
 } from "./types";
 
 /** Petición cancelada (AbortController); no mostrar error al usuario. */
@@ -1208,4 +1209,30 @@ export async function revealServiceToken(id: string): Promise<string> {
 
 export async function revokeServiceToken(id: string): Promise<void> {
   await api.post(`/service-tokens/${id}/revoke`);
+}
+
+/**
+ * Actualiza un producto del catálogo, incluida su economía.
+ *
+ * El backend sella `economiaActualizadaEn` solo en cuanto se toca cualquier campo
+ * económico: un CPA objetivo sin saber de cuándo es no sirve para decidir, porque cambia
+ * cada vez que maduran las entregas.
+ */
+export async function patchCatalogProduct(
+  id: string,
+  body: Partial<{
+    name: string;
+    sku: string | null;
+    notes: string | null;
+    isActive: boolean;
+    cpaObjetivo: number | null;
+    cpaAlerta: number | null;
+    costoUnitario: number | null;
+    precios: PrecioPack[] | null;
+    proveedor: string | null;
+    economiaNotas: string | null;
+  }>,
+): Promise<CatalogProduct> {
+  const { data } = await api.patch<CatalogProduct>(`/catalog-products/${id}`, body);
+  return data;
 }

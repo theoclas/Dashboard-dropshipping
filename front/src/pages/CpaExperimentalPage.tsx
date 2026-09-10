@@ -17,6 +17,7 @@ import type { ColumnsType } from "antd/es/table";
 import { ExperimentOutlined, ReloadOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import { fetchCatalogProducts, fetchCpaExperimental, rebuildCpaExperimental } from "../api";
+import { ProductEconomicsModal } from "../components/ProductEconomicsModal";
 import { usePermission } from "../hooks/usePermission";
 import { fmtApiDateIsoYmd } from "../utils/calendarDateLocal";
 import { fmtCpaDisplay } from "../utils/cpaDisplay";
@@ -48,6 +49,7 @@ export function CpaExperimentalPage() {
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [productId, setProductId] = useState<string | undefined>();
+  const [editandoEconomia, setEditandoEconomia] = useState(false);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [rows, setRows] = useState<CpaExperimentalRecordRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -320,11 +322,20 @@ export function CpaExperimentalPage() {
           <Button onClick={() => void loadRows()} disabled={!productId || !range || loading}>
             Refrescar tabla
           </Button>
+          <Button disabled={!productId} onClick={() => setEditandoEconomia(true)}>
+            Economía del producto
+          </Button>
         </Space>
         {lastWarnings.length ? (
           <Alert type="warning" showIcon style={{ marginTop: 12 }} message={lastWarnings.join(" ")} />
         ) : null}
       </Card>
+
+      <ProductEconomicsModal
+        producto={editandoEconomia ? (products.find((p) => p.id === productId) ?? null) : null}
+        onClose={() => setEditandoEconomia(false)}
+        onSaved={(row) => setProducts((prev) => prev.map((p) => (p.id === row.id ? row : p)))}
+      />
 
       <Card title="Filas CPA experimental (por producto)">
         <Table

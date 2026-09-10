@@ -276,6 +276,23 @@ model CatalogProduct {
   sku       String?  @db.VarChar(100)
   isActive  Boolean  @default(true) @map("is_active")
   notes     String?  @db.Text
+
+  /// ── Economía del producto ────────────────────────────────────────────────
+  /// Umbral duro: pagar más que esto por un pedido generado es perder plata. Se calcula
+  /// como margen neto esperado por pedido = p·(ganancia por entregado) − (1−p)·(pérdida por
+  /// devuelto), con p = tasa de entrega entre pedidos YA RESUELTOS.
+  cpaObjetivo          Decimal? @map("cpa_objetivo") @db.Decimal(12, 2)
+  /// Umbral de aviso, normalmente el equilibrio en un escenario pesimista de entrega.
+  cpaAlerta            Decimal? @map("cpa_alerta") @db.Decimal(12, 2)
+  costoUnitario        Decimal? @map("costo_unitario") @db.Decimal(12, 2)
+  /// Precios por pack: [{ "unidades": 2, "precio": 59900 }, …]. El margen real vive en el
+  /// pack, no en la unidad suelta.
+  precios              Json?
+  proveedor            String?  @db.VarChar(255)
+  /// Cómo se llegó a estos números y con qué datos. Cambian al madurar las entregas.
+  economiaNotas        String?  @map("economia_notas") @db.Text
+  /// Cuándo se recalculó por última vez. Un CPA objetivo de hace dos meses miente.
+  economiaActualizadaEn DateTime? @map("economia_actualizada_en")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

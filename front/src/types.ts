@@ -215,12 +215,26 @@ export type CpaResumenResponse = {
   rows: CpaResumenRow[];
 };
 
+/** Un escalón de precio: cuántas unidades van juntas y a qué precio. */
+export type PrecioPack = { unidades: number; precio: number };
+
 export type CatalogProduct = {
   id: string;
   name: string;
   sku?: string | null;
   isActive: boolean;
   notes?: string | null;
+  /** Umbral duro en pesos por pedido generado: pagar más que esto es perder plata. */
+  cpaObjetivo?: number | null;
+  /** Umbral de aviso: el equilibrio en un escenario pesimista de entrega. */
+  cpaAlerta?: number | null;
+  costoUnitario?: number | null;
+  /** El margen real vive en el pack, no en la unidad suelta. */
+  precios?: PrecioPack[] | null;
+  proveedor?: string | null;
+  economiaNotas?: string | null;
+  /** Cuándo se recalculó. Un CPA objetivo de hace dos meses miente. */
+  economiaActualizadaEn?: string | null;
 };
 
 export type AdvertisingAccount = {

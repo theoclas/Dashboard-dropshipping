@@ -49,6 +49,59 @@ function ymdOf(dt: Date): string {
   ).padStart(2, "0")}`;
 }
 
+type UmbralesProducto = {
+  cpaObjetivo: unknown;
+  cpaAlerta: unknown;
+  economiaActualizadaEn: Date | null;
+} | undefined;
+
+/**
+ * Veredicto de un día contra los umbrales guardados del producto.
+ *
+ * Se calcula aquí y no en el cliente para que la respuesta ya venga interpretada: quien
+ * consulte la API no tiene por qué saber que un `cpa` nulo con gasto es la peor señal, ni
+ * cuál era el equilibrio de ese producto.
+ *
+ * Devuelve un objeto vacío si el producto no tiene umbrales definidos. **Callar es correcto
+ * aquí**: inventar un umbral por defecto sería peor que no opinar.
+ */
+function veredictoCpa(
+  cpa: number | null,
+  gasto: number | null,
+  ventas: number | null,
+  umbrales: UmbralesProducto,
+) {
+  const objetivo = umbrales ? numOrNull(umbrales.cpaObjetivo) : null;
+  if (!objetivo || objetivo <= 0) return {};
+  const alerta = umbrales ? numOrNull(umbrales.cpaAlerta) : null;
+
+  // Gasto sin una sola venta: `cpa` viene null, pero eso no es «sin dato».
+  if ((gasto ?? 0) > 0 && !ventas) {
+    return {
+      cpaObjetivo: objetivo,
+      veredicto: "SIN_VENTAS" as const,
+      veredictoNota: `Gastó ${Math.round(gasto ?? 0).toLocaleString("es-CO")} sin una sola venta. Es la peor señal, no un dato faltante.`,
+    };
+  }
+  if (cpa === null) return { cpaObjetivo: objetivo };
+
+  if (cpa > objetivo) {
+    return {
+      cpaObjetivo: objetivo,
+      veredicto: "PIERDE" as const,
+      veredictoNota: `CPA ${Math.round(cpa).toLocaleString("es-CO")} por encima del equilibrio ${Math.round(objetivo).toLocaleString("es-CO")}. Un día suelto es ruido: exige 2 o 3 seguidos antes de recortar.`,
+    };
+  }
+  if (alerta && cpa > alerta) {
+    return {
+      cpaObjetivo: objetivo,
+      veredicto: "ALERTA" as const,
+      veredictoNota: `CPA ${Math.round(cpa).toLocaleString("es-CO")} pasó el umbral pesimista ${Math.round(alerta).toLocaleString("es-CO")}. Si la entrega baja, este día pierde.`,
+    };
+  }
+  return { cpaObjetivo: objetivo, veredicto: "OK" as const };
+}
+
 /** Base pública, para que la spec apunte al servidor real y no a localhost. */
 function baseUrl(req: express.Request): string {
   const proto = String(req.header("x-forwarded-proto") ?? req.protocol ?? "https").split(",")[0];
@@ -99,7 +152,17 @@ export function registerAgentRoutes(app: express.Express): void {
           }),
           prisma.catalogProduct.findMany({
             where: { companyId: u.companyId, isActive: true },
-            select: { id: true, name: true, sku: true },
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              cpaObjetivo: true,
+              cpaAlerta: true,
+              costoUnitario: true,
+              precios: true,
+              proveedor: true,
+              economiaActualizadaEn: true,
+            },
             orderBy: { name: "asc" },
           }),
           prisma.adMetric.aggregate({
@@ -131,7 +194,15 @@ export function registerAgentRoutes(app: express.Express): void {
           nombre: a.businessName?.trim() || a.metaAccountId,
           metaAccountId: a.metaAccountId,
         })),
-        productos: products,
+        productos: products.map((p) => ({
+          ...p,
+          cpaObjetivo: numOrNull(p.cpaObjetivo),
+          cpaAlerta: numOrNull(p.cpaAlerta),
+          costoUnitario: numOrNull(p.costoUnitario),
+          economiaActualizadaEn: p.economiaActualizadaEn
+            ? ymdOf(p.economiaActualizadaEn)
+            : null,
+        })),
         cobertura: {
           anuncios: {
             filas: adMetricRange._count,
@@ -240,6 +311,17 @@ export function registerAgentRoutes(app: express.Express): void {
           hasta: parsed.data.hasta,
         });
 
+        // Umbrales guardados por producto. Sin ellos no hay veredicto posible: un CPA "malo"
+        // solo existe contra un número que alguien definió.
+        const economia = new Map(
+          (
+            await prisma.catalogProduct.findMany({
+              where: { companyId: u.companyId },
+              select: { id: true, cpaObjetivo: true, cpaAlerta: true, economiaActualizadaEn: true },
+            })
+          ).map((p) => [p.id, p]),
+        );
+
         return res.json({
           desde: parsed.data.desde,
           hasta: parsed.data.hasta,
@@ -258,6 +340,7 @@ export function registerAgentRoutes(app: express.Express): void {
             costoPublicitarioPct: numOrNull(r.costoPublicitario),
             rentabilidadPct: numOrNull(r.rentabilidad),
             utilidadAproximada: numOrNull(r.utilidadAproximada),
+            ...veredictoCpa(numOrNull(r.cpa), numOrNull(r.gastoPublicidad), r.ventas, economia.get(r.catalogProductId)),
           })),
           notas: [
             "`ventas` son pedidos activos del día (sin cancelados ni rechazados). NO distingue entregado de devuelto, así que `rentabilidadPct` y `utilidadAproximada` asumen que todo se entrega y quedan optimistas. Cruza con /api/agent/delivery/by-product para el dato real.",
