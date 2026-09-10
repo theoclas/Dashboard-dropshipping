@@ -234,7 +234,20 @@ export function buildAgentOpenApiSpec(publicUrl: string) {
             "entrada por día.\n\n" +
             "**Ojo:** `purchases` son compras del *pixel de Meta*, no pedidos reales. En campañas de " +
             "WhatsApp sobrerreportan ~1,5×. Para juzgar rentabilidad usa `/cpa/daily`; esto sirve " +
-            "para comparar creativos y conjuntos entre sí.",
+            "para comparar creativos y conjuntos entre sí.\n\n" +
+            "### El porcentaje de entrega\n\n" +
+            "En `level=adset` y `level=campaign` cada fila trae `presupuestoDiario` y " +
+            "`pctEntregaMedia`, y cada día de `daily[]` trae su `pctEntrega`. Es el diagnóstico que " +
+            "separa dos problemas opuestos que en el gasto se ven igual:\n\n" +
+            "| pctEntrega | Qué significa | Qué hacer |\n" +
+            "|---|---|---|\n" +
+            "| **> 105%** | Topado. Meta deja pasarse hasta ~125% en un día y lo compensa en la semana. | Quiere más presupuesto |\n" +
+            "| **90–105%** | Normal. | Nada |\n" +
+            "| **< 90% sostenido** | Ahogado: no encuentra a quién mostrarle al costo pedido. | Subirle el presupuesto **no sirve**. Mira `bidStrategy`: si hay `COST_CAP` o `LOWEST_COST_WITH_BID_CAP`, el límite es la puja; si es `LOWEST_COST_WITHOUT_CAP`, el público es estrecho |\n\n" +
+            "`presupuestoDiario` es el valor de **hoy** en Meta, no el del rango consultado. Si se " +
+            "cambió a mitad del periodo, los días anteriores quedan medidos contra el valor nuevo; " +
+            "`configSyncedAt` dice de cuándo es la lectura.\n\n" +
+            "Viene en `null` cuando no se conoce, en vez de un 0 que se leería como «sin presupuesto».",
           parameters: [
             paramDesde,
             paramHasta,
@@ -300,8 +313,12 @@ export function buildAgentOpenApiSpec(publicUrl: string) {
                 costPerConversation: 1482,
                 roas: 6.66,
                 daysWithData: 15,
+                presupuestoDiario: 31000,
+                pctEntregaMedia: 110.4,
+                bidStrategy: "LOWEST_COST_WITHOUT_CAP",
+                configSyncedAt: "2026-09-10T02:00:00.000Z",
                 daily: [
-                  { ymd: "2026-09-01", spend: 36834, impressions: 4810, conversations: 22, ctr: 1.77 },
+                  { ymd: "2026-09-01", spend: 36834, impressions: 4810, conversations: 22, ctr: 1.77, pctEntrega: 118.8 },
                 ],
               },
             ],

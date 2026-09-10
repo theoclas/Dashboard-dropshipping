@@ -251,3 +251,156 @@ export async function fetchAdMetadata(
     return { byAdId, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+export type AdSetConfig = {
+  name: string | null;
+  /** Tal cual lo devuelve Meta, sin interpretar. Ver `normalizeMetaBudget`. */
+  dailyBudgetRaw: string | null;
+  lifetimeBudgetRaw: string | null;
+  bidStrategy: string | null;
+  effectiveStatus: string | null;
+  optimizationGoal: string | null;
+  billingEvent: string | null;
+  startTime: Date | null;
+  endTime: Date | null;
+};
+
+export type CampaignConfig = {
+  dailyBudgetRaw: string | null;
+  lifetimeBudgetRaw: string | null;
+  effectiveStatus: string | null;
+  objective: string | null;
+  buyingType: string | null;
+};
+
+function fecha(v: unknown): Date | null {
+  if (!v) return null;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function texto(v: unknown): string | null {
+  return v === null || v === undefined || v === "" ? null : String(v);
+}
+
+/**
+ * Presupuesto y configuración de cada conjunto.
+ *
+ * Nada de esto viene en `/insights`, que solo trae resultados. Sin el presupuesto no se
+ * puede calcular el **porcentaje de entrega** —cuánto de lo asignado logra gastar Meta—,
+ * que es lo que distingue un conjunto topado (quiere más plata) de uno ahogado (no
+ * encuentra a quién mostrarle).
+ *
+ * Una sola llamada por cuenta. Si falla, el import sigue: esto es contexto, no una cifra
+ * de negocio.
+ */
+export async function fetchAdSetConfig(
+  metaAccountId: string,
+  opts: { companyId: string; metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
+): Promise<{ byAdSetId: Map<string, AdSetConfig>; error: string | null }> {
+  const byAdSetId = new Map<string, AdSetConfig>();
+  try {
+    const actId = toMetaActAccountId(metaAccountId);
+    const accessToken = await resolveMetaAccessToken({
+      companyId: opts.companyId,
+      metaAdsAppId: opts.metaAdsAppId,
+      metaAdsSystemUserId: opts.metaAdsSystemUserId,
+    });
+
+    const fields = [
+      "id",
+      "name",
+      "daily_budget",
+      "lifetime_budget",
+      "bid_strategy",
+      "effective_status",
+      "optimization_goal",
+      "billing_event",
+      "start_time",
+      "end_time",
+    ].join(",");
+
+    let url: string | null =
+      `https://graph.facebook.com/${metaApiVersion()}/${actId}/adsets?` +
+      new URLSearchParams({ fields, limit: "500" }).toString();
+
+    let pages = 0;
+    while (url && pages < MAX_PAGES) {
+      pages += 1;
+      const page = (await fetchJsonWithRetry(url, accessToken)) as {
+        data?: Array<Record<string, unknown>>;
+        paging?: { next?: string };
+      };
+      for (const item of page.data ?? []) {
+        if (!item.id) continue;
+        byAdSetId.set(String(item.id), {
+          name: texto(item.name),
+          dailyBudgetRaw: texto(item.daily_budget),
+          lifetimeBudgetRaw: texto(item.lifetime_budget),
+          bidStrategy: texto(item.bid_strategy),
+          effectiveStatus: texto(item.effective_status),
+          optimizationGoal: texto(item.optimization_goal),
+          billingEvent: texto(item.billing_event),
+          startTime: fecha(item.start_time),
+          endTime: fecha(item.end_time),
+        });
+      }
+      url = page.paging?.next ?? null;
+    }
+    return { byAdSetId, error: null };
+  } catch (e) {
+    return { byAdSetId, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Igual que el anterior, para campañas con presupuesto a nivel campaña (CBO). */
+export async function fetchCampaignConfig(
+  metaAccountId: string,
+  opts: { companyId: string; metaAdsAppId?: string | null; metaAdsSystemUserId?: string | null },
+): Promise<{ byCampaignId: Map<string, CampaignConfig>; error: string | null }> {
+  const byCampaignId = new Map<string, CampaignConfig>();
+  try {
+    const actId = toMetaActAccountId(metaAccountId);
+    const accessToken = await resolveMetaAccessToken({
+      companyId: opts.companyId,
+      metaAdsAppId: opts.metaAdsAppId,
+      metaAdsSystemUserId: opts.metaAdsSystemUserId,
+    });
+
+    const fields = [
+      "id",
+      "daily_budget",
+      "lifetime_budget",
+      "effective_status",
+      "objective",
+      "buying_type",
+    ].join(",");
+
+    let url: string | null =
+      `https://graph.facebook.com/${metaApiVersion()}/${actId}/campaigns?` +
+      new URLSearchParams({ fields, limit: "500" }).toString();
+
+    let pages = 0;
+    while (url && pages < MAX_PAGES) {
+      pages += 1;
+      const page = (await fetchJsonWithRetry(url, accessToken)) as {
+        data?: Array<Record<string, unknown>>;
+        paging?: { next?: string };
+      };
+      for (const item of page.data ?? []) {
+        if (!item.id) continue;
+        byCampaignId.set(String(item.id), {
+          dailyBudgetRaw: texto(item.daily_budget),
+          lifetimeBudgetRaw: texto(item.lifetime_budget),
+          effectiveStatus: texto(item.effective_status),
+          objective: texto(item.objective),
+          buyingType: texto(item.buying_type),
+        });
+      }
+      url = page.paging?.next ?? null;
+    }
+    return { byCampaignId, error: null };
+  } catch (e) {
+    return { byCampaignId, error: e instanceof Error ? e.message : String(e) };
+  }
+}

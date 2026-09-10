@@ -4,6 +4,8 @@ import * as advertisingAccountService from "./advertisingAccountService";
 import {
   fetchAdInsightsForAccountRange,
   fetchAdMetadata,
+  fetchAdSetConfig,
+  fetchCampaignConfig,
   validateAdApiDateRange,
 } from "./metaAdsAdInsightsService";
 import {
@@ -185,6 +187,32 @@ export async function persistAdsForAccount(
     };
   }
 
+  // ── 0. Configuración de Meta ───────────────────────────────────────────────
+  // Presupuesto, estrategia de puja y estado. No vienen en /insights, que solo trae
+  // resultados. Dos llamadas por cuenta, no una por conjunto. Si fallan, el import sigue:
+  // sin esto se pierde el % de entrega, pero las cifras de gasto y ventas quedan intactas.
+  const [adSetCfg, campaignCfg] = await Promise.all([
+    fetchAdSetConfig(opts.metaAccountId, {
+      companyId,
+      metaAdsAppId: opts.metaAdsAppId,
+      metaAdsSystemUserId: opts.metaAdsSystemUserId,
+    }),
+    fetchCampaignConfig(opts.metaAccountId, {
+      companyId,
+      metaAdsAppId: opts.metaAdsAppId,
+      metaAdsSystemUserId: opts.metaAdsSystemUserId,
+    }),
+  ]);
+  for (const [que, err] of [
+    ["los presupuestos de los conjuntos", adSetCfg.error],
+    ["la configuración de las campañas", campaignCfg.error],
+  ] as const) {
+    if (err) {
+      opts.errors.push(`No se pudo leer ${que} (se importa igual): ${err}`);
+    }
+  }
+  const syncedAt = new Date();
+
   // ── 1. Campañas ────────────────────────────────────────────────────────────
   const campaignNameByExt = new Map<string, string | null>();
   for (const r of parsed) {
@@ -194,21 +222,37 @@ export async function persistAdsForAccount(
   }
   const campaignIdByExt = new Map<string, string>();
   for (const [ext, name] of campaignNameByExt) {
+    // La configuración se reescribe en cada import a propósito: es el estado de *ahora* en
+    // Meta, no un histórico. `configSyncedAt` dice de cuándo es.
+    const cfg = campaignCfg.byCampaignId.get(ext);
+    const cfgData = cfg
+      ? {
+          dailyBudgetRaw: cfg.dailyBudgetRaw,
+          lifetimeBudgetRaw: cfg.lifetimeBudgetRaw,
+          effectiveStatus: cfg.effectiveStatus,
+          objective: cfg.objective,
+          buyingType: cfg.buyingType,
+          configSyncedAt: syncedAt,
+        }
+      : {};
     const existing = await prisma.advertisingCampaign.findUnique({
       where: { companyId_externalCampaignId: { companyId, externalCampaignId: ext } },
       select: { id: true, displayName: true, advertisingAccountId: true },
     });
     if (existing) {
       campaignIdByExt.set(ext, existing.id);
-      if ((name && name !== existing.displayName) || existing.advertisingAccountId !== advertisingAccountId) {
+      const cambioNombreOCuenta =
+        (name && name !== existing.displayName) ||
+        existing.advertisingAccountId !== advertisingAccountId;
+      if (cambioNombreOCuenta || cfg) {
         await prisma.advertisingCampaign.update({
           where: { id: existing.id },
-          data: { displayName: name ?? existing.displayName, advertisingAccountId },
+          data: { displayName: name ?? existing.displayName, advertisingAccountId, ...cfgData },
         });
       }
     } else {
       const created = await prisma.advertisingCampaign.create({
-        data: { companyId, externalCampaignId: ext, displayName: name, advertisingAccountId },
+        data: { companyId, externalCampaignId: ext, displayName: name, advertisingAccountId, ...cfgData },
         select: { id: true },
       });
       campaignIdByExt.set(ext, created.id);
@@ -231,20 +275,40 @@ export async function persistAdsForAccount(
   for (const [ext, info] of adSetInfoByExt) {
     const campaignId = campaignIdByExt.get(info.campaignExt);
     if (!campaignId) continue;
+    const cfg = adSetCfg.byAdSetId.get(ext);
+    const cfgData = cfg
+      ? {
+          dailyBudgetRaw: cfg.dailyBudgetRaw,
+          lifetimeBudgetRaw: cfg.lifetimeBudgetRaw,
+          bidStrategy: cfg.bidStrategy,
+          effectiveStatus: cfg.effectiveStatus,
+          optimizationGoal: cfg.optimizationGoal,
+          billingEvent: cfg.billingEvent,
+          startTime: cfg.startTime,
+          endTime: cfg.endTime,
+          configSyncedAt: syncedAt,
+        }
+      : {};
     const existing = await prisma.adSet.findUnique({
       where: { companyId_externalAdSetId: { companyId, externalAdSetId: ext } },
       select: { id: true, name: true, campaignId: true, advertisingAccountId: true },
     });
     if (existing) {
       adSetIdByExt.set(ext, existing.id);
-      if (
+      const cambioEstructura =
         (info.name && info.name !== existing.name) ||
         existing.campaignId !== campaignId ||
-        existing.advertisingAccountId !== advertisingAccountId
-      ) {
+        existing.advertisingAccountId !== advertisingAccountId;
+      if (cambioEstructura || cfg) {
         await prisma.adSet.update({
           where: { id: existing.id },
-          data: { name: info.name ?? existing.name, campaignId, advertisingAccountId },
+          // El nombre puede venir del insight o del edge; se prefiere el que exista.
+          data: {
+            name: info.name ?? cfg?.name ?? existing.name,
+            campaignId,
+            advertisingAccountId,
+            ...cfgData,
+          },
         });
       }
     } else {
@@ -252,9 +316,10 @@ export async function persistAdsForAccount(
         data: {
           companyId,
           externalAdSetId: ext,
-          name: info.name,
+          name: info.name ?? cfg?.name ?? null,
           campaignId,
           advertisingAccountId,
+          ...cfgData,
         },
         select: { id: true },
       });

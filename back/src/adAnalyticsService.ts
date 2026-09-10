@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { normalizeMetaBudget, porcentajeDeEntrega, presupuestoEsPlausible } from "./metaBudget";
 
 export type AdLevel = "campaign" | "adset" | "ad";
 
@@ -35,6 +36,14 @@ export type AdDailyRow = {
   costPerPurchase: number | null;
   costPerConversation: number | null;
   roas: number | null;
+  /**
+   * Qué porcentaje del presupuesto diario logró colocar Meta ese día.
+   *
+   * `null` si no se conoce el presupuesto de ese nivel. Por encima de ~105% el conjunto
+   * está topado —quiere más plata—; por debajo de ~90% sostenido está ahogado, y subirle
+   * el presupuesto no sirve: o el público es estrecho o la puja tiene un límite que aprieta.
+   */
+  pctEntrega: number | null;
 };
 
 export type AdVerdictCode =
@@ -66,6 +75,26 @@ export type AdNodeRow = {
   creativeThumbUrl: string | null;
   creativeImageUrl: string | null;
   creativeObjectType: string | null;
+
+  /**
+   * Presupuesto diario en pesos, tal como está en Meta ahora mismo.
+   *
+   * Solo en los niveles donde existe: en campañas CBO vive arriba, en ABO vive en el
+   * conjunto, y a nivel anuncio no hay presupuesto. `null` también cuando el valor no
+   * supera la guardia de escala de `metaBudget.ts`.
+   *
+   * Es el estado de **hoy**, no del rango consultado: si el presupuesto cambió a mitad del
+   * periodo, `pctEntrega` de los días anteriores queda medido contra el valor nuevo.
+   */
+  presupuestoDiario: number | null;
+  /** Media de `pctEntrega` sobre los días con gasto. La señal está aquí, no en un día suelto. */
+  pctEntregaMedia: number | null;
+  /** LOWEST_COST_WITHOUT_CAP, COST_CAP… Un conjunto que no gasta suele tener aquí un límite. */
+  bidStrategy: string | null;
+  optimizationGoal: string | null;
+  objective: string | null;
+  /** Cuándo se leyó esta configuración de Meta. Si es vieja, puede haber cambiado. */
+  configSyncedAt: string | null;
 
   spend: number;
   impressions: number;
@@ -111,6 +140,12 @@ export type AdQueryResult = {
     | "creativeThumbUrl"
     | "creativeImageUrl"
     | "creativeObjectType"
+    | "presupuestoDiario"
+    | "pctEntregaMedia"
+    | "bidStrategy"
+    | "optimizationGoal"
+    | "objective"
+    | "configSyncedAt"
     | "verdict"
     | "daily"
   >;
@@ -326,11 +361,25 @@ export async function queryAdMetrics(
           creativeObjectType: true,
         },
       },
-      adSet: { select: { externalAdSetId: true, name: true, campaignId: true } },
+      adSet: {
+        select: {
+          externalAdSetId: true,
+          name: true,
+          campaignId: true,
+          dailyBudgetRaw: true,
+          bidStrategy: true,
+          effectiveStatus: true,
+          optimizationGoal: true,
+          configSyncedAt: true,
+        },
+      },
       campaign: {
         select: {
           externalCampaignId: true,
           displayName: true,
+          dailyBudgetRaw: true,
+          effectiveStatus: true,
+          objective: true,
           advertisingAccount: { select: { id: true, businessName: true, metaAccountId: true } },
         },
       },
@@ -349,6 +398,12 @@ export async function queryAdMetrics(
     creativeThumbUrl: string | null;
     creativeImageUrl: string | null;
     creativeObjectType: string | null;
+    /** Presupuesto diario en pesos. Solo en niveles campaign y adset; null si no aplica. */
+    presupuestoDiario: number | null;
+    bidStrategy: string | null;
+    optimizationGoal: string | null;
+    objective: string | null;
+    configSyncedAt: Date | null;
     parentKey: string;
     acc: Acc;
     byDay: Map<string, Acc>;
@@ -370,17 +425,32 @@ export async function queryAdMetrics(
     let creativeThumbUrl: string | null = null;
     let creativeImageUrl: string | null = null;
     let creativeObjectType: string | null = null;
+    // El presupuesto solo tiene sentido en el nivel donde está definido: en campañas CBO
+    // vive arriba, en ABO vive en el conjunto. A nivel anuncio no existe.
+    let presupuestoDiario: number | null = null;
+    let bidStrategy: string | null = null;
+    let optimizationGoal: string | null = null;
+    let objective: string | null = null;
+    let configSyncedAt: Date | null = null;
 
     if (opts.level === "campaign") {
       id = m.campaignId;
       externalId = m.campaign.externalCampaignId;
       name = campaignName;
       parentKey = m.campaign.advertisingAccount?.id ?? "sin-cuenta";
+      presupuestoDiario = normalizeMetaBudget(m.campaign.dailyBudgetRaw);
+      effectiveStatus = m.campaign.effectiveStatus;
+      objective = m.campaign.objective;
     } else if (opts.level === "adset") {
       id = m.adSetId;
       externalId = m.adSet.externalAdSetId;
       name = adSetName;
       parentKey = m.campaignId;
+      presupuestoDiario = normalizeMetaBudget(m.adSet.dailyBudgetRaw);
+      bidStrategy = m.adSet.bidStrategy;
+      effectiveStatus = m.adSet.effectiveStatus;
+      optimizationGoal = m.adSet.optimizationGoal;
+      configSyncedAt = m.adSet.configSyncedAt;
     } else {
       id = m.adId;
       externalId = m.ad.externalAdId;
@@ -405,6 +475,11 @@ export async function queryAdMetrics(
         creativeThumbUrl,
         creativeImageUrl,
         creativeObjectType,
+        presupuestoDiario,
+        bidStrategy,
+        optimizationGoal,
+        objective,
+        configSyncedAt,
         parentKey,
         acc: emptyAcc(),
         byDay: new Map(),
@@ -475,6 +550,21 @@ export async function queryAdMetrics(
         ? (medianCtrByParent.get(node.parentKey) ?? null)
         : null;
 
+    // Guardia contra el error de escala: si el presupuesto convertido no está en el mismo
+    // orden que el gasto típico del periodo, el factor está mal y es mejor no dar el dato
+    // que dar uno que lleve a decidir al revés. Ver metaBudget.ts.
+    const gastoTipico = days.length > 0 ? node.acc.spend / days.length : 0;
+    const presupuestoValido = presupuestoEsPlausible(node.presupuestoDiario, gastoTipico)
+      ? node.presupuestoDiario
+      : null;
+
+    const pctsEntrega = [...node.byDay.values()]
+      .filter((a) => a.spend > 0)
+      .map((a) => porcentajeDeEntrega(a.spend, presupuestoValido))
+      .filter((v): v is number => v !== null);
+    const pctEntregaMedia =
+      pctsEntrega.length > 0 ? pctsEntrega.reduce((s, v) => s + v, 0) / pctsEntrega.length : null;
+
     const daily: AdDailyRow[] | undefined = opts.daily
       ? [...node.byDay.entries()]
           .sort((a, b) => a[0].localeCompare(b[0]))
@@ -489,6 +579,10 @@ export async function queryAdMetrics(
             purchases: a.purchases,
             conversionValue: round(a.conversionValue)!,
             ...rates(a),
+            // Cuánto del presupuesto logró colocar Meta ese día. Por encima de ~105% el
+            // conjunto está topado y quiere más; por debajo de ~90% sostenido, está
+            // ahogado y subirle el presupuesto no sirve de nada.
+            pctEntrega: round(porcentajeDeEntrega(a.spend, presupuestoValido)),
           }))
       : undefined;
 
@@ -505,6 +599,13 @@ export async function queryAdMetrics(
       creativeThumbUrl: node.creativeThumbUrl,
       creativeImageUrl: node.creativeImageUrl,
       creativeObjectType: node.creativeObjectType,
+      presupuestoDiario: presupuestoValido,
+      bidStrategy: node.bidStrategy,
+      optimizationGoal: node.optimizationGoal,
+      objective: node.objective,
+      configSyncedAt: node.configSyncedAt ? node.configSyncedAt.toISOString() : null,
+      /** Media de `pctEntrega` de los días con gasto. Es la señal, no un día suelto. */
+      pctEntregaMedia: round(pctEntregaMedia),
 
       spend: round(node.acc.spend)!,
       impressions: node.acc.impressions,

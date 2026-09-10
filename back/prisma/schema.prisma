@@ -322,6 +322,14 @@ model AdvertisingCampaign {
   externalCampaignId   String   @map("external_campaign_id") @db.VarChar(128)
   displayName          String?  @map("display_name") @db.VarChar(255)
   advertisingAccountId String?  @map("advertising_account_id")
+  /// Configuración de Meta (edge /campaigns). Presupuesto crudo, como en AdSet.
+  /// Solo viene con valor en campañas CBO; en ABO el presupuesto vive en el conjunto.
+  dailyBudgetRaw       String?  @map("daily_budget_raw") @db.VarChar(32)
+  lifetimeBudgetRaw    String?  @map("lifetime_budget_raw") @db.VarChar(32)
+  effectiveStatus      String?  @map("effective_status") @db.VarChar(64)
+  objective            String?  @db.VarChar(64)
+  buyingType           String?  @map("buying_type") @db.VarChar(64)
+  configSyncedAt       DateTime? @map("config_synced_at")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
@@ -347,6 +355,20 @@ model AdSet {
   name                 String?  @db.VarChar(255)
   campaignId           String   @map("campaign_id")
   advertisingAccountId String?  @map("advertising_account_id")
+  /// Configuración traída de Meta (edge /adsets). Ver metaBudget.ts: los presupuestos se
+  /// guardan CRUDOS, en unidades menores, y se convierten al leerlos.
+  dailyBudgetRaw       String?  @map("daily_budget_raw") @db.VarChar(32)
+  lifetimeBudgetRaw    String?  @map("lifetime_budget_raw") @db.VarChar(32)
+  /// LOWEST_COST_WITHOUT_CAP, COST_CAP, LOWEST_COST_WITH_BID_CAP…
+  /// Un conjunto que no logra gastar suele tener aquí un límite, no un público pequeño.
+  bidStrategy          String?  @map("bid_strategy") @db.VarChar(64)
+  effectiveStatus      String?  @map("effective_status") @db.VarChar(64)
+  optimizationGoal     String?  @map("optimization_goal") @db.VarChar(64)
+  billingEvent         String?  @map("billing_event") @db.VarChar(64)
+  startTime            DateTime? @map("start_time")
+  endTime              DateTime? @map("end_time")
+  /// Cuándo se refrescó la configuración. Si es vieja, el presupuesto puede haber cambiado.
+  configSyncedAt       DateTime? @map("config_synced_at")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
