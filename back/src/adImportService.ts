@@ -16,6 +16,7 @@ import {
   type AdRollup,
   type ParsedAdRow,
 } from "./metaAdInsightNormalize";
+import { detectarCambios, type EventoDetectado } from "./operationEvents";
 
 const CHUNK = 200;
 
@@ -212,6 +213,8 @@ export async function persistAdsForAccount(
     }
   }
   const syncedAt = new Date();
+  /** Cambios detectados; se escriben de golpe al final para no ensuciar el bucle. */
+  const eventos: EventoDetectado[] = [];
 
   // ── 1. Campañas ────────────────────────────────────────────────────────────
   const campaignNameByExt = new Map<string, string | null>();
@@ -278,6 +281,7 @@ export async function persistAdsForAccount(
     const cfg = adSetCfg.byAdSetId.get(ext);
     const cfgData = cfg
       ? {
+
           dailyBudgetRaw: cfg.dailyBudgetRaw,
           lifetimeBudgetRaw: cfg.lifetimeBudgetRaw,
           bidStrategy: cfg.bidStrategy,
@@ -291,10 +295,41 @@ export async function persistAdsForAccount(
       : {};
     const existing = await prisma.adSet.findUnique({
       where: { companyId_externalAdSetId: { companyId, externalAdSetId: ext } },
-      select: { id: true, name: true, campaignId: true, advertisingAccountId: true },
+      select: {
+        id: true,
+        name: true,
+        campaignId: true,
+        advertisingAccountId: true,
+        // Para la bitácora: hay que comparar contra lo guardado ANTES de sobrescribirlo.
+        dailyBudgetRaw: true,
+        bidStrategy: true,
+        effectiveStatus: true,
+        configSyncedAt: true,
+      },
     });
     if (existing) {
       adSetIdByExt.set(ext, existing.id);
+      // Solo si ya se había sincronizado antes: si no, el "antes" es que no había dato, y
+      // eso es un alta, no un cambio de operación.
+      if (cfg && existing.configSyncedAt) {
+        eventos.push(
+          ...detectarCambios({
+            entidad: "ADSET",
+            entidadId: existing.id,
+            etiqueta: info.name ?? cfg.name ?? existing.name,
+            antes: {
+              dailyBudgetRaw: existing.dailyBudgetRaw,
+              bidStrategy: existing.bidStrategy,
+              effectiveStatus: existing.effectiveStatus,
+            },
+            despues: {
+              dailyBudgetRaw: cfg.dailyBudgetRaw,
+              bidStrategy: cfg.bidStrategy,
+              effectiveStatus: cfg.effectiveStatus,
+            },
+          }),
+        );
+      }
       const cambioEstructura =
         (info.name && info.name !== existing.name) ||
         existing.campaignId !== campaignId ||
@@ -325,6 +360,21 @@ export async function persistAdsForAccount(
       });
       adSetIdByExt.set(ext, created.id);
       counters.adSetsCreated += 1;
+    }
+  }
+
+  // Bitácora. Se escribe de golpe y nunca hace fallar el import: es un rastro, no un dato
+  // de negocio. `ocurrioEn` es cuándo se detectó, no cuándo la persona tocó Meta —el cambio
+  // pudo hacerse horas antes— pero acota la fecha lo suficiente para correlacionar.
+  if (eventos.length > 0) {
+    try {
+      await prisma.operationEvent.createMany({
+        data: eventos.map((e) => ({ ...e, companyId, ocurrioEn: syncedAt, automatico: true })),
+      });
+    } catch (e) {
+      opts.errors.push(
+        `No se pudo guardar la bitácora de cambios: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 

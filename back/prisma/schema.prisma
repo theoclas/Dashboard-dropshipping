@@ -61,6 +61,7 @@ model Company {
   metaAdsSystemUserAccess    MetaAdsSystemUserCompany[]
   metaAdsAppAccess           MetaAdsAppCompany[]
   serviceTokens              ServiceToken[]
+  operationEvents            OperationEvent[]
 }
 
 /// Cuenta publicitaria Meta detectada en CSV de facturación (ID numérico + negocio).
@@ -800,4 +801,41 @@ model ServiceToken {
 
   @@index([companyId])
   @@map("service_tokens")
+}
+
+/// Bitácora: qué cambió, cuándo y en qué.
+///
+/// Nace porque los cambios se hacen en Meta, no aquí, y no quedaba rastro: para saber si
+/// una subida de presupuesto había funcionado había que deducirla de un salto en el gasto
+/// y preguntarle al usuario si la había aplicado.
+///
+/// Casi todas las filas las escribe el import solo, comparando la configuración que trae
+/// Meta contra la guardada. Las manuales sirven para lo que Meta no sabe: que cambió la
+/// oferta, que subió el precio, que se agotó el stock.
+model OperationEvent {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  /// Cuándo pasó. Puede ser anterior a la fecha de creación de la fila: el import lo
+  /// detecta cuando corre, no en el momento en que alguien tocó Meta.
+  ocurrioEn DateTime @map("ocurrio_en")
+  /// PRESUPUESTO | ESTADO | PUJA | OFERTA | PRECIO | STOCK | CREATIVO | OTRO
+  tipo      String   @db.VarChar(32)
+  /// Qué se tocó: ADSET | CAMPAIGN | AD | PRODUCTO | GENERAL
+  entidad   String   @db.VarChar(32)
+  /// Id interno de lo que cambió, si aplica.
+  entidadId String?  @map("entidad_id") @db.VarChar(64)
+  /// Nombre legible en el momento del cambio; se conserva aunque luego lo renombren.
+  etiqueta  String?  @db.VarChar(255)
+  valorAntes  String? @map("valor_antes") @db.VarChar(255)
+  valorDespues String? @map("valor_despues") @db.VarChar(255)
+  nota      String?  @db.Text
+  /// true = lo detectó el import; false = lo escribió una persona.
+  automatico Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, ocurrioEn])
+  @@index([companyId, entidad, entidadId])
+  @@map("operation_events")
 }

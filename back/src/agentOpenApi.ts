@@ -476,6 +476,67 @@ export function buildAgentOpenApiSpec(publicUrl: string) {
         },
       },
 
+      "/api/agent/events": {
+        get: {
+          tags: ["Empezar aquí"],
+          summary: "Bitácora: qué cambió en la operación y cuándo",
+          description:
+            "**Consúltala antes de explicar cualquier cambio en las cifras.** Un CPA que se dispara " +
+            "el martes casi siempre tiene una causa el lunes, y suele estar aquí.\n\n" +
+            "La mayoría de las filas las escribe el import solo, comparando la configuración que " +
+            "trae Meta contra la guardada: subidas y bajadas de presupuesto, cambios de estrategia " +
+            "de puja, pausas y activaciones. Las de `automatico: false` son notas escritas a mano, " +
+            "para lo que Meta no sabe — que cambió la oferta, que subió el precio, que se agotó el " +
+            "stock.\n\n" +
+            "**`ocurrioEn` es cuándo se detectó, no cuándo se hizo.** El import compara contra lo " +
+            "guardado, así que un cambio hecho por la mañana aparece con la hora del import. Acota " +
+            "la fecha, no la hora.\n\n" +
+            "Un evento de tipo `PRESUPUESTO` reinicia el aprendizaje de Meta: **los días " +
+            "posteriores no son comparables con los anteriores**, y los primeros suelen ser peores " +
+            "sin que eso signifique que el cambio fue malo.",
+          parameters: [
+            { ...paramDesde, required: false, description: "Opcional." },
+            { ...paramHasta, required: false, description: "Opcional." },
+            {
+              name: "tipo",
+              in: "query",
+              schema: { type: "string", example: "PRESUPUESTO,PUJA" },
+              description:
+                "Filtra por tipo, separados por coma: PRESUPUESTO, ESTADO, PUJA, OFERTA, PRECIO, STOCK, CREATIVO, OTRO.",
+            },
+            {
+              name: "entidadId",
+              in: "query",
+              schema: { type: "string" },
+              description: "Historial de un solo conjunto, campaña o producto.",
+            },
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", default: 200, maximum: 500 },
+              description: "Máximo de filas. Se devuelven las más recientes primero.",
+            },
+          ],
+          responses: respuestas("Eventos, del más reciente al más antiguo.", {
+            rows: [
+              {
+                id: "…",
+                ocurrioEn: "2026-09-03T14:20:00.000Z",
+                tipo: "PRESUPUESTO",
+                entidad: "ADSET",
+                entidadId: "…",
+                etiqueta: "4.2 Cliente MENOS ESPACIO, MENOS DESORDEN",
+                valorAntes: "14.000",
+                valorDespues: "20.000",
+                nota: "El presupuesto diario de \"4.2 Cliente MENOS ESPACIO\" subió de 14.000 a 20.000 (+43%). Un cambio de presupuesto reinicia el aprendizaje: los primeros días no son comparables.",
+                automatico: true,
+              },
+            ],
+            notas: ["…advertencias de lectura…"],
+          }),
+        },
+      },
+
       "/api/agent/orders/breakdown": {
         get: {
           tags: ["Entregas"],

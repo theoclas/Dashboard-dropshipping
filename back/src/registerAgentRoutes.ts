@@ -235,6 +235,10 @@ export function registerAgentRoutes(app: express.Express): void {
           },
           { ruta: "GET /api/agent/spend/by-product", que: "Gasto publicitario Meta agrupado por producto." },
           {
+            ruta: "GET /api/agent/events",
+            que: "Bitácora: qué cambió en la operación y cuándo. La escribe el import solo al detectar cambios en Meta.",
+          },
+          {
             ruta: "GET /api/agent/orders/breakdown",
             que: "Pedidos agregados por transportadora, estado, departamento o días de tránsito. Solo cuenta y suma.",
           },
@@ -423,6 +427,74 @@ export function registerAgentRoutes(app: express.Express): void {
         return res
           .status(400)
           .json({ message: e instanceof Error ? e.message : "Error al consultar entregas por ubicación." });
+      }
+    },
+  );
+
+  /**
+   * Bitácora: qué cambió en la operación y cuándo.
+   *
+   * Es lo que permite correlacionar causa y efecto sin preguntarle a nadie. Antes, para
+   * juzgar si una subida de presupuesto había funcionado, había que deducir la fecha de un
+   * salto en el gasto y confiar en que se recordara bien.
+   *
+   * La mayoría de las filas las escribe el import solo, comparando lo que trae Meta contra
+   * lo guardado.
+   */
+  app.get(
+    "/api/agent/events",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleDashboard", "moduleAnuncios", "moduleCampanasMeta"]),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = rangeSchema.partial().safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Parámetros inválidos." });
+      }
+      const tipos = csvList(req.query.tipo);
+      const where: Record<string, unknown> = { companyId: u.companyId };
+      if (parsed.data.desde || parsed.data.hasta) {
+        const r: Record<string, Date> = {};
+        if (parsed.data.desde) r.gte = new Date(`${parsed.data.desde}T00:00:00.000Z`);
+        if (parsed.data.hasta) r.lte = new Date(`${parsed.data.hasta}T23:59:59.999Z`);
+        where.ocurrioEn = r;
+      }
+      if (tipos) where.tipo = { in: tipos };
+      if (req.query.entidadId) where.entidadId = String(req.query.entidadId);
+
+      try {
+        const rows = await prisma.operationEvent.findMany({
+          where,
+          orderBy: { ocurrioEn: "desc" },
+          take: Math.min(Number(req.query.limit ?? 200) || 200, 500),
+          select: {
+            id: true,
+            ocurrioEn: true,
+            tipo: true,
+            entidad: true,
+            entidadId: true,
+            etiqueta: true,
+            valorAntes: true,
+            valorDespues: true,
+            nota: true,
+            automatico: true,
+          },
+        });
+        return res.json({
+          desde: parsed.data.desde ?? null,
+          hasta: parsed.data.hasta ?? null,
+          rows: rows.map((r) => ({ ...r, ocurrioEn: r.ocurrioEn.toISOString() })),
+          notas: [
+            "`ocurrioEn` es cuándo se DETECTÓ el cambio, no cuándo se hizo: el import compara contra lo guardado, así que un cambio hecho por la mañana aparece con la hora del import.",
+            "Un cambio de presupuesto reinicia el aprendizaje de Meta. Los primeros días después de un evento PRESUPUESTO no son comparables con los anteriores.",
+            "`automatico: false` son notas escritas a mano, para lo que Meta no sabe: cambió la oferta, subió el precio, se agotó el stock.",
+          ],
+        });
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ message: e instanceof Error ? e.message : "Error al consultar la bitácora." });
       }
     },
   );
