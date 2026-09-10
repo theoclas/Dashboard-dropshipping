@@ -8,6 +8,7 @@ import { listCpaExperimental } from "./cpaExperimentalService";
 import { queryEntregaByProductBreakdown } from "./dashboardEntregaByProduct";
 import { getMetaAdvertisingSpendSummary } from "./metaCampaignSpend";
 import { queryEntregasPorUbicacion, type GeoDimension } from "./agentGeoService";
+import { agentDocsHtml, buildAgentOpenApiSpec } from "./agentOpenApi";
 
 /**
  * API de solo lectura pensada para que un agente externo analice el negocio.
@@ -48,7 +49,40 @@ function ymdOf(dt: Date): string {
   ).padStart(2, "0")}`;
 }
 
+/** Base pública, para que la spec apunte al servidor real y no a localhost. */
+function baseUrl(req: express.Request): string {
+  const proto = String(req.header("x-forwarded-proto") ?? req.protocol ?? "https").split(",")[0];
+  return `${proto}://${req.get("host")}`;
+}
+
 export function registerAgentRoutes(app: express.Express): void {
+  /**
+   * Documentación. **Sin autenticación a propósito.**
+   *
+   * Describe la forma de la API, no los datos: para traer datos sigue haciendo falta la
+   * credencial. Pedir token para leer la documentación rompería justo el caso de uso —
+   * pasarle la referencia a alguien, o a otra IA, para que sepa qué puede consultar.
+   */
+  app.get("/api/agent/openapi.json", (req, res) => {
+    res.json(buildAgentOpenApiSpec(baseUrl(req)));
+  });
+
+  app.get("/api/agent/docs", (req, res) => {
+    // helmet pone `default-src 'self'`, que bloquearía el CDN de Swagger UI. Se abre solo aquí.
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "img-src 'self' data: https:",
+        "connect-src 'self'",
+        "font-src 'self' data:",
+      ].join("; "),
+    );
+    res.type("html").send(agentDocsHtml(`${baseUrl(req)}/api/agent/openapi.json`));
+  });
+
   /**
    * Punto de entrada. Dice qué hay, hasta qué fecha, y —lo más importante— cómo se debe
    * leer esta data para no sacar conclusiones falsas.
@@ -128,6 +162,14 @@ export function registerAgentRoutes(app: express.Express): void {
             que: "Entregas y devoluciones por ciudad o departamento, filtrable por producto (?dimension=ciudad|departamento&productId=&minPedidos=). Para decidir qué ubicaciones excluir de la segmentación.",
           },
           { ruta: "GET /api/agent/spend/by-product", que: "Gasto publicitario Meta agrupado por producto." },
+          {
+            ruta: "GET /api/agent/docs",
+            que: "Documentación navegable (Swagger UI), con las reglas de lectura del negocio. No pide credencial.",
+          },
+          {
+            ruta: "GET /api/agent/openapi.json",
+            que: "La misma documentación en OpenAPI 3.0, para consumirla desde otra herramienta o agente.",
+          },
         ],
         comoLeerEstosDatos: [
           "Negocio contra entrega (COD) en Colombia: el gasto de un día es definitivo al día siguiente, los pedidos casi, pero las entregas y el margen real solo se conocen entre 7 y 15 días después. Nunca compares el margen de un día reciente con el de uno maduro: vas a concluir que el negocio empeora cuando solo falta que maduren las entregas.",
