@@ -9,6 +9,7 @@ import { queryEntregaByProductBreakdown } from "./dashboardEntregaByProduct";
 import { getMetaAdvertisingSpendSummary } from "./metaCampaignSpend";
 import { queryEntregasPorUbicacion, type GeoDimension } from "./agentGeoService";
 import { agentDocsHtml, buildAgentOpenApiSpec } from "./agentOpenApi";
+import { queryOrdersBreakdown, type OrdersDimension } from "./agentOrdersService";
 
 /**
  * API de solo lectura pensada para que un agente externo analice el negocio.
@@ -234,6 +235,10 @@ export function registerAgentRoutes(app: express.Express): void {
           },
           { ruta: "GET /api/agent/spend/by-product", que: "Gasto publicitario Meta agrupado por producto." },
           {
+            ruta: "GET /api/agent/orders/breakdown",
+            que: "Pedidos agregados por transportadora, estado, departamento o días de tránsito. Solo cuenta y suma.",
+          },
+          {
             ruta: "GET /api/agent/docs",
             que: "Documentación navegable (Swagger UI), con las reglas de lectura del negocio. No pide credencial.",
           },
@@ -418,6 +423,47 @@ export function registerAgentRoutes(app: express.Express): void {
         return res
           .status(400)
           .json({ message: e instanceof Error ? e.message : "Error al consultar entregas por ubicación." });
+      }
+    },
+  );
+
+  /**
+   * Pedidos agregados por transportadora, estado, departamento o días de tránsito.
+   *
+   * Responde preguntas que el CPA no puede: si una transportadora entrega al 65% y otra al
+   * 85%, eso mueve más plata que cualquier ajuste de puja. Solo cuenta y suma; no expone
+   * ningún pedido concreto ni dato de cliente.
+   */
+  app.get(
+    "/api/agent/orders/breakdown",
+    authRequired,
+    companyRequired,
+    requireAnyPermission(["moduleDashboard", "moduleReportes"]),
+    async (req, res) => {
+      const u = user(req);
+      const parsed = rangeSchema.partial().safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Parámetros inválidos." });
+      }
+      const dimRaw = String(req.query.dimension ?? "transportadora");
+      const dimension: OrdersDimension = (
+        ["transportadora", "estado", "departamento", "dias_transito"] as const
+      ).includes(dimRaw as OrdersDimension)
+        ? (dimRaw as OrdersDimension)
+        : "transportadora";
+
+      try {
+        const data = await queryOrdersBreakdown(prisma, u.companyId, {
+          dimension,
+          desde: parsed.data.desde,
+          hasta: parsed.data.hasta,
+          minPedidos: numOrNull(req.query.minPedidos) ?? undefined,
+        });
+        return res.json({ desde: parsed.data.desde ?? null, hasta: parsed.data.hasta ?? null, ...data });
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ message: e instanceof Error ? e.message : "Error al consultar pedidos." });
       }
     },
   );

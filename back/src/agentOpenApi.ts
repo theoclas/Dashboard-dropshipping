@@ -476,6 +476,70 @@ export function buildAgentOpenApiSpec(publicUrl: string) {
         },
       },
 
+      "/api/agent/orders/breakdown": {
+        get: {
+          tags: ["Entregas"],
+          summary: "Pedidos agregados por transportadora, estado o tiempo de tránsito",
+          description:
+            "Responde preguntas que el CPA no puede. Si una transportadora entrega al 65% y otra " +
+            "al 85%, eso mueve más plata que cualquier ajuste de puja.\n\n" +
+            "**Usa `pctEntregaResueltos`, no `pctEntrega`.** El primero mira solo los pedidos que " +
+            "ya terminaron (entregados + devueltos) y es el único comparable entre grupos. El " +
+            "segundo divide entre todos, incluidos los que siguen en camino, y castiga a los " +
+            "grupos con pedidos recientes.\n\n" +
+            "`margenBruto` es venta − flete − costo de proveedor − costo de las devoluciones. **No " +
+            "descuenta publicidad**: eso vive en `/cpa/daily`.\n\n" +
+            "`dias_transito` agrupa en tramos (0-2, 3-5, 6-8, 9-15, más de 15) porque el número " +
+            "exacto no dice nada. En contra entrega, un tramo lento suele traer más devoluciones — " +
+            "y eso se arregla con la transportadora, no con el anuncio.\n\n" +
+            "Solo cuenta y suma: no expone ningún pedido concreto ni dato de cliente.",
+          parameters: [
+            {
+              name: "dimension",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["transportadora", "estado", "departamento", "dias_transito"],
+                default: "transportadora",
+              },
+              description: "Por qué agrupar.",
+            },
+            { ...paramDesde, required: false, description: "Opcional. Filtra por fecha del PEDIDO." },
+            { ...paramHasta, required: false, description: "Opcional." },
+            {
+              name: "minPedidos",
+              in: "query",
+              schema: { type: "integer", example: 10 },
+              description: "Descarta grupos con menos pedidos. Un 100% sobre 2 pedidos no significa nada.",
+            },
+          ],
+          responses: respuestas("Filas por grupo, más los totales.", {
+            dimension: "transportadora",
+            rows: [
+              {
+                clave: "SERVIENTREGA",
+                pedidos: 48,
+                entregados: 31,
+                devueltos: 7,
+                enTransito: 10,
+                pctEntrega: 64.6,
+                pctDevolucion: 14.6,
+                pctEntregaResueltos: 81.6,
+                venta: 3120000,
+                flete: 412000,
+                costoProveedor: 1180000,
+                costoDevoluciones: 98000,
+                margenBruto: 1430000,
+                margenPorPedido: 29791.67,
+                diasHastaResolver: 4.5,
+              },
+            ],
+            totales: { clave: "TOTAL", pedidos: 65, pctEntregaResueltos: 79.2 },
+            notas: ["…advertencias de lectura…"],
+          }),
+        },
+      },
+
       "/api/agent/spend/by-product": {
         get: {
           tags: ["Rentabilidad"],
