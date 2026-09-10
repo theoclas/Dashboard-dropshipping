@@ -1174,26 +1174,36 @@ export type ServiceToken = {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  /** false en credenciales viejas, creadas antes de que se guardara el token. */
+  puedeVerse: boolean;
 };
 
-/** Respuesta de creación: la única vez que viaja el token en claro. */
 export type ServiceTokenCreated = {
   id: string;
   name: string;
   prefix: string;
   createdAt: string;
   token: string;
-  aviso: string;
 };
 
-export async function fetchServiceTokens(): Promise<ServiceToken[]> {
-  const { data } = await api.get<{ items: ServiceToken[] }>("/service-tokens");
-  return data.items;
+/**
+ * Credenciales de la **empresa activa**. Cada credencial pertenece a una sola empresa y
+ * solo deja consultar los datos de esa: quien administre dos necesita una en cada una.
+ */
+export async function fetchServiceTokens(): Promise<{ empresa: string; items: ServiceToken[] }> {
+  const { data } = await api.get<{ empresa: string; items: ServiceToken[] }>("/service-tokens");
+  return data;
 }
 
 export async function createServiceToken(name: string): Promise<ServiceTokenCreated> {
   const { data } = await api.post<ServiceTokenCreated>("/service-tokens", { name });
   return data;
+}
+
+/** Pide el token en claro. Va aparte del listado: cada consulta queda en el log del servidor. */
+export async function revealServiceToken(id: string): Promise<string> {
+  const { data } = await api.get<{ token: string }>(`/service-tokens/${id}/reveal`);
+  return data.token;
 }
 
 export async function revokeServiceToken(id: string): Promise<void> {

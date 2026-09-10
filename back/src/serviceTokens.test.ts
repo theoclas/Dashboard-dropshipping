@@ -161,6 +161,29 @@ test("una credencial válida entra a /api/agent como LECTOR de su empresa", asyn
   assert.equal(u?.serviceTokenId, "st1");
 });
 
+test("cada credencial queda atada a SU empresa, no a otra", async () => {
+  // Dos credenciales de empresas distintas: cada una debe abrir solo su propio alcance.
+  for (const empresa of ["c1", "c2"]) {
+    configureAuthMiddleware(prismaFalso({ ...FILA, id: `st-${empresa}`, companyId: empresa }));
+    const { token } = generateServiceToken();
+    const req = peticion(token) as never;
+    const { res, out } = respuesta();
+    let paso = false;
+
+    await authRequired(req, res as never, () => {
+      paso = true;
+    });
+
+    assert.equal(paso, true, `no pasó: ${JSON.stringify(out)}`);
+    const u = (req as { user?: { companyId: string } }).user;
+    assert.equal(
+      u?.companyId,
+      empresa,
+      "el alcance sale de la fila de la credencial, no de lo que pida quien llama",
+    );
+  }
+});
+
 test("una credencial revocada deja de servir en el acto", async () => {
   configureAuthMiddleware(prismaFalso({ ...FILA, revokedAt: new Date() }));
   const { token } = generateServiceToken();

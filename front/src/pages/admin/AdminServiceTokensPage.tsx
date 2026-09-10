@@ -10,16 +10,17 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
-import { CopyOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
+import { CopyOutlined, EyeOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
 import {
   createServiceToken,
   fetchServiceTokens,
+  revealServiceToken,
   revokeServiceToken,
   type ServiceToken,
-  type ServiceTokenCreated,
 } from "../../api";
 import { AdminPageHeader } from "./AdminPageHeader";
 
@@ -36,25 +37,38 @@ function fecha(iso: string | null): string {
   });
 }
 
+function mensajeError(e: unknown, porDefecto: string): string {
+  return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
+}
+
 /**
  * Credenciales de servicio para la API de solo lectura del agente.
  *
  * Existen porque el JWT de login caduca a las 8 horas y obligaba a generar uno nuevo en
- * cada sesión de análisis. Estas no caducan, pero **se revocan en un clic** y solo sirven
- * para hacer GET a `/api/agent/`: no pueden escribir nada ni ver datos de clientes.
+ * cada sesión de análisis. Estas no caducan, se pueden volver a copiar desde aquí, y se
+ * revocan en un clic.
+ *
+ * El token no viaja en el listado: se pide con un botón, y cada vez que alguien lo mira
+ * queda escrito en el log del servidor.
  */
 export function AdminServiceTokensPage() {
   const [items, setItems] = useState<ServiceToken[]>([]);
+  const [empresa, setEmpresa] = useState("");
   const [cargando, setCargando] = useState(false);
   const [creando, setCreando] = useState(false);
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [recienCreada, setRecienCreada] = useState<ServiceTokenCreated | null>(null);
+  const [modalCrear, setModalCrear] = useState(false);
+  const [viendo, setViendo] = useState<{ nombre: string; token: string; nueva: boolean } | null>(
+    null,
+  );
+  const [revelandoId, setRevelandoId] = useState<string | null>(null);
   const [form] = Form.useForm<{ name: string }>();
 
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      setItems(await fetchServiceTokens());
+      const r = await fetchServiceTokens();
+      setEmpresa(r.empresa);
+      setItems(r.items);
     } catch {
       message.error("No se pudieron cargar las credenciales.");
     } finally {
@@ -66,20 +80,40 @@ export function AdminServiceTokensPage() {
     void cargar();
   }, [cargar]);
 
+  const copiar = async (texto: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      message.success("Token copiado.");
+    } catch {
+      message.warning("Cópialo a mano: el navegador bloqueó el portapapeles.");
+    }
+  };
+
   const crear = async () => {
     const vals = await form.validateFields();
     setCreando(true);
     try {
       const creada = await createServiceToken(vals.name.trim());
-      setRecienCreada(creada);
-      setModalAbierto(false);
+      setModalCrear(false);
       form.resetFields();
+      setViendo({ nombre: creada.name, token: creada.token, nueva: true });
       await cargar();
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      message.error(msg ?? "No se pudo crear la credencial.");
+      message.error(mensajeError(e, "No se pudo crear la credencial."));
     } finally {
       setCreando(false);
+    }
+  };
+
+  const ver = async (row: ServiceToken) => {
+    setRevelandoId(row.id);
+    try {
+      const token = await revealServiceToken(row.id);
+      setViendo({ nombre: row.name, token, nueva: false });
+    } catch (e) {
+      message.error(mensajeError(e, "No se pudo leer la credencial."));
+    } finally {
+      setRevelandoId(null);
     }
   };
 
@@ -93,22 +127,25 @@ export function AdminServiceTokensPage() {
     }
   };
 
-  const copiar = async (texto: string) => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      message.success("Token copiado.");
-    } catch {
-      message.warning("Cópialo a mano: el navegador bloqueó el portapapeles.");
-    }
-  };
-
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <AdminPageHeader
         title="Credenciales de servicio"
-        subtitle="Acceso permanente y de solo lectura a la API de análisis. No caducan, pero se revocan en un clic."
+        subtitle={
+          <>
+            Acceso permanente y de solo lectura a la API de análisis. Cópialo cuando lo
+            necesites; revócalo si se filtra.
+            {empresa ? (
+              <>
+                {" "}
+                Estas credenciales son de <Text strong>{empresa}</Text> y solo dejan ver los
+                datos de esa empresa.
+              </>
+            ) : null}
+          </>
+        }
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalAbierto(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
             Crear credencial
           </Button>
         }
@@ -134,8 +171,12 @@ export function AdminServiceTokensPage() {
               funcionar en la siguiente petición.
             </li>
             <li>
-              <Text strong>Se muestra una sola vez.</Text> Solo se guarda su huella; si la pierdes,
-              revócala y crea otra.
+              <Text strong>Solo la ven los administradores</Text>, y cada vez que alguien la mira
+              queda registrado en el servidor.
+            </li>
+            <li>
+              <Text strong>Atada a una empresa.</Text> Solo consulta los datos de la empresa donde
+              se creó. Si administras varias, crea una credencial en cada una.
             </li>
           </ul>
         }
@@ -167,37 +208,56 @@ export function AdminServiceTokensPage() {
             {
               title: "Estado",
               dataIndex: "revokedAt",
-              width: 160,
+              width: 130,
               render: (v: string | null) =>
                 v ? <Tag color="red">Revocada</Tag> : <Tag color="green">Activa</Tag>,
             },
-            { title: "Creada", dataIndex: "createdAt", width: 190, render: fecha },
+            { title: "Creada", dataIndex: "createdAt", width: 180, render: fecha },
             {
               title: "Último uso",
               dataIndex: "lastUsedAt",
-              width: 190,
+              width: 180,
               render: (v: string | null) =>
                 v ? fecha(v) : <Text type="secondary">Nunca usada</Text>,
             },
             {
               title: "",
               key: "acciones",
-              width: 130,
-              render: (_: unknown, row) =>
-                row.revokedAt ? null : (
-                  <Popconfirm
-                    title="¿Revocar esta credencial?"
-                    description="Deja de funcionar de inmediato y no se puede deshacer."
-                    okText="Revocar"
-                    okButtonProps={{ danger: true }}
-                    cancelText="Cancelar"
-                    onConfirm={() => revocar(row.id)}
-                  >
-                    <Button size="small" danger icon={<StopOutlined />}>
-                      Revocar
+              width: 200,
+              render: (_: unknown, row) => (
+                <Space size={4}>
+                  {row.puedeVerse ? (
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      loading={revelandoId === row.id}
+                      onClick={() => ver(row)}
+                    >
+                      Ver token
                     </Button>
-                  </Popconfirm>
-                ),
+                  ) : (
+                    <Tooltip title="Se creó antes de que se guardaran; ya no se puede recuperar.">
+                      <Button size="small" disabled icon={<EyeOutlined />}>
+                        Ver token
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {row.revokedAt ? null : (
+                    <Popconfirm
+                      title="¿Revocar esta credencial?"
+                      description="Deja de funcionar de inmediato y no se puede deshacer."
+                      okText="Revocar"
+                      okButtonProps={{ danger: true }}
+                      cancelText="Cancelar"
+                      onConfirm={() => revocar(row.id)}
+                    >
+                      <Button size="small" danger icon={<StopOutlined />}>
+                        Revocar
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </Space>
+              ),
             },
           ]}
         />
@@ -205,8 +265,8 @@ export function AdminServiceTokensPage() {
 
       <Modal
         title="Crear credencial de servicio"
-        open={modalAbierto}
-        onCancel={() => setModalAbierto(false)}
+        open={modalCrear}
+        onCancel={() => setModalCrear(false)}
         onOk={crear}
         confirmLoading={creando}
         okText="Crear"
@@ -226,39 +286,35 @@ export function AdminServiceTokensPage() {
       </Modal>
 
       <Modal
-        title="Guarda este token ahora"
-        open={!!recienCreada}
-        onCancel={() => setRecienCreada(null)}
+        title={viendo?.nueva ? "Credencial creada" : `Token de "${viendo?.nombre ?? ""}"`}
+        open={!!viendo}
+        onCancel={() => setViendo(null)}
         footer={[
-          <Button key="cerrar" type="primary" onClick={() => setRecienCreada(null)}>
-            Ya lo guardé
+          <Button key="cerrar" onClick={() => setViendo(null)}>
+            Cerrar
+          </Button>,
+          <Button
+            key="copiar"
+            type="primary"
+            icon={<CopyOutlined />}
+            onClick={() => viendo && copiar(viendo.token)}
+          >
+            Copiar token
           </Button>,
         ]}
         width={640}
       >
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="No se vuelve a mostrar"
-          description="Solo se guarda su huella. Si lo pierdes, revoca esta credencial y crea otra."
-        />
-        <Paragraph>
-          <Input.TextArea
-            readOnly
-            value={recienCreada?.token ?? ""}
-            autoSize={{ minRows: 2, maxRows: 3 }}
-            style={{ fontFamily: "monospace", fontSize: 12 }}
-            onFocus={(e) => e.currentTarget.select()}
-          />
+        <Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Úsalo como <Text code>Authorization: Bearer …</Text>. Puedes volver a esta pantalla a
+          copiarlo cuando quieras.
         </Paragraph>
-        <Button
-          icon={<CopyOutlined />}
-          onClick={() => recienCreada && copiar(recienCreada.token)}
-          block
-        >
-          Copiar token
-        </Button>
+        <Input.TextArea
+          readOnly
+          value={viendo?.token ?? ""}
+          autoSize={{ minRows: 2, maxRows: 3 }}
+          style={{ fontFamily: "monospace", fontSize: 12 }}
+          onFocus={(e) => e.currentTarget.select()}
+        />
       </Modal>
     </Space>
   );
