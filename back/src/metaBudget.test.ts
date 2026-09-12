@@ -16,10 +16,12 @@ import {
  */
 
 test("convierte el crudo de Meta a pesos", () => {
-  // Los presupuestos reales del collar el 8 de septiembre de 2026.
-  assert.equal(normalizeMetaBudget("3100000"), 31000);
-  assert.equal(normalizeMetaBudget("2900000"), 29000);
-  assert.equal(normalizeMetaBudget("1300000"), 13000);
+  // Valores reales observados en producción: en COP, Meta devuelve el presupuesto tal cual,
+  // sin centavos. La subida del conjunto de video llegó como 13000 -> 25000.
+  assert.equal(normalizeMetaBudget("31000"), 31000);
+  assert.equal(normalizeMetaBudget("29000"), 29000);
+  assert.equal(normalizeMetaBudget("13000"), 13000);
+  assert.equal(normalizeMetaBudget("25000"), 25000);
 });
 
 test("sin presupuesto devuelve null, no cero", () => {
@@ -50,9 +52,10 @@ test("la guardia de escala atrapa un factor equivocado", () => {
   const gasto = 24_891; // lo que gastó Frío el 8 de septiembre
 
   assert.equal(presupuestoEsPlausible(29_000, gasto), true, "el valor correcto debe pasar");
-  // Si alguien olvidara dividir, el presupuesto llegaría como 2.900.000.
+  // Si alguien multiplicara de más, 2.900.000.
   assert.equal(presupuestoEsPlausible(2_900_000, gasto), false, "100x arriba debe rechazarse");
-  // Y si dividiera de más, 290.
+  // Y el caso que ocurrió de verdad: dividir entre 100 un valor que ya venía en pesos.
+  // La guardia devolvió null y evitó mostrar "presupuesto: 290" como si fuera cierto.
   assert.equal(presupuestoEsPlausible(290, gasto), false, "100x abajo debe rechazarse");
 });
 

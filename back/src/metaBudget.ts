@@ -14,13 +14,20 @@
 /**
  * Cuántas unidades menores tiene un peso según Meta.
  *
- * Meta trata el COP con dos decimales en la API aunque en la calle no se usen centavos, así
- * que un presupuesto de $31.000 llega como `"3100000"`.
+ * **Para el COP es 1**: Meta lo trata como moneda sin decimales, así que un presupuesto de
+ * $25.000 llega literalmente como `"25000"`. Verificado en producción el 12 de septiembre
+ * de 2026, cuando una subida de 13.000 a 25.000 se registró como `13000 -> 25000`.
  *
- * Si alguna vez este factor está mal, se nota de inmediato: `porcentajeDeEntrega` daría
- * valores absurdos (1% o 10.000%) en vez de rondar el 100%. Ver `presupuestoEsPlausible`.
+ * Se deja como constante y no como `1` suelto porque **no es universal**: en monedas con
+ * centavos (USD, EUR) Meta sí devuelve la unidad menor y el factor sería 100. Si algún día
+ * esta cuenta factura en otra moneda, se cambia aquí.
+ *
+ * Cuando el factor está mal se nota de inmediato: `porcentajeDeEntrega` daría valores
+ * absurdos —1% o 10.000%— en vez de rondar el 100%. Eso es exactamente lo que atrapó
+ * `presupuestoEsPlausible` la primera vez, devolviendo `null` en lugar de un número que
+ * habría llevado a decidir al revés.
  */
-export const UNIDADES_MENORES_POR_PESO = 100;
+export const UNIDADES_MENORES_POR_PESO = 1;
 
 /** Convierte el valor crudo de Meta a pesos. `null` si no hay presupuesto en ese nivel. */
 export function normalizeMetaBudget(raw: string | null | undefined): number | null {
