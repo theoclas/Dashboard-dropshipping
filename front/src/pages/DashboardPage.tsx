@@ -32,6 +32,7 @@ import {
   FundOutlined,
   WalletOutlined,
   WarningOutlined,
+  FileSyncOutlined,
 } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
@@ -117,6 +118,20 @@ export type DashboardMetrics = {
   gananciaProyectada: number;
   /** Suma de |costo_devolucion_estimado| de los pedidos devueltos del rango. */
   costoDevoluciones: number;
+  /** Devoluciones que Dropi cobró en el rango, por fecha de cobro (histórico de cartera). */
+  devolucionesCobradas: {
+    total: number;
+    cobros: number;
+    sinPedido: number;
+    sinPedidoMonto: number;
+    sinProductoMonto: number;
+    byProduct: Array<{
+      productKey: string;
+      productName: string;
+      cobros: number;
+      monto: number;
+    }>;
+  };
   cpaPromedio: number | null;
   totalCpaSpend: number;
   cpaExperimentalVentas: number;
@@ -254,7 +269,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
   const [entregaDetailOpen, setEntregaDetailOpen] = useState<
-    "entregados" | "devoluciones" | "totalPedidos" | "costoDevoluciones" | null
+    "entregados" | "devoluciones" | "totalPedidos" | "costoDevoluciones" | "devolucionesCobradas" | null
   >(null);
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
   const [selectedMarginProductIds, setSelectedMarginProductIds] = useState<string[]>([]);
@@ -930,6 +945,77 @@ export function DashboardPage() {
             />
           </Card>
         ) : null}
+        {entregaDetailOpen === "devolucionesCobradas" &&
+        isDashboardCardVisible(dashCfg, "card_devolucionesCobradas") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Devoluciones cobradas por producto"
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Lo que Dropi descontó por devoluciones en este rango, por fecha de cobro:{" "}
+              {fmtInteger(data?.devolucionesCobradas?.cobros ?? 0)} cobro
+              {(data?.devolucionesCobradas?.cobros ?? 0) === 1 ? "" : "s"}. Cuando el pedido
+              devuelto trae varios productos, el costo se reparte entre ellos por unidades.
+            </Text>
+            {(data?.devolucionesCobradas?.sinPedido ?? 0) > 0 ? (
+              <Text type="warning" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+                <WarningOutlined />{" "}
+                {fmtInteger(data?.devolucionesCobradas?.sinPedido ?? 0)} de estos cobros ($
+                {fmtMoney(data?.devolucionesCobradas?.sinPedidoMonto ?? 0)}) son de pedidos que no
+                están en la base: se devolvieron ahora, pero se hicieron antes del rango que
+                exportaste de Dropi. Ninguna otra tarjeta los ve, así que el margen sale más alto
+                de lo real. Para que aparezcan por producto, exporta las órdenes desde una fecha
+                más atrás y vuelve a importarlas.
+              </Text>
+            ) : null}
+            {(data?.devolucionesCobradas?.sinProductoMonto ?? 0) > 0.5 ? (
+              <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+                Otros ${fmtMoney(data?.devolucionesCobradas?.sinProductoMonto ?? 0)} son de pedidos
+                sin líneas de producto, así que tampoco se pueden atribuir.
+              </Text>
+            ) : null}
+            <Table
+              size="small"
+              rowKey="productKey"
+              loading={loading}
+              pagination={false}
+              locale={{ emptyText: "Sin devoluciones cobradas en este rango." }}
+              dataSource={data?.devolucionesCobradas?.byProduct ?? []}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                {
+                  title: "Cobros",
+                  dataIndex: "cobros",
+                  key: "cobros",
+                  align: "right",
+                  width: 100,
+                  render: (v: number) => fmtInteger(v),
+                },
+                {
+                  title: "Costo cobrado",
+                  dataIndex: "monto",
+                  key: "monto",
+                  align: "right",
+                  width: 160,
+                  render: (v: number) => `${fmtMoney(v)}`,
+                },
+                {
+                  title: "% del total",
+                  key: "pct",
+                  align: "right",
+                  width: 110,
+                  render: (_: unknown, r: { monto: number }) =>
+                    fmtPercent(
+                      (data?.devolucionesCobradas?.total ?? 0) > 0
+                        ? r.monto / (data?.devolucionesCobradas?.total ?? 1)
+                        : 0,
+                    ),
+                },
+              ]}
+            />
+          </Card>
+        ) : null}
 
         {entregaDetailOpen === "devoluciones" && isDashboardCardVisible(dashCfg, "card_devoluciones") ? (
           <Card
@@ -1112,6 +1198,26 @@ export function DashboardPage() {
               }
               hint={
                 <Tooltip title="Suma del costo de devolución de los pedidos devueltos del rango. Es plata perdida: el flete de ida y vuelta que ya pagaste y no recuperas. No incluye los pedidos en tránsito que todavía podrían devolverse. Clic para ver qué productos lo generan.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_devolucionesCobradas") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<FileSyncOutlined />}
+              label={dashboardCardLabel(cardLabels, "card_devolucionesCobradas")}
+              value={loading ? "…" : `${fmtMoney(data?.devolucionesCobradas?.total ?? 0)}`}
+              active={entregaDetailOpen === "devolucionesCobradas"}
+              onClick={() =>
+                setEntregaDetailOpen((prev) =>
+                  prev === "devolucionesCobradas" ? null : "devolucionesCobradas",
+                )
+              }
+              hint={
+                <Tooltip title="Lo que Dropi te descontó por devoluciones en el rango, leído del histórico de cartera y agrupado por FECHA DE COBRO. «Costo de devoluciones» agrupa por fecha del pedido, así que una devolución cobrada hoy de un pedido de hace dos semanas aparece allá en el día del pedido, y si el pedido es anterior a tu export de órdenes no aparece en ninguna parte. Esta tarjeta sí la ve. Clic para el desglose.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }

@@ -6,6 +6,11 @@ import {
   type EntregaEstadoByProductRow,
   type TotalPedidosByProductRow,
 } from "./dashboardEntregaByProduct";
+import {
+  DEVOLUCIONES_COBRADAS_VACIO,
+  getDevolucionesCobradas,
+  type DevolucionesCobradas,
+} from "./devolucionesCobradas";
 
 function parseYmd(s: string | undefined): Date | null {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -151,6 +156,12 @@ export type DashboardMetricsPayload = {
   gananciaProyectada: number;
   /** Lo que costaron las devoluciones del rango (suma de |costo_devolucion_estimado|). */
   costoDevoluciones: number;
+  /**
+   * Devoluciones que Dropi COBRÓ en el rango, leídas de cartera. A diferencia de
+   * `costoDevoluciones`, agrupa por fecha de cobro y no necesita que el pedido esté en la
+   * base, así que también ve devoluciones de pedidos anteriores al export de órdenes.
+   */
+  devolucionesCobradas: DevolucionesCobradas;
   cpaPromedio: number | null;
   totalCpaSpend: number;
   /** Ventas atribuidas en registros CPA experimental del rango. */
@@ -300,7 +311,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
 `;
   const walletTotalsParams: unknown[] = hasRange ? [companyId, start, end] : [companyId];
 
-  const [aggRows, productRows, finRows, cpaExperimentalRows, opExpenseAgg, retirosAgg, walletTotalsRows, metaSpend, entregaByProduct] =
+  const [aggRows, productRows, finRows, cpaExperimentalRows, opExpenseAgg, retirosAgg, walletTotalsRows, metaSpend, entregaByProduct, devolucionesCobradas] =
     await Promise.all([
     prisma.$queryRawUnsafe<AggRow[]>(aggSql, ...aggParams),
     prisma.$queryRawUnsafe<{ productos_vendidos: unknown }[]>(productSql, ...aggParams),
@@ -326,6 +337,8 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
     prisma.$queryRawUnsafe<WalletTotalsRow[]>(walletTotalsSql, ...walletTotalsParams),
     getMetaAdvertisingSpendSummary(prisma, companyId, opts),
     queryEntregaByProductBreakdown(prisma, companyId, opts),
+    // Si cartera aún no se ha importado devuelve ceros en vez de tumbar todo el dashboard.
+    getDevolucionesCobradas(prisma, companyId, opts.desde, opts.hasta).catch(() => DEVOLUCIONES_COBRADAS_VACIO),
   ]);
 
   const a = aggRows[0];
@@ -412,6 +425,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
     gananciaEstimada,
     gananciaProyectada,
     costoDevoluciones,
+    devolucionesCobradas,
     cpaPromedio: cpaAvg,
     totalCpaSpend,
     cpaExperimentalVentas,

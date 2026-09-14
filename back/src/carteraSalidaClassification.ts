@@ -71,3 +71,29 @@ export function resolveOrdenIdForSalida(input: {
   if (direct) return direct;
   return extractOrdenIdFromDescripcion(input.descripcion);
 }
+
+/**
+ * Patrón SQL de un cobro de devolución en `cartera_movimientos`.
+ *
+ * Se exporta para que la consulta agregada y `esCobroDevolucion` apliquen **la misma** regla:
+ * si divergen, la tarjeta y el desglose dirían cifras distintas. Un test lo verifica.
+ */
+export const SQL_COBRO_DEVOLUCION = `(
+  UPPER(TRIM(COALESCE(m.tipo,''))) = 'SALIDA'
+  AND UPPER(COALESCE(m.descripcion,'')) LIKE '%FLETE INICIAL%'
+)`;
+
+/**
+ * ¿Este movimiento es el cobro de una devolución?
+ *
+ * Dropi descuenta el flete de vuelta con la descripción `SALIDA POR COBRO DE FLETE INICIAL: <orden>`.
+ * Verificado contra el histórico del 14-09-2026: los 13 movimientos con ese texto cuyo pedido existe
+ * están todos en `DEVOLUCION`, y el monto coincide peso a peso con `COSTO DEVOLUCION FLETE`.
+ *
+ * `SALIDA POR NUEVA ORDEN` **no** entra: es el flete que se cobra al crear el pedido, y el pedido que
+ * se pudo contrastar estaba `ENTREGADO`. Contarlo duplicaría el costo de operar.
+ */
+export function esCobroDevolucion(input: { tipo?: string | null; descripcion?: string | null }): boolean {
+  if (!esSalidaCartera(input.tipo)) return false;
+  return normalizarTexto(input.descripcion).includes("FLETE INICIAL");
+}
