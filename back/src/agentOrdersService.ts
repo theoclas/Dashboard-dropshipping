@@ -45,11 +45,25 @@ const COLUMNA: Record<OrdersDimension, string> = {
   dias_transito: "dias_desde_ult_mov",
 };
 
-/** Cómo se reconoce un estado final en `estado_unificado`. */
-function clasificar(estado: string | null): "entregado" | "devuelto" | "transito" {
-  const e = (estado ?? "").toUpperCase();
-  if (e.includes("ENTREG")) return "entregado";
-  if (e.includes("DEVU") || e.includes("RECHAZ") || e.includes("CANCEL")) return "devuelto";
+export type ClaseEstado = "entregado" | "devuelto" | "cancelado" | "transito";
+
+/**
+ * Clasifica un estado de pedido.
+ *
+ * El orden importa y es el mismo que usa `SQL_ENTREGA_BUCKET` en el resto del proyecto:
+ * cancelado y rechazado se miran **antes** que devolución, porque un pedido rechazado en
+ * destino suele traer las dos palabras y no debe contarse como devolución logística.
+ *
+ * Los patrones son los del bucket, no aproximaciones: `devoluci` y no `devu` — el estado
+ * real es `DEVOLUCION`, que no contiene `DEVU`, y esa suposición hizo que durante días las
+ * devoluciones se contaran como tránsito y las cancelaciones como devoluciones.
+ */
+export function clasificarEstado(estado: string | null): ClaseEstado {
+  const e = (estado ?? "").toLowerCase();
+  if (e.includes("cancel")) return "cancelado";
+  if (e.includes("rechaz")) return "devuelto";
+  if (e.includes("devoluci")) return "devuelto";
+  if (e.trim() === "entregado" || e.trim() === "entregados") return "entregado";
   return "transito";
 }
 
@@ -158,7 +172,11 @@ export async function queryOrdersBreakdown(
     else if (opts.dimension === "departamento") clave = p.departamento?.trim() || "sin departamento";
     else clave = tramoDias(transito);
 
-    const tipo = clasificar(p.estadoUnificado);
+    const tipo = clasificarEstado(p.estadoUnificado);
+    // Los cancelados no llegaron a moverse: no son entrega fallida ni pedido en camino.
+    // Contarlos como devueltos inflaba la tasa de devolución de cada transportadora.
+    if (tipo === "cancelado") continue;
+
     for (const acc of [grupos.get(clave) ?? grupos.set(clave, vacio()).get(clave)!, total]) {
       acc.pedidos += 1;
       if (tipo === "entregado") acc.entregados += 1;
