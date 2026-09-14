@@ -964,7 +964,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Ganancia estimada"
+              label="Entregado sin cartera OK"
               value={loading ? "…" : `$${fmtMoney(data?.gananciaEstimada ?? 0)}`}
               hint={
                 <Tooltip title="Suma de ganancia_calc de pedidos ya entregados cuya cartera aún no está en OK: ingresos que deberían reflejarse en el próximo import de cartera (p. ej. mañana en la mañana). No incluye lo ya contabilizado en «Ganancia total (cartera OK)».">

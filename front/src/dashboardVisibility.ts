@@ -46,7 +46,9 @@ export const DASHBOARD_CARD_LABELS: Record<DashboardCardKey, { label: string; se
   card_enProceso: { label: "En proceso", section: "Estados de entrega" },
   card_totalVentas: { label: "Total ventas", section: "Finanzas" },
   card_gananciaTotal: { label: "Ganancia total (cartera OK)", section: "Finanzas" },
-  card_gananciaEstimada: { label: "Ganancia estimada", section: "Finanzas" },
+  // La clave no cambia aunque cambie el rótulo: está guardada en `dashboardConfig` de cada
+  // usuario, y renombrarla les resetearía qué tarjetas tienen visibles.
+  card_gananciaEstimada: { label: "Entregado sin cartera OK", section: "Finanzas" },
   card_gananciaProyectada: { label: "Ganancia proyectada", section: "Finanzas" },
   card_cpaPromedio: { label: "CPA promedio", section: "Finanzas" },
   card_gastoPublicitarioMeta: { label: "Gasto publicitario", section: "Finanzas" },
