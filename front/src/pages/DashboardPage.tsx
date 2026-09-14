@@ -247,14 +247,38 @@ export function DashboardPage() {
   const canOpenSettings = usePermission("moduleConfiguracion");
   const dashCfg = user?.dashboardConfig;
   const cardLabels = useMemo(() => mergeDashboardCardLabels(user?.dashboardCardLabels), [user?.dashboardCardLabels]);
+
   const defaultRange = useMemo((): [Dayjs, Dayjs] => [dayjs().startOf("month"), dayjs().endOf("month")], []);
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(defaultRange);
   const [data, setData] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [metaSpendDetailOpen, setMetaSpendDetailOpen] = useState(false);
-  const [entregaDetailOpen, setEntregaDetailOpen] = useState<"entregados" | "devoluciones" | "totalPedidos" | null>(null);
+  const [entregaDetailOpen, setEntregaDetailOpen] = useState<
+    "entregados" | "devoluciones" | "totalPedidos" | "costoDevoluciones" | null
+  >(null);
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
   const [selectedMarginProductIds, setSelectedMarginProductIds] = useState<string[]>([]);
+
+  /** Solo los productos que efectivamente perdieron plata en devoluciones, de mayor a menor. */
+  const costoDevolucionesPorProducto = useMemo(
+    () =>
+      (data?.totalPedidosByProduct ?? [])
+        .filter((r) => r.perdidasDevoluciones > 0)
+        .sort((a, b) => b.perdidasDevoluciones - a.perdidasDevoluciones),
+    [data?.totalPedidosByProduct],
+  );
+
+  /**
+   * Lo que la tarjeta cuenta y la tabla no puede atribuir.
+   *
+   * El desglose por producto sale de `productos_detalle` con INNER JOIN, así que un pedido
+   * devuelto sin líneas de producto no aparece en ninguna fila. Sin esta diferencia, sumar
+   * la tabla daría menos que la tarjeta y parecería un error de cálculo.
+   */
+  const costoDevolucionesSinProducto = useMemo(() => {
+    const atribuido = costoDevolucionesPorProducto.reduce((s, r) => s + r.perdidasDevoluciones, 0);
+    return Math.max(0, (data?.costoDevoluciones ?? 0) - atribuido);
+  }, [costoDevolucionesPorProducto, data?.costoDevoluciones]);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -827,6 +851,86 @@ export function DashboardPage() {
             />
           </Card>
         ) : null}
+        {entregaDetailOpen === "costoDevoluciones" &&
+        isDashboardCardVisible(dashCfg, "card_costoDevoluciones") ? (
+          <Card
+            size="small"
+            style={{ ...cardSurface, marginTop: 16 }}
+            title="Costo de devoluciones por producto"
+            extra={
+              <Link to="/app/productos" style={{ fontSize: 13 }}>
+                Productos
+              </Link>
+            }
+          >
+            <Text type="secondary" style={{ display: "block", marginBottom: 12, fontSize: 13 }}>
+              Qué productos generan la pérdida por devoluciones. Cuando un pedido devuelto trae
+              varios productos, el costo se reparte entre ellos según las unidades de cada uno.
+              {costoDevolucionesSinProducto > 0.5 ? (
+                <>
+                  {" "}
+                  <Text type="warning" style={{ fontSize: 13 }}>
+                    Faltan ${fmtMoney(costoDevolucionesSinProducto)} de pedidos devueltos que no
+                    tienen líneas de producto, así que no se pueden atribuir. Por eso la tabla no
+                    suma el total de la tarjeta.
+                  </Text>
+                </>
+              ) : null}
+            </Text>
+            <Table
+              size="small"
+              rowKey="productKey"
+              loading={loading}
+              pagination={false}
+              locale={{ emptyText: "Ningún producto con devoluciones en este rango." }}
+              dataSource={costoDevolucionesPorProducto}
+              columns={[
+                { title: "Producto", dataIndex: "productName", key: "name", ellipsis: true },
+                {
+                  title: "Costo devoluciones",
+                  dataIndex: "perdidasDevoluciones",
+                  key: "costo",
+                  align: "right",
+                  width: 170,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "% del total",
+                  key: "pct",
+                  align: "right",
+                  width: 110,
+                  render: (_: unknown, r: TotalPedidosMarginRow) =>
+                    fmtPercent(
+                      (data?.costoDevoluciones ?? 0) > 0
+                        ? r.perdidasDevoluciones / (data?.costoDevoluciones ?? 1)
+                        : 0,
+                    ),
+                },
+                {
+                  title: "Ganancia entregados",
+                  dataIndex: "gananciaEntregados",
+                  key: "ganancia",
+                  align: "right",
+                  width: 170,
+                  render: (v: number) => `$${fmtMoney(v)}`,
+                },
+                {
+                  title: "Se lleva",
+                  key: "peso",
+                  align: "right",
+                  width: 110,
+                  // Cuánto de lo que gana el producto se lo comen sus propias devoluciones.
+                  // Es la cifra que dice si el problema es de ese producto o del volumen.
+                  render: (_: unknown, r: TotalPedidosMarginRow) =>
+                    r.gananciaEntregados > 0
+                      ? fmtPercent(r.perdidasDevoluciones / r.gananciaEntregados)
+                      : "—",
+                },
+              ]}
+            />
+          </Card>
+        ) : null}
+
         {entregaDetailOpen === "devoluciones" && isDashboardCardVisible(dashCfg, "card_devoluciones") ? (
           <Card
             size="small"
@@ -1002,8 +1106,12 @@ export function DashboardPage() {
               icon={<RollbackOutlined />}
               label={dashboardCardLabel(cardLabels, "card_costoDevoluciones")}
               value={loading ? "…" : `$${fmtMoney(data?.costoDevoluciones ?? 0)}`}
+              active={entregaDetailOpen === "costoDevoluciones"}
+              onClick={() =>
+                setEntregaDetailOpen((prev) => (prev === "costoDevoluciones" ? null : "costoDevoluciones"))
+              }
               hint={
-                <Tooltip title="Suma del costo de devolución de los pedidos devueltos del rango. Es plata perdida: el flete de ida y vuelta que ya pagaste y no recuperas. No incluye los pedidos en tránsito que todavía podrían devolverse.">
+                <Tooltip title="Suma del costo de devolución de los pedidos devueltos del rango. Es plata perdida: el flete de ida y vuelta que ya pagaste y no recuperas. No incluye los pedidos en tránsito que todavía podrían devolverse. Clic para ver qué productos lo generan.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }
