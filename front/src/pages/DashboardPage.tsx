@@ -15,6 +15,7 @@ import {
 } from "antd";
 import {
   BarChartOutlined,
+  RollbackOutlined,
   BellOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -110,6 +111,8 @@ export type DashboardMetrics = {
   gananciaTotal: number;
   gananciaEstimada: number;
   gananciaProyectada: number;
+  /** Suma de |costo_devolucion_estimado| de los pedidos devueltos del rango. */
+  costoDevoluciones: number;
   cpaPromedio: number | null;
   totalCpaSpend: number;
   cpaExperimentalVentas: number;
@@ -982,6 +985,20 @@ export function DashboardPage() {
               value={loading ? "…" : `$${fmtMoney(data?.gananciaProyectada ?? 0)}`}
               hint={
                 <Tooltip title="Ganancia total (cartera OK) + ganancia estimada (entregados sin cartera OK) + ganancia_calc de pedidos en tránsito, como si todo lo pendiente se entregara.">
+                  <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
+                </Tooltip>
+              }
+            />
+          </Col>
+          ) : null}
+          {isDashboardCardVisible(dashCfg, "card_costoDevoluciones") ? (
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard
+              icon={<RollbackOutlined />}
+              label="Costo de devoluciones"
+              value={loading ? "…" : `$${fmtMoney(data?.costoDevoluciones ?? 0)}`}
+              hint={
+                <Tooltip title="Suma del costo de devolución de los pedidos devueltos del rango. Es plata perdida: el flete de ida y vuelta que ya pagaste y no recuperas. No incluye los pedidos en tránsito que todavía podrían devolverse.">
                   <InfoCircleOutlined style={{ color: token.colorTextQuaternary, fontSize: 14 }} />
                 </Tooltip>
               }

@@ -73,6 +73,7 @@ type AggRow = {
 
 type FinRow = {
   ganancia_total_mov: unknown;
+  costo_devoluciones: unknown;
   ganancia_estimada_extra: unknown;
   ganancia_proyectada_transito: unknown;
 };
@@ -148,6 +149,8 @@ export type DashboardMetricsPayload = {
   gananciaTotal: number;
   gananciaEstimada: number;
   gananciaProyectada: number;
+  /** Lo que costaron las devoluciones del rango (suma de |costo_devolucion_estimado|). */
+  costoDevoluciones: number;
   cpaPromedio: number | null;
   totalCpaSpend: number;
   /** Ventas atribuidas en registros CPA experimental del rango. */
@@ -267,10 +270,23 @@ SELECT
    FROM \`pedidos\` p WHERE p.companyId = ?
      AND ${SQL_PEDIDO_ACTIVO}
      ${whereDate}
-  ) AS ganancia_proyectada_transito
+  ) AS ganancia_proyectada_transito,
+  -- Lo que costaron las devoluciones del rango. Se toma en valor absoluto porque el
+  -- campo llega con signo inconsistente según el import, y aquí siempre es un costo.
+  (SELECT COALESCE(SUM(
+        CASE WHEN (${SQL_ENTREGA_BUCKET}) = 'devolucion'
+          THEN ABS(COALESCE(p.costo_devolucion_estimado, 0))
+          ELSE 0 END
+      ), 0)
+   FROM \`pedidos\` p WHERE p.companyId = ?
+     AND ${SQL_PEDIDO_ACTIVO}
+     ${whereDate}
+  ) AS costo_devoluciones
 `;
 
-  const finParams: unknown[] = hasRange ? [companyId, start, end, companyId, start, end, companyId, start, end] : [companyId, companyId, companyId];
+  const finParams: unknown[] = hasRange
+    ? [companyId, start, end, companyId, start, end, companyId, start, end, companyId, start, end]
+    : [companyId, companyId, companyId, companyId];
 
   const walletTotalsSql = `
 SELECT
@@ -329,6 +345,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
   const gananciaEstimada = gananciaPendienteEntregados;
   /** Cartera OK + pendiente entregado + tránsito (escenario si todo se concreta). */
   const gananciaProyectada = gananciaTotal + gananciaPendienteEntregados + gananciaPendienteTransito;
+  const costoDevoluciones = fin ? num(fin.costo_devoluciones) : 0;
   const pedidosCarteraSinOk = a ? numBI(a.pedidos_cartera_sin_ok) : 0;
   const pedidosCarteraSinOkEntregados = a ? numBI(a.pedidos_cartera_sin_ok_entregados) : 0;
   const pedidosCarteraOkEntregados = a ? numBI(a.pedidos_cartera_ok_entregados) : 0;
@@ -394,6 +411,7 @@ ${hasRange ? "AND fecha >= ? AND fecha <= ?" : ""}
     gananciaTotal,
     gananciaEstimada,
     gananciaProyectada,
+    costoDevoluciones,
     cpaPromedio: cpaAvg,
     totalCpaSpend,
     cpaExperimentalVentas,
