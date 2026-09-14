@@ -19,6 +19,12 @@ model User {
   activeCompany              String?
   /// Visibilidad de tarjetas del dashboard (JSON: { "volume_totalOrders": true, ... }).
   dashboardConfig            Json?                @map("dashboard_config")
+  /// Rótulos propios de las tarjetas del dashboard, por usuario.
+  /// JSON { "card_gananciaTotal": "Mi título", ... }. Solo lleva las que el usuario
+  /// renombró: lo que no esté aquí usa el rótulo por defecto del código. Va en columna
+  /// aparte de dashboardConfig para no romper las configuraciones ya guardadas, que son
+  /// un mapa de booleanos.
+  dashboardCardLabels        Json?                @map("dashboard_card_labels")
   /// Columnas visibles/orden/fijado en módulo Pedidos (`OrdersTableConfig` v1).
   ordersTableConfig          Json?                @map("orders_table_config")
   /// Columnas visibles/orden/fijado en módulo Oficina (`OrdersTableConfig` v1).

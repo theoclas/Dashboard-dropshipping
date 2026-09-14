@@ -1236,3 +1236,19 @@ export async function patchCatalogProduct(
   const { data } = await api.patch<CatalogProduct>(`/catalog-products/${id}`, body);
   return data;
 }
+
+/**
+ * Guarda los rótulos propios de las tarjetas del dashboard.
+ *
+ * Mandar una cadena vacía en una clave **borra** ese rótulo y devuelve la tarjeta a su
+ * nombre por defecto.
+ */
+export async function patchDashboardCardLabels(
+  labels: Record<string, string>,
+): Promise<Record<string, string>> {
+  const { data } = await api.patch<{ dashboardCardLabels: Record<string, string> }>(
+    "/auth/me/dashboard-card-labels",
+    labels,
+  );
+  return data.dashboardCardLabels;
+}

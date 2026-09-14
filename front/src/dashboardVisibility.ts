@@ -79,3 +79,32 @@ export function mergeDashboardVisibility(stored: unknown): Record<DashboardCardK
 export function isDashboardCardVisible(stored: unknown, key: DashboardCardKey): boolean {
   return mergeDashboardVisibility(stored)[key] !== false;
 }
+
+/** Rótulos propios del usuario: `{ card_gananciaTotal: "Mi título" }`. */
+export type DashboardCardLabels = Partial<Record<DashboardCardKey, string>>;
+
+/**
+ * Limpia lo que venga de la base: solo claves conocidas, solo cadenas con contenido.
+ *
+ * Una clave que ya no exista en el código —una tarjeta retirada— se descarta en vez de
+ * arrastrarse, y un valor vacío se trata como "sin rótulo propio".
+ */
+export function mergeDashboardCardLabels(raw: unknown): DashboardCardLabels {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: DashboardCardLabels = {};
+  for (const k of DASHBOARD_CARD_KEYS) {
+    const v = (raw as Record<string, unknown>)[k];
+    if (typeof v === "string" && v.trim() !== "") out[k] = v.trim();
+  }
+  return out;
+}
+
+/**
+ * El rótulo que se pinta: el del usuario si lo puso, si no el del código.
+ *
+ * Se resuelve aquí y no en cada tarjeta para que añadir una nueva no obligue a acordarse
+ * de esta lógica.
+ */
+export function dashboardCardLabel(labels: DashboardCardLabels | undefined, key: DashboardCardKey): string {
+  return labels?.[key]?.trim() || DASHBOARD_CARD_LABELS[key].label;
+}

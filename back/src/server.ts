@@ -243,6 +243,7 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
     role: userPayload?.role,
     operatorPerms,
     dashboardConfig: user.dashboardConfig,
+    dashboardCardLabels: user.dashboardCardLabels,
     ordersTableConfig: user.ordersTableConfig,
     oficinaTableConfig: user.oficinaTableConfig,
     companySettings,
@@ -287,6 +288,53 @@ app.patch(
     data: { dashboardConfig: prev as Prisma.InputJsonValue },
   });
   return res.json({ dashboardConfig: prev });
+  },
+);
+
+/**
+ * Rótulos propios de las tarjetas, por usuario.
+ *
+ * Una cadena vacía **borra** el rótulo y devuelve la tarjeta a su nombre por defecto. Es
+ * más natural que un botón aparte de "restaurar": el usuario limpia el campo y listo.
+ *
+ * Solo se guardan las claves que el usuario tocó; las demás no viven en la base.
+ */
+const dashboardCardLabelsPatchSchema = z.record(z.string(), z.string().max(40));
+
+app.patch(
+  "/api/auth/me/dashboard-card-labels",
+  authRequired,
+  requirePermission("actionConfigDashboardTarjetas"),
+  async (req, res) => {
+    const userPayload = (req as express.Request & { user?: JwtPayload }).user!;
+    const parsed = dashboardCardLabelsPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Payload inválido." });
+    }
+    const u = await prisma.user.findUnique({
+      where: { id: userPayload.userId },
+      select: { dashboardCardLabels: true },
+    });
+    const prev: Record<string, string> =
+      u?.dashboardCardLabels &&
+      typeof u.dashboardCardLabels === "object" &&
+      !Array.isArray(u.dashboardCardLabels)
+        ? Object.fromEntries(
+            Object.entries(u.dashboardCardLabels as Record<string, unknown>).filter(
+              ([, v]) => typeof v === "string",
+            ) as [string, string][],
+          )
+        : {};
+    for (const [k, val] of Object.entries(parsed.data)) {
+      const limpio = val.trim();
+      if (limpio === "") delete prev[k];
+      else prev[k] = limpio;
+    }
+    await prisma.user.update({
+      where: { id: userPayload.userId },
+      data: { dashboardCardLabels: prev as Prisma.InputJsonValue },
+    });
+    return res.json({ dashboardCardLabels: prev });
   },
 );
 

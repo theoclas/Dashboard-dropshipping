@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Input,
   Descriptions,
   Space,
   Table,
@@ -13,13 +14,14 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { patchDashboardConfig } from "../api";
+import { patchDashboardCardLabels, patchDashboardConfig } from "../api";
 import { DropiRetirosPanel } from "../components/DropiRetirosPanel";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
 import {
   DASHBOARD_CARD_KEYS,
   DASHBOARD_CARD_LABELS,
+  mergeDashboardCardLabels,
   mergeDashboardVisibility,
   type DashboardCardKey,
 } from "../dashboardVisibility";
@@ -48,10 +50,15 @@ export function SettingsPage() {
   const [cards, setCards] = useState<Record<DashboardCardKey, boolean>>(() =>
     mergeDashboardVisibility(user?.dashboardConfig),
   );
+  // Solo las que el usuario renombró; el resto queda vacío y usa el rótulo por defecto.
+  const [cardLabels, setCardLabels] = useState<Record<string, string>>(() =>
+    mergeDashboardCardLabels(user?.dashboardCardLabels) as Record<string, string>,
+  );
 
   useEffect(() => {
     setCards(mergeDashboardVisibility(user?.dashboardConfig));
-  }, [user?.dashboardConfig]);
+    setCardLabels(mergeDashboardCardLabels(user?.dashboardCardLabels) as Record<string, string>);
+  }, [user?.dashboardConfig, user?.dashboardCardLabels]);
 
   const sections = useMemo(() => {
     const map = new Map<string, DashboardCardKey[]>();
@@ -160,7 +167,15 @@ export function SettingsPage() {
                     disabled={!canDashboardCards}
                     onClick={async () => {
                       try {
-                        await patchDashboardConfig(cards);
+                        // Se mandan TODAS las claves, no solo las escritas: una que quedó
+                        // vacía tiene que llegar como "" para que el servidor la borre.
+                        const rotulos = Object.fromEntries(
+                          DASHBOARD_CARD_KEYS.map((k) => [k, cardLabels[k] ?? ""]),
+                        );
+                        await Promise.all([
+                          patchDashboardConfig(cards),
+                          patchDashboardCardLabels(rotulos),
+                        ]);
                         message.success("Preferencias guardadas.");
                         await refresh();
                       } catch {
@@ -185,14 +200,28 @@ export function SettingsPage() {
                       </Text>
                       <Space direction="vertical" style={{ paddingLeft: 8 }}>
                         {keys.map((key) => (
-                          <Checkbox
-                            key={key}
-                            checked={cards[key]}
-                            disabled={!canDashboardCards}
-                            onChange={(e) => setCards((prev) => ({ ...prev, [key]: e.target.checked }))}
-                          >
-                            {DASHBOARD_CARD_LABELS[key].label}
-                          </Checkbox>
+                          <Space key={key} align="center" style={{ width: "100%" }}>
+                            <Checkbox
+                              checked={cards[key]}
+                              disabled={!canDashboardCards}
+                              onChange={(e) => setCards((prev) => ({ ...prev, [key]: e.target.checked }))}
+                              style={{ minWidth: 260 }}
+                            >
+                              {DASHBOARD_CARD_LABELS[key].label}
+                            </Checkbox>
+                            <Input
+                              size="small"
+                              allowClear
+                              maxLength={40}
+                              disabled={!canDashboardCards}
+                              placeholder={DASHBOARD_CARD_LABELS[key].label}
+                              value={cardLabels[key] ?? ""}
+                              onChange={(e) =>
+                                setCardLabels((prev) => ({ ...prev, [key]: e.target.value }))
+                              }
+                              style={{ width: 240 }}
+                            />
+                          </Space>
                         ))}
                       </Space>
                     </div>

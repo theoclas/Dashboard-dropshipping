@@ -37,7 +37,11 @@ import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fetchCatalogProducts } from "../api";
-import { isDashboardCardVisible } from "../dashboardVisibility";
+import {
+  dashboardCardLabel,
+  isDashboardCardVisible,
+  mergeDashboardCardLabels,
+} from "../dashboardVisibility";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../hooks/usePermission";
 import type { CatalogProduct } from "../types";
@@ -242,6 +246,7 @@ export function DashboardPage() {
   const { user } = useAuth();
   const canOpenSettings = usePermission("moduleConfiguracion");
   const dashCfg = user?.dashboardConfig;
+  const cardLabels = useMemo(() => mergeDashboardCardLabels(user?.dashboardCardLabels), [user?.dashboardCardLabels]);
   const defaultRange = useMemo((): [Dayjs, Dayjs] => [dayjs().startOf("month"), dayjs().endOf("month")], []);
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(defaultRange);
   const [data, setData] = useState<DashboardMetrics | null>(null);
@@ -366,7 +371,7 @@ export function DashboardPage() {
             <MetricCard
               emphasize
               icon={<ShoppingCartOutlined />}
-              label="Total pedidos"
+              label={dashboardCardLabel(cardLabels, "card_totalOrders")}
               value={loading ? "…" : fmtInteger(data?.totalOrders ?? 0)}
               active={entregaDetailOpen === "totalPedidos"}
               onClick={() =>
@@ -384,7 +389,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<TruckOutlined />}
-              label="Total guías"
+              label={dashboardCardLabel(cardLabels, "card_totalGuias")}
               value={loading ? "…" : fmtInteger(data?.totalGuias ?? 0)}
               hint={
                 <Tooltip title="Pedidos con número de guía asignado en el rango.">
@@ -398,7 +403,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ShoppingOutlined />}
-              label="Productos vendidos"
+              label={dashboardCardLabel(cardLabels, "card_productosVendidos")}
               value={loading ? "…" : fmtInteger(data?.productosVendidos ?? 0)}
               hint={
                 <Tooltip title="Suma de cantidades en productos detalle de los pedidos del rango.">
@@ -412,7 +417,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<WarningOutlined />}
-              label="Sin mapear"
+              label={dashboardCardLabel(cardLabels, "card_sinMapear")}
               value={loading ? "…" : fmtInteger(data?.sinMapear ?? 0)}
             />
           </Col>
@@ -421,7 +426,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<StopOutlined />}
-              label="Total pedidos cancelados"
+              label={dashboardCardLabel(cardLabels, "card_pedidosCancelados")}
               value={
                 loading
                   ? "…"
@@ -439,7 +444,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ClockCircleOutlined />}
-              label="Total pedidos pendientes"
+              label={dashboardCardLabel(cardLabels, "card_pedidosPendientes")}
               value={
                 loading
                   ? "…"
@@ -650,7 +655,7 @@ export function DashboardPage() {
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<CheckCircleOutlined />}
-              label="Entregados"
+              label={dashboardCardLabel(cardLabels, "card_entregados")}
               value={
                 loading
                   ? "…"
@@ -672,7 +677,7 @@ export function DashboardPage() {
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<CloseCircleOutlined />}
-              label="Devoluciones"
+              label={dashboardCardLabel(cardLabels, "card_devoluciones")}
               value={
                 loading
                   ? "…"
@@ -694,7 +699,7 @@ export function DashboardPage() {
           <Col xs={24} sm={8}>
             <MetricCard
               icon={<ClockCircleOutlined />}
-              label="En proceso"
+              label={dashboardCardLabel(cardLabels, "card_enProceso")}
               value={
                 loading
                   ? "…"
@@ -944,7 +949,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Total ventas"
+              label={dashboardCardLabel(cardLabels, "card_totalVentas")}
               value={loading ? "…" : `$${fmtMoney(data?.totalVentas ?? 0)}`}
             />
           </Col>
@@ -953,7 +958,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Ganancia total (cartera OK)"
+              label={dashboardCardLabel(cardLabels, "card_gananciaTotal")}
               value={loading ? "…" : `$${fmtMoney(data?.gananciaTotal ?? 0)}`}
               hint={
                 <Tooltip title="Neto de movimientos de cartera (ENTRADA suma, otros restan) enlazados a pedidos con cartera OK y estado entregado o devolución en el rango. Las devoluciones quedan reflejadas en ese neto. No incluye CPA.">
@@ -967,7 +972,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Entregado sin cartera OK"
+              label={dashboardCardLabel(cardLabels, "card_gananciaEstimada")}
               value={loading ? "…" : `$${fmtMoney(data?.gananciaEstimada ?? 0)}`}
               hint={
                 <Tooltip title="Suma de ganancia_calc de pedidos ya entregados cuya cartera aún no está en OK: ingresos que deberían reflejarse en el próximo import de cartera (p. ej. mañana en la mañana). No incluye lo ya contabilizado en «Ganancia total (cartera OK)».">
@@ -981,7 +986,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<DollarOutlined />}
-              label="Ganancia proyectada"
+              label={dashboardCardLabel(cardLabels, "card_gananciaProyectada")}
               value={loading ? "…" : `$${fmtMoney(data?.gananciaProyectada ?? 0)}`}
               hint={
                 <Tooltip title="Ganancia total (cartera OK) + ganancia estimada (entregados sin cartera OK) + ganancia_calc de pedidos en tránsito, como si todo lo pendiente se entregara.">
@@ -995,7 +1000,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<RollbackOutlined />}
-              label="Costo de devoluciones"
+              label={dashboardCardLabel(cardLabels, "card_costoDevoluciones")}
               value={loading ? "…" : `$${fmtMoney(data?.costoDevoluciones ?? 0)}`}
               hint={
                 <Tooltip title="Suma del costo de devolución de los pedidos devueltos del rango. Es plata perdida: el flete de ida y vuelta que ya pagaste y no recuperas. No incluye los pedidos en tránsito que todavía podrían devolverse.">
@@ -1009,7 +1014,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<BarChartOutlined />}
-              label="CPA promedio"
+              label={dashboardCardLabel(cardLabels, "card_cpaPromedio")}
               value={
                 loading
                   ? "…"
@@ -1031,7 +1036,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<FundOutlined />}
-              label="Gasto publicitario"
+              label={dashboardCardLabel(cardLabels, "card_gastoPublicitarioMeta")}
               value={loading ? "…" : `$${fmtMoney(data?.gastoPublicitarioMeta ?? 0)}`}
               active={metaSpendDetailOpen}
               onClick={() => setMetaSpendDetailOpen((o) => !o)}
@@ -1047,7 +1052,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<WalletOutlined />}
-              label="Gasto operacional"
+              label={dashboardCardLabel(cardLabels, "card_gastoOperacional")}
               value={loading ? "…" : `$${fmtMoney(data?.gastoOperacional ?? 0)}`}
               hint={
                 <Tooltip title="Suma de gastos operacionales registrados para la empresa en el mismo rango de fechas que los pedidos.">
@@ -1061,7 +1066,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ExportOutlined />}
-              label="Retiros Dropi"
+              label={dashboardCardLabel(cardLabels, "card_retirosDropi")}
               value={
                 loading
                   ? "…"
@@ -1079,7 +1084,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ImportOutlined />}
-              label="Entradas cartera"
+              label={dashboardCardLabel(cardLabels, "card_entradasCartera")}
               value={
                 loading
                   ? "…"
@@ -1098,7 +1103,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<ExportOutlined />}
-              label="Salidas cartera"
+              label={dashboardCardLabel(cardLabels, "card_salidasCartera")}
               value={
                 loading
                   ? "…"
@@ -1180,7 +1185,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<WarningOutlined />}
-              label="Devoluciones cartera sin OK"
+              label={dashboardCardLabel(cardLabels, "card_pedidosCarteraSinOk")}
               value={
                 loading
                   ? "…"
@@ -1198,7 +1203,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<TruckOutlined />}
-              label="Entregados cartera sin OK"
+              label={dashboardCardLabel(cardLabels, "card_pedidosCarteraSinOkEntregados")}
               value={
                 loading
                   ? "…"
@@ -1216,7 +1221,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<CheckCircleOutlined />}
-              label="Cartera OK — entregados"
+              label={dashboardCardLabel(cardLabels, "card_pedidosCarteraOkEntregados")}
               value={
                 loading
                   ? "…"
@@ -1234,7 +1239,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<UndoOutlined />}
-              label="Cartera OK — devoluciones"
+              label={dashboardCardLabel(cardLabels, "card_pedidosCarteraOkDevoluciones")}
               value={
                 loading
                   ? "…"
@@ -1252,7 +1257,7 @@ export function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <MetricCard
               icon={<BellOutlined />}
-              label="Novedades (pedidos)"
+              label={dashboardCardLabel(cardLabels, "card_pedidosNovedad")}
               value={
                 loading
                   ? "…"

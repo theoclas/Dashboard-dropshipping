@@ -65,6 +65,8 @@ export type AuthUser = {
   operatorPerms?: Record<OperatorPermissionKey, boolean> | null;
   /** Preferencias de tarjetas del dashboard (`User.dashboard_config`). */
   dashboardConfig?: Record<string, boolean> | null;
+  /** Rótulos propios de las tarjetas. Solo trae las que el usuario renombró. */
+  dashboardCardLabels?: Record<string, string> | null;
   /** Columnas del módulo Pedidos (`User.orders_table_config`). */
   ordersTableConfig?: OrdersTableConfig | null;
   /** Columnas del módulo Oficina (`User.oficina_table_config`). */
