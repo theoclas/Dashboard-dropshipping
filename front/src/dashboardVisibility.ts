@@ -14,7 +14,6 @@ export const DASHBOARD_CARD_KEYS = [
   "card_gananciaTotal",
   "card_gananciaEstimada",
   "card_gananciaProyectada",
-  "card_costoDevoluciones",
   "card_devolucionesCobradas",
   "card_cpaPromedio",
   "card_gastoPublicitarioMeta",
@@ -52,7 +51,6 @@ export const DASHBOARD_CARD_LABELS: Record<DashboardCardKey, { label: string; se
   // usuario, y renombrarla les resetearía qué tarjetas tienen visibles.
   card_gananciaEstimada: { label: "Entregado sin cartera OK", section: "Finanzas" },
   card_gananciaProyectada: { label: "Ganancia proyectada", section: "Finanzas" },
-  card_costoDevoluciones: { label: "Costo de devoluciones", section: "Finanzas" },
   card_devolucionesCobradas: { label: "Devoluciones cobradas", section: "Finanzas" },
   card_cpaPromedio: { label: "CPA promedio", section: "Finanzas" },
   card_gastoPublicitarioMeta: { label: "Gasto publicitario", section: "Finanzas" },
